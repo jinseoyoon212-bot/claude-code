@@ -4,7 +4,7 @@
 (() => {
   const KEY = 'aurora-settings';
   const MOODS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'thinking', 'sleepy', 'love', 'laugh'];
-  const defaults = { apiKey: '', model: 'claude-sonnet-5-5', serverUrl: '', token: '' };
+  const defaults = { apiKey: '', model: 'claude-sonnet-5-5', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -73,8 +73,14 @@
     setSettings: async (p) => { const s = { ...load(), ...p }; save(s); sameOriginBridge = null; return s; },
     onEvent: (cb) => listeners.push(cb),
     send: async (history) => {
-      const s = load(), base = await bridgeBase(s);
-      return base === null ? sendDirect(s, history) : sendBridge(base, s, history);
+      const s = load(), phone = window.PhoneAgent && window.PhoneAgent.available();
+      const notify = (ev) => listeners.forEach((cb) => cb(ev));
+      if (s.mode === 'chat') return sendDirect(s, history);
+      if (s.mode === 'phone') return phone ? window.PhoneAgent.run({ settings: s, history, notify }) : { error: '폰 제어는 Aurora Agent APK 앱에서만 가능해요.' };
+      if (s.mode === 'auto' && phone && !s.serverUrl) return window.PhoneAgent.run({ settings: s, history, notify });
+      const base = await bridgeBase(s);
+      if (base === null) return s.mode === 'pc' ? { error: 'PC 서버 주소가 없거나 연결할 수 없어요. ⚙ 설정을 확인해 주세요.' } : sendDirect(s, history);
+      return sendBridge(base, s, history);
     },
   };
 })();

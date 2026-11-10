@@ -5,7 +5,7 @@
   "scripts": {
     "sync": "node sync.js",
     "serve": "node sync.js && npx --yes serve www",
-    "android:init": "node sync.js && npx cap add android && npx cap sync android"
+    "android:init": "node sync.js && npx cap add android && node patch-android.js && npx cap sync android"
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",

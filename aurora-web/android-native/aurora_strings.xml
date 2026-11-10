@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aurora_a11y_desc">Aurora Agent가 사용자의 요청에 따라 화면을 읽고, 탭·스와이프·입력·뒤로가기 같은 조작을 대신 수행합니다. 요청하지 않은 동작은 하지 않습니다.</string>
+</resources>
