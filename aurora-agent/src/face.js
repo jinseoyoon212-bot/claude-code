@@ -1,23 +1,30 @@
-// 무지개 오로라 얼굴: 표정(mood)과 움직임(motion)을 가진 캔버스 캐릭터
+// 둥글둥글 무지개 오로라 얼굴 — 스프링 물리 기반의 말랑한 움직임
 const Face = (() => {
   const cv = document.getElementById('face'), g = cv.getContext('2d');
-  const W = cv.width, C = W / 2, R = 190;
-  let mood = 'neutral', t = 0, motion = null, motionT = 0, talking = false, blinkT = 0, nextBlink = 2;
-  const look = { x: 0, y: 0, tx: 0, ty: 0 };
-  // 현재 표정 파라미터(부드럽게 보간)
-  const cur = { eyeOpen: 1, eyeH: 1, mouthW: 1, mouthCurve: 0.5, mouthOpen: 0, brow: 0, cheek: 0.5, tilt: 0 };
+  const W = cv.width, C = W / 2, R = 180;
+  let mood = 'neutral', t = 0, talking = false, talkLevel = 0, blink = 0, nextBlink = 2, saccadeT = 1;
+  const INK = '#3b2358';
+
+  // 스프링: 목표값을 향해 탄력 있게 움직임
+  const spring = (x = 0, k = 90, d = 9) => ({ x, v: 0, to: x, k, d });
+  const step = (s, dt) => { const a = s.k * (s.to - s.x) - s.d * s.v; s.v += a * dt; s.x += s.v * dt; };
+  const B = { dx: spring(0, 60, 7), dy: spring(0, 70, 6), rot: spring(0, 70, 6), sq: spring(0, 120, 8) };
+  const gaze = { x: spring(0, 40, 9), y: spring(0, 40, 9) };
+
+  // 표정 파라미터(모두 스프링으로 부드럽게 전환)
   const P = {
-    neutral:  { eyeOpen: 1, eyeH: 1, mouthW: 0.8, mouthCurve: 0.4, mouthOpen: 0, brow: 0, cheek: 0.4, tilt: 0 },
-    happy:    { eyeOpen: 0.55, eyeH: 1, mouthW: 1.1, mouthCurve: 1, mouthOpen: 0.25, brow: -0.2, cheek: 1, tilt: 0 },
-    laugh:    { eyeOpen: 0.15, eyeH: 1, mouthW: 1.3, mouthCurve: 1, mouthOpen: 1, brow: -0.3, cheek: 1, tilt: 0 },
-    sad:      { eyeOpen: 0.8, eyeH: 1.1, mouthW: 0.7, mouthCurve: -0.8, mouthOpen: 0, brow: 0.9, cheek: 0, tilt: -0.08 },
-    angry:    { eyeOpen: 0.7, eyeH: 0.8, mouthW: 0.8, mouthCurve: -0.5, mouthOpen: 0, brow: -1, cheek: 0.2, tilt: 0 },
-    surprised:{ eyeOpen: 1.4, eyeH: 1.3, mouthW: 0.5, mouthCurve: 0, mouthOpen: 1, brow: -0.6, cheek: 0.2, tilt: 0 },
-    thinking: { eyeOpen: 0.9, eyeH: 1, mouthW: 0.5, mouthCurve: 0, mouthOpen: 0, brow: 0.3, cheek: 0.3, tilt: 0.1 },
-    sleepy:   { eyeOpen: 0.12, eyeH: 1, mouthW: 0.6, mouthCurve: 0.1, mouthOpen: 0.15, brow: 0.2, cheek: 0.3, tilt: 0.05 },
-    love:     { eyeOpen: 1, eyeH: 1, mouthW: 1, mouthCurve: 1, mouthOpen: 0.2, brow: -0.2, cheek: 1, tilt: 0 },
+    neutral:  { eye: 1,   happy: 0, size: 1,    smile: 0.55, open: 0,    cheek: 0.45, lid: 0,   brow: 0 },
+    happy:    { eye: 0.9, happy: 1, size: 1,    smile: 1,    open: 0.35, cheek: 1,    lid: 0,   brow: 0 },
+    laugh:    { eye: 0.9, happy: 1, size: 1,    smile: 1,    open: 1,    cheek: 1,    lid: 0,   brow: 0 },
+    sad:      { eye: 1,   happy: 0, size: 1.1,  smile: -0.7, open: 0,    cheek: 0.1,  lid: 0.25, brow: -1 },
+    angry:    { eye: 0.85, happy: 0, size: 0.95, smile: -0.35, open: 0,   cheek: 0.7,  lid: 0.3, brow: 1 },
+    surprised:{ eye: 1.15, happy: 0, size: 1.25, smile: 0,    open: 0.8,  cheek: 0.3,  lid: 0,   brow: 0 },
+    thinking: { eye: 1,   happy: 0, size: 1,    smile: 0.1,  open: 0,    cheek: 0.35, lid: 0,   brow: 0 },
+    sleepy:   { eye: 0.15, happy: 0, size: 1,   smile: 0.25, open: 0.15, cheek: 0.4,  lid: 0,   brow: 0 },
+    love:     { eye: 1,   happy: 0, size: 1,    smile: 1,    open: 0.25, cheek: 1,    lid: 0,   brow: 0 },
   };
-  // 사용자가 입력한 텍스트에서 즉시 감정 추정
+  const cur = {}; for (const k in P.neutral) cur[k] = spring(P.neutral[k], 70, 10);
+
   const RULES = [
     [/사랑|좋아해|하트|♥|❤|고마워|감사|최고/, 'love', 'bounce'],
     [/ㅋㅋ|ㅎㅎ|웃기|재밌|하하|lol/i, 'laugh', 'bounce'],
@@ -28,109 +35,131 @@ const Face = (() => {
     [/\?|뭐|왜|어떻게|알려|찾아|검색|실행|열어|만들어|저장|삭제/, 'thinking', 'tilt'],
     [/안녕|하이|반가|hello|hi\b|좋아|기뻐|행복|신나|yay|굿/i, 'happy', 'wave'],
   ];
-  const lerp = (a, b, k) => a + (b - a) * k;
-  function setMood(m) { mood = P[m] ? m : 'neutral'; }
-  function doMotion(m) { motion = m; motionT = 0; }
+
+  function setMood(m) { mood = P[m] ? m : 'neutral'; for (const k in cur) cur[k].to = P[mood][k]; }
+  // 움직임은 스프링에 "톡" 힘을 줘서 만든다 → 말랑하고 자연스럽게 흔들렸다 가라앉음
+  const timers = [];
+  const later = (ms, fn) => timers.push({ at: t + ms / 1000, fn });
+  function doMotion(m) {
+    timers.length = 0;
+    switch (m) {
+      case 'bounce': for (let i = 0; i < 3; i++) later(i * 380, () => { B.dy.v = -520 + i * 80; B.sq.v = -2; }); break;
+      case 'jump': B.sq.v = 6; later(120, () => { B.dy.v = -900; B.sq.v = -4; }); break;
+      case 'shake': for (let i = 0; i < 6; i++) later(i * 90, () => { B.dx.v = (i % 2 ? -1 : 1) * 420; B.rot.v = (i % 2 ? 1 : -1) * 1.2; }); break;
+      case 'droop': B.dy.to = 22; B.sq.to = 0.05; later(1800, () => { B.dy.to = 0; B.sq.to = 0; }); break;
+      case 'sway': for (let i = 0; i < 3; i++) later(i * 700, () => { B.rot.v = (i % 2 ? -1 : 1) * 1.4; }); break;
+      case 'tilt': B.rot.to = 0.2; later(2200, () => (B.rot.to = 0)); gaze.y.to = -0.6; later(2200, () => (gaze.y.to = 0)); break;
+      case 'nod': B.dy.v = 220; later(220, () => (B.dy.v = 180)); break;
+      case 'wave': for (let i = 0; i < 4; i++) later(i * 220, () => { B.rot.v = (i % 2 ? -1 : 1) * 1.6; B.dy.v = -120; }); break;
+    }
+  }
   function react(text) {
     for (const [re, m, mo] of RULES) if (re.test(text)) { setMood(m); doMotion(mo); return m; }
     setMood('neutral'); doMotion('nod'); return 'neutral';
   }
-  function lookAt(x, y) { look.tx = x; look.ty = y; }
-  addEventListener('mousemove', (e) => { const r = cv.getBoundingClientRect(); lookAt(Math.max(-1, Math.min(1, (e.clientX - r.left - r.width / 2) / 300)), Math.max(-1, Math.min(1, (e.clientY - r.top - r.height / 2) / 300))); });
+  function lookAt(x, y) { gaze.x.to = x; gaze.y.to = y; }
+  let mouseOn = 0;
+  addEventListener('mousemove', (e) => { const r = cv.getBoundingClientRect(); lookAt(Math.max(-1, Math.min(1, (e.clientX - r.left - r.width / 2) / 260)), Math.max(-1, Math.min(1, (e.clientY - r.top - r.height / 2) / 260))); mouseOn = t; });
 
-  function body(dx, dy, rot, sx, sy) {
-    g.save(); g.translate(C + dx, C + dy); g.rotate(rot); g.scale(sx, sy);
-    // 오로라 무지개 몸통: 회전하는 콘 그라디언트 + 흐르는 빛덩이
-    const cg = g.createConicGradient(t * 0.6, 0, 0);
-    ['#ff6ec7', '#ffb86b', '#fff56b', '#6bffb0', '#6be3ff', '#8c7bff', '#d76bff', '#ff6ec7'].forEach((c, i, a) => cg.addColorStop(i / (a.length - 1), c));
-    g.beginPath(); g.arc(0, 0, R, 0, 7); g.fillStyle = cg; g.fill();
-    g.save(); g.clip();
-    for (let i = 0; i < 4; i++) {
-      const a = t * (0.5 + i * 0.2) + i * 1.7, x = Math.cos(a) * R * 0.55, y = Math.sin(a * 1.3) * R * 0.55;
-      const rg = g.createRadialGradient(x, y, 0, x, y, R * 0.7);
-      rg.addColorStop(0, `hsla(${(t * 60 + i * 90) % 360},100%,80%,.55)`); rg.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = rg; g.fillRect(-R, -R, R * 2, R * 2);
-    }
-    const sh = g.createRadialGradient(-R * 0.35, -R * 0.45, 5, 0, 0, R);
-    sh.addColorStop(0, 'rgba(255,255,255,.55)'); sh.addColorStop(0.4, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(60,0,120,.28)');
-    g.fillStyle = sh; g.fillRect(-R, -R, R * 2, R * 2);
+  // ---------- 그리기 ----------
+  function blob(cx, cy, r, stops) {
+    const rg = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+    stops.forEach(([o, c]) => rg.addColorStop(o, c)); g.fillStyle = rg; g.fillRect(-R, -R, R * 2, R * 2);
+  }
+  function drawBody() {
+    g.beginPath(); g.arc(0, 0, R, 0, 7); g.save(); g.clip();
+    const cg = g.createConicGradient(t * 0.35, 0, 0);
+    ['#ff9ad0', '#ffd08a', '#fff39a', '#a6ffcf', '#9be7ff', '#b7a6ff', '#e5a6ff', '#ff9ad0'].forEach((c, i, a) => cg.addColorStop(i / (a.length - 1), c));
+    g.fillStyle = cg; g.fillRect(-R, -R, R * 2, R * 2);
+    blob(0, 0, R, [[0, 'rgba(255,255,255,.55)'], [0.7, 'rgba(255,255,255,.18)'], [1, 'rgba(255,255,255,0)']]);   // 파스텔로 부드럽게
+    for (let i = 0; i < 3; i++) { const a = t * (0.3 + i * 0.13) + i * 2.1; blob(Math.cos(a) * 90, Math.sin(a * 1.2) * 90, 130, [[0, `hsla(${(t * 40 + i * 120) % 360},100%,85%,.5)`], [1, 'rgba(255,255,255,0)']]); }
+    blob(-70, -90, 120, [[0, 'rgba(255,255,255,.7)'], [1, 'rgba(255,255,255,0)']]);   // 몽글한 하이라이트
+    blob(40, 120, 150, [[0, 'rgba(180,130,255,.0)'], [1, 'rgba(150,100,230,.22)']]);
     g.restore();
   }
-  function eye(x, y, c) {
-    const open = c.eyeOpen * (blinkT > 0 ? 0.05 : 1);
-    g.save(); g.translate(x + look.x * 10, y + look.y * 8);
-    const rx = 30, ry = Math.max(2, 34 * open * c.eyeH);
-    if (mood === 'love') { heart(0, 0, 34); }
-    else if ((mood === 'happy' || mood === 'laugh') && c.eyeOpen < 0.6) { // ^ ^ 모양
-      g.strokeStyle = '#2a1650'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.arc(0, 10, 26, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
-    } else if (c.eyeOpen < 0.2) { g.strokeStyle = '#2a1650'; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.moveTo(-26, 0); g.quadraticCurveTo(0, 14, 26, 0); g.stroke(); }
-    else {
-      g.fillStyle = '#fff'; g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, 7); g.fill();
-      g.fillStyle = '#2a1650'; g.beginPath(); g.ellipse(look.x * 8, look.y * 6, 19, Math.min(ry, 23), 0, 0, 7); g.fill();
-      g.fillStyle = '#fff'; g.beginPath(); g.arc(look.x * 8 - 7, look.y * 6 - 8, 6, 0, 7); g.fill();
-      g.beginPath(); g.arc(look.x * 8 + 7, look.y * 6 + 7, 3, 0, 7); g.fill();
+  function drawEye(x, y, side) {
+    const s = cur.size.x, open = cur.eye.x * (1 - blink) , hp = Math.max(0, Math.min(1, cur.happy.x));
+    const gx = gaze.x.x * 7, gy = gaze.y.x * 6;
+    g.save(); g.translate(x + gx, y + gy);
+    if (mood === 'love') { heart(0, 0, 26 * (1 + Math.sin(t * 6) * 0.06)); g.restore(); return; }
+    g.strokeStyle = INK; g.lineCap = 'round'; g.lineWidth = 9;
+    if (hp > 0.5 || open < 0.2) {                              // ^ ^ 또는 감은 눈 : 둥근 아치
+      g.beginPath();
+      if (hp > 0.5) g.arc(0, 8, 20, Math.PI * 1.1, Math.PI * 1.9); else { g.moveTo(-18, 0); g.quadraticCurveTo(0, 10, 18, 0); }
+      g.stroke(); g.restore(); return;
+    }
+    const r = 19 * s, sy = Math.max(0.08, open);
+    g.fillStyle = INK; g.beginPath(); g.ellipse(0, 0, r, r * sy, 0, 0, 7); g.fill();       // 동글동글 까만 눈
+    if (sy > 0.4) {
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(-r * 0.32, -r * 0.34 * sy, r * 0.36, 0, 7); g.fill();  // 큰 하이라이트
+      g.beginPath(); g.arc(r * 0.34, r * 0.3 * sy, r * 0.17, 0, 7); g.fill();                        // 작은 하이라이트
+    }
+    const lid = cur.lid.x;                                     // 눈꺼풀: 슬픔/화남을 부드럽게
+    if (lid > 0.02) {
+      g.fillStyle = '#d9b4ff'; g.save(); g.beginPath(); g.ellipse(0, 0, r + 1, r * sy + 1, 0, 0, 7); g.clip();
+      g.rotate(cur.brow.x * side * 0.35); g.fillRect(-r - 4, -r - 4, r * 2 + 8, (r * 2 + 8) * lid * 0.9); g.restore();
     }
     g.restore();
   }
   function heart(x, y, s) {
-    g.fillStyle = '#ff3d7f'; g.beginPath(); g.moveTo(x, y + s * 0.6);
-    g.bezierCurveTo(x - s * 1.2, y - s * 0.2, x - s * 0.5, y - s * 0.95, x, y - s * 0.4);
-    g.bezierCurveTo(x + s * 0.5, y - s * 0.95, x + s * 1.2, y - s * 0.2, x, y + s * 0.6); g.fill();
+    g.fillStyle = '#ff6fa3'; g.beginPath(); g.moveTo(x, y + s * 0.7);
+    g.bezierCurveTo(x - s * 1.3, y - s * 0.1, x - s * 0.7, y - s * 1.1, x, y - s * 0.4);
+    g.bezierCurveTo(x + s * 0.7, y - s * 1.1, x + s * 1.3, y - s * 0.1, x, y + s * 0.7); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x - s * 0.4, y - s * 0.35, s * 0.15, 0, 7); g.fill();
   }
-  function brow(x, y, sign, c) {
-    if (Math.abs(c.brow) < 0.15) return;
-    g.save(); g.translate(x, y - 46); g.rotate(sign * c.brow * 0.45); g.strokeStyle = '#2a1650'; g.lineWidth = 7; g.lineCap = 'round';
-    g.beginPath(); g.moveTo(-24, 0); g.lineTo(24, 0); g.stroke(); g.restore();
-  }
-  function face(c) {
-    const ex = 78, ey = -22;
-    brow(-ex, ey, 1, c); brow(ex, ey, -1, c);
-    eye(-ex, ey, c); eye(ex, ey, c);
-    // 볼터치
-    g.fillStyle = `rgba(255,90,150,${0.15 + c.cheek * 0.35})`;
-    g.beginPath(); g.ellipse(-125, 38, 26, 15, 0, 0, 7); g.fill(); g.beginPath(); g.ellipse(125, 38, 26, 15, 0, 0, 7); g.fill();
-    // 코
-    g.fillStyle = '#2a1650'; g.beginPath(); g.ellipse(0, 22, 9, 6, 0, 0, 7); g.fill();
-    // 입
-    const talk = talking ? (Math.sin(t * 16) * 0.5 + 0.5) * 0.7 : 0;
-    const open = Math.min(1, c.mouthOpen + talk), w = 46 * c.mouthW, cu = c.mouthCurve * 26;
-    g.save(); g.translate(0, 62); g.lineWidth = 7; g.lineCap = 'round'; g.strokeStyle = '#2a1650';
-    if (open > 0.12) {
-      g.beginPath(); g.moveTo(-w, 0); g.quadraticCurveTo(0, cu * 1.6, w, 0); g.quadraticCurveTo(0, cu * 1.6 + 70 * open, -w, 0); g.closePath();
-      g.fillStyle = '#5b1633'; g.fill(); g.stroke();
-      g.save(); g.clip(); g.fillStyle = '#ff7d9c'; g.beginPath(); g.ellipse(0, 55 * open + cu * 0.8, w * 0.55, 18 * open, 0, 0, 7); g.fill(); g.restore();
-    } else { g.beginPath(); g.moveTo(-w, 0); g.quadraticCurveTo(0, cu * 1.4, w, 0); g.stroke(); }
+  function drawFace() {
+    const ex = 66, ey = -10;
+    drawEye(-ex, ey, 1); drawEye(ex, ey, -1);
+    // 동글동글 볼터치
+    const ck = cur.cheek.x;
+    [-1, 1].forEach((sd) => { const cx = sd * 108, cy = 36; const rg = g.createRadialGradient(cx, cy, 0, cx, cy, 30); rg.addColorStop(0, `rgba(255,105,160,${0.25 + ck * 0.5})`); rg.addColorStop(1, 'rgba(255,105,160,0)'); g.fillStyle = rg; g.beginPath(); g.arc(cx, cy, 30, 0, 7); g.fill(); });
+    // 동그란 코
+    g.fillStyle = '#8a4a78'; g.beginPath(); g.arc(0, 28, 7, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.arc(-2, 26, 2.2, 0, 7); g.fill();
+    // 작고 동그란 입
+    const target = talking ? (0.35 + (Math.sin(t * 13) * 0.5 + 0.5) * 0.5) * (0.6 + 0.4 * Math.sin(t * 5.3)) : 0;
+    talkLevel += (target - talkLevel) * 0.25;
+    const open = Math.min(1, cur.open.x + talkLevel), sm = cur.smile.x;
+    g.save(); g.translate(0, 56); g.lineWidth = 7; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = INK;
+    if (open > 0.1) {                                          // 동그란 입 (ㅇ / D 모양)
+      const w = 15 + 14 * Math.max(0, sm) + 5 * open, h = 6 + 24 * open;
+      g.beginPath(); g.moveTo(-w, 0); g.quadraticCurveTo(0, sm * 6, w, 0); g.bezierCurveTo(w, h * 1.1, -w, h * 1.1, -w, 0); g.closePath();
+      g.fillStyle = '#6a2447'; g.fill(); g.stroke();
+      g.save(); g.clip(); g.fillStyle = '#ff8fb0'; g.beginPath(); g.ellipse(0, h, w * 0.6, h * 0.45, 0, 0, 7); g.fill(); g.restore();
+    } else {                                                   // 귀여운 작은 미소 (ω 느낌 없이 단순 곡선)
+      const w = 20 + 8 * Math.abs(sm);
+      g.beginPath(); g.moveTo(-w, -sm * 3); g.quadraticCurveTo(0, sm * 20 + 2, w, -sm * 3); g.stroke();
+    }
     g.restore();
-    if (mood === 'thinking') { g.fillStyle = '#ffffffcc'; [[120, -120, 6], [140, -145, 9], [166, -178, 13]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y + Math.sin(t * 3 + r) * 3, r, 0, 7); g.fill(); }); }
-    if (mood === 'sleepy') { g.fillStyle = '#fff'; g.font = 'bold 34px sans-serif'; g.fillText('z', 120, -90 + Math.sin(t * 2) * 6); g.font = 'bold 24px sans-serif'; g.fillText('z', 150, -125 + Math.sin(t * 2 + 1) * 6); }
-    if (mood === 'sad') { g.fillStyle = '#7fd4ff'; const k = (t * 0.8) % 1; g.beginPath(); g.ellipse(-100, 5 + k * 90, 7, 11, 0, 0, 7); g.fill(); }
+    // 말풍선 대신 작은 이펙트
+    if (mood === 'thinking') { g.fillStyle = '#ffffffd0'; [[112, -112, 5], [130, -134, 8], [154, -164, 12]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y + Math.sin(t * 3 + r) * 3, r, 0, 7); g.fill(); }); }
+    if (mood === 'sleepy') { g.fillStyle = '#fff'; g.font = 'bold 32px sans-serif'; g.fillText('z', 112, -86 + Math.sin(t * 2) * 6); g.font = 'bold 22px sans-serif'; g.fillText('z', 140, -118 + Math.sin(t * 2 + 1) * 6); }
+    if (mood === 'sad') { g.fillStyle = '#9bdcff'; const k = (t * 0.6) % 1; g.globalAlpha = 1 - k * 0.6; g.beginPath(); g.ellipse(-ex - 8, ey + 20 + k * 80, 6, 9, 0, 0, 7); g.fill(); g.globalAlpha = 1; }
+    if (mood === 'angry') { g.fillStyle = 'rgba(255,100,130,.9)'; g.font = 'bold 30px sans-serif'; g.fillText('💢', 100, -110); }
   }
+
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
-    const target = P[mood]; for (const k in cur) cur[k] = lerp(cur[k], target[k], 0.12);
-    look.x = lerp(look.x, look.tx, 0.08); look.y = lerp(look.y, look.ty, 0.08);
-    blinkT = Math.max(0, blinkT - dt); nextBlink -= dt; if (nextBlink < 0) { blinkT = 0.12; nextBlink = 2 + Math.random() * 3; }
-    // 움직임
-    let dx = 0, dy = Math.sin(t * 1.6) * 8, rot = cur.tilt + Math.sin(t * 0.9) * 0.02, sx = 1 + Math.sin(t * 1.6) * 0.012, sy = 1 - Math.sin(t * 1.6) * 0.012;
-    if (motion) {
-      motionT += dt; const k = motionT, fade = Math.max(0, 1 - k / 1.4);
-      if (motion === 'bounce') dy -= Math.abs(Math.sin(k * 9)) * 40 * fade;
-      if (motion === 'jump') { dy -= Math.max(0, Math.sin(Math.min(k, 0.6) / 0.6 * Math.PI)) * 70; sy *= 1 + Math.sin(k * 10) * 0.05 * fade; }
-      if (motion === 'shake') dx += Math.sin(k * 40) * 14 * fade;
-      if (motion === 'droop') { dy += 16 * Math.min(1, k * 2) * fade; sy *= 0.96; }
-      if (motion === 'sway') rot += Math.sin(k * 3) * 0.1 * fade;
-      if (motion === 'tilt') rot += 0.18 * Math.min(1, k * 4) * fade;
-      if (motion === 'nod') dy += Math.sin(k * 10) * 10 * fade;
-      if (motion === 'wave') { rot += Math.sin(k * 12) * 0.1 * fade; dx += Math.sin(k * 6) * 10 * fade; }
-      if (k > 1.4) motion = null;
-    }
-    if (mood === 'thinking' && !motion) rot += Math.sin(t * 2) * 0.04;
-    if (mood === 'sleepy') dy += Math.sin(t * 1) * 6;
+    const dt = Math.min(0.033, (now - last) / 1000); last = now; t += dt;
+    for (let i = timers.length - 1; i >= 0; i--) if (t >= timers[i].at) { const f = timers.splice(i, 1)[0].fn; f(); }
+    for (const k in B) step(B[k], dt); for (const k in cur) step(cur[k], dt); step(gaze.x, dt); step(gaze.y, dt);
+    // 마우스가 오래 가만있으면 시선이 자연스럽게 두리번
+    saccadeT -= dt; if (saccadeT < 0 && t - mouseOn > 4) { lookAt((Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 0.8); saccadeT = 1.5 + Math.random() * 2.5; }
+    // 눈 깜빡임(부드럽게 감았다 뜸)
+    nextBlink -= dt; if (nextBlink < 0) { blink = 1; nextBlink = 2.2 + Math.random() * 3.5; if (Math.random() < 0.2) nextBlink = 0.25; }
+    blink = Math.max(0, blink - dt * 7);
+    // 숨쉬기 + 둥실둥실
+    const br = Math.sin(t * 1.9), idleY = Math.sin(t * 1.3) * 7, idleX = Math.sin(t * 0.7) * 3, idleR = Math.sin(t * 0.9) * 0.025;
+    const sq = B.sq.x + br * 0.012;                      // 눌림(+)이면 납작하게
+    const sx = 1 + sq, sy = 1 - sq * 1.1;
     g.clearRect(0, 0, W, W);
-    body(dx, dy, rot, sx, sy); face(cur); g.restore();
+    // 바닥 그림자 (점프하면 작아짐)
+    const sh = Math.max(0.5, 1 - (-(B.dy.x + idleY)) / 220);
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(C + B.dx.x, C + R + 28, R * 0.6 * sh, 14 * sh, 0, 0, 7); g.fill();
+    g.save(); g.translate(C + B.dx.x + idleX, C + B.dy.x + idleY); g.rotate(B.rot.x + idleR); g.scale(sx, sy);
+    drawBody(); drawFace(); g.restore();
     requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  setMood('neutral'); requestAnimationFrame(frame);
   return { setMood, doMotion, react, setTalking: (v) => (talking = v), lookAt };
 })();
