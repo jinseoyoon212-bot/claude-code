@@ -27,8 +27,23 @@ $('form').addEventListener('submit', async (e) => {
 });
 input.addEventListener('input', () => Face.lookAt(0, 0.6));
 
-// 설정
+// 설정: data-k 속성이 붙은 입력칸을 자동으로 읽고 저장 (화면에 보이는 칸만)
 const dlg = $('settings');
-$('gear').onclick = async () => { const s = await api.getSettings(); $('key').value = s.apiKey; $('model').value = s.model; $('auto').checked = s.autoApprove; dlg.showModal(); };
-$('save').onclick = async () => { await api.setSettings({ apiKey: $('key').value.trim(), model: $('model').value.trim() || 'claude-sonnet-5-5', autoApprove: $('auto').checked }); };
-api.getSettings().then((s) => { if (!s.apiKey) bubble.textContent = '안녕! 먼저 ⚙ 설정에서 API 키를 넣어줘 🌈'; });
+const fields = () => [...dlg.querySelectorAll('[data-k]')];
+async function showRemote() {
+  if (!api.remoteInfo || !$('remoteInfo')) return;
+  const i = await api.remoteInfo();
+  $('remoteInfo').textContent = i.error ? '⚠ ' + i.error : i.enabled ? '켜짐 — 같은 Wi-Fi의 폰/PC 브라우저에서 아래 주소로 접속하세요:\n' + i.urls.join('\n') : '꺼짐';
+}
+$('gear').onclick = async () => {
+  const s = await api.getSettings();
+  fields().forEach((el) => { const v = s[el.dataset.k]; if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
+  await showRemote(); dlg.showModal();
+};
+$('save').onclick = async () => {
+  const patch = {};
+  fields().filter((el) => el.offsetParent !== null).forEach((el) => { patch[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value.trim(); });
+  if (!patch.model) patch.model = 'claude-sonnet-5-5';
+  await api.setSettings(patch);
+};
+api.getSettings().then((s) => { if (!s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! 먼저 ⚙ 설정을 해줘 🌈'; });

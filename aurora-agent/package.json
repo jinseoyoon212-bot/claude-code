@@ -6,7 +6,11 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64"
+    "prestart": "node ../aurora-web/sync.js",
+    "predist": "node ../aurora-web/sync.js",
+    "dist": "electron-builder --win --x64",
+    "bridge": "node src/server-cli.js",
+    "prebridge": "node ../aurora-web/sync.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0"
@@ -18,11 +22,30 @@
   "build": {
     "appId": "com.aurora.agent",
     "productName": "Aurora Agent",
-    "files": ["src/**/*", "package.json"],
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "win": {
-      "target": [{ "target": "portable", "arch": ["x64"] }, { "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "AuroraAgent-${version}-${target}.${ext}"
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

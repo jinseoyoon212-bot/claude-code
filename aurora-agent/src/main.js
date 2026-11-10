@@ -1,17 +1,37 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 const { runAgent } = require('./agent');
+const { createBridge } = require('./server');
 
-let win;
+let win, bridge = null, remoteError = '';
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = { apiKey: '', model: 'claude-sonnet-5-5', autoApprove: false };
+const defaults = { apiKey: '', model: 'claude-sonnet-5-5', autoApprove: false, remoteEnabled: false, remotePort: 8765, remoteToken: '' };
 
 function loadSettings() {
-  try { return { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
-  catch { return { ...defaults }; }
+  let s; try { s = { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { s = { ...defaults }; }
+  if (!s.remoteToken) { s.remoteToken = crypto.randomBytes(16).toString('hex'); saveSettings(s); }
+  return s;
 }
 function saveSettings(s) { fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2)); }
+
+async function applyRemote() {
+  if (bridge) { await bridge.stop(); bridge = null; }
+  remoteError = '';
+  const s = loadSettings();
+  if (!s.remoteEnabled) return;
+  try {
+    bridge = createBridge({ getSettings: loadSettings, wwwDir: path.join(__dirname, 'www'), token: s.remoteToken });
+    await bridge.start(s.remotePort);
+  } catch (e) { bridge = null; remoteError = '서버 시작 실패: ' + e.message; }
+}
+function remoteInfo() {
+  const s = loadSettings();
+  const ips = Object.values(os.networkInterfaces()).flat().filter((l) => l && l.family === 'IPv4' && !l.internal).map((l) => l.address);
+  return { enabled: !!bridge, error: remoteError, token: s.remoteToken, urls: ips.map((ip) => `http://${ip}:${s.remotePort}/?token=${s.remoteToken}`) };
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -23,11 +43,16 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'index.html'));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { createWindow(); applyRemote(); });
 app.on('window-all-closed', () => app.quit());
 
 ipcMain.handle('settings:get', () => loadSettings());
-ipcMain.handle('settings:set', (_e, patch) => { const s = { ...loadSettings(), ...patch }; saveSettings(s); return s; });
+ipcMain.handle('settings:set', async (_e, patch) => {
+  const before = loadSettings(); const s = { ...before, ...patch }; saveSettings(s);
+  if (s.remoteEnabled !== before.remoteEnabled || s.remotePort !== before.remotePort) await applyRemote();
+  return s;
+});
+ipcMain.handle('remote:info', () => remoteInfo());
 
 ipcMain.handle('agent:send', async (_e, history) => {
   const settings = loadSettings();

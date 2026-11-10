@@ -1,1 +1,2 @@
-{ "appId": "com.aurora.agent", "appName": "Aurora Agent", "webDir": "www", "backgroundColor": "#0b0b1a" }
+{ "appId": "com.aurora.agent", "appName": "Aurora Agent", "webDir": "www", "backgroundColor": "#0b0b1a",
+  "server": { "androidScheme": "http", "cleartext": true } }

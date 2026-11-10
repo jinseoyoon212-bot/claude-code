@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0b1a"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src *">
+<title>Aurora Agent</title><link rel="stylesheet" href="style.css"><style>[data-only=desktop]{display:none!important}[data-only=web]{display:block!important}html,body{height:100dvh}#form{padding-bottom:calc(12px + env(safe-area-inset-bottom))}#gear{top:calc(10px + env(safe-area-inset-top))}</style></head>
+<body>
+<button id="gear" title="설정">⚙</button>
+<main>
+  <canvas id="face" width="520" height="520"></canvas>
+  <div id="bubble">안녕! 나는 오로라야 🌈</div>
+  <div id="log"></div>
+</main>
+<form id="form"><input id="input" placeholder="오로라에게 말을 걸어보세요…" autocomplete="off" autofocus><button>보내기</button></form>
+<dialog id="settings"><form method="dialog">
+  <h3>설정</h3>
+  <label>Anthropic API 키<input data-k="apiKey" type="password" placeholder="sk-ant-..."></label>
+  <label>모델<input data-k="model"></label>
+  <label class="row" data-only="desktop"><input type="checkbox" data-k="autoApprove"> 자동 실행 (명령·파일 쓰기를 승인 없이 바로 실행)</label>
+  <p class="warn" data-only="desktop">⚠ 자동 실행을 켜면 오로라가 확인 없이 컴퓨터의 모든 것을 실행·수정합니다.</p>
+  <label class="row" data-only="desktop"><input type="checkbox" data-k="remoteEnabled"> 폰·웹에서 이 PC 원격 사용 허용</label>
+  <pre id="remoteInfo" class="info" data-only="desktop"></pre>
+  <label data-only="web">PC 서버 주소 (비우면 이 페이지를 연 서버 사용)<input data-k="serverUrl" placeholder="http://192.168.0.5:8765"></label>
+  <label data-only="web">PC 접속 토큰<input data-k="token" type="password"></label>
+  <p class="hint" data-only="web">PC에 연결하면 PC의 키·도구(명령·파일)를 그대로 사용해요. 연결하지 않으면 위 API 키로 대화만 가능해요.</p>
+  <menu><button id="save" value="ok">저장</button><button value="cancel">닫기</button></menu>
+</form></dialog>
+<script src="web-api.js"></script><script src="face.js"></script><script src="renderer.js"></script>
+</body></html>

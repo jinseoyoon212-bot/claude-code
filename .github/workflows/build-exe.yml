@@ -1,7 +1,7 @@
 name: Build Windows exe
 on:
   push:
-    paths: ['aurora-agent/**', '.github/workflows/build-exe.yml']
+    paths: ['aurora-agent/**', 'aurora-web/**', '.github/workflows/build-exe.yml']
   workflow_dispatch:
 jobs:
   build:

@@ -19,3 +19,6 @@ label input:not([type=checkbox]){display:block;width:100%;margin-top:4px;padding
 .warn{font-size:12px;color:#ffb36b}
 menu{display:flex;gap:8px;justify-content:flex-end;padding:0}
 menu button{padding:8px 18px}
+[data-only=web]{display:none}
+.info{white-space:pre-wrap;word-break:break-all;font-size:11px;background:#0b0b1a;border-radius:8px;padding:8px;margin:6px 0;color:#9fe;user-select:text}
+.hint{font-size:12px;color:#9a9ac0}
