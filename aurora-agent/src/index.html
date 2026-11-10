@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Aurora Agent</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<button id="gear" title="설정">⚙</button>
+<main>
+  <canvas id="face" width="520" height="520"></canvas>
+  <div id="bubble">안녕! 나는 오로라야 🌈</div>
+  <div id="log"></div>
+</main>
+<form id="form"><input id="input" placeholder="오로라에게 말을 걸어보세요…" autocomplete="off" autofocus><button>보내기</button></form>
+<dialog id="settings"><form method="dialog">
+  <h3>설정</h3>
+  <label>Anthropic API 키<input id="key" type="password" placeholder="sk-ant-..."></label>
+  <label>모델<input id="model"></label>
+  <label class="row"><input type="checkbox" id="auto"> 자동 실행 (명령·파일 쓰기를 승인 없이 바로 실행)</label>
+  <p class="warn">⚠ 자동 실행을 켜면 오로라가 확인 없이 컴퓨터의 모든 것을 실행·수정합니다.</p>
+  <menu><button id="save" value="ok">저장</button><button value="cancel">닫기</button></menu>
+</form></dialog>
+<script src="face.js"></script><script src="renderer.js"></script>
+</body></html>

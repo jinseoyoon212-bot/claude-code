@@ -1,0 +1,28 @@
+{
+  "name": "aurora-agent",
+  "productName": "Aurora Agent",
+  "version": "1.0.0",
+  "description": "무지개 오로라 얼굴을 가진 AI 에이전트",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.60.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.aurora.agent",
+    "productName": "Aurora Agent",
+    "files": ["src/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }, { "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "AuroraAgent-${version}-${target}.${ext}"
+    },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}
