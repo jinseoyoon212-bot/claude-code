@@ -35,19 +35,23 @@ function cyl(rad, len, mat, x, y, z, seg = 18) {
 function flat(w, h, l, mat, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat); m.position.set(x, y, z); return m; }
 
 function hands(g, rGrip, lGrip) {
-  // right hand + forearm
-  const rh = rb(0.058, 0.07, 0.085, MAT.glove, rGrip[0], rGrip[1], rGrip[2]); g.add(rh);
-  const ra = rb(0.07, 0.07, 0.34, MAT.sleeve, rGrip[0] + 0.035, rGrip[1] - 0.09, rGrip[2] + 0.22, -0.35, 0.02); ra.rotation.y = -0.12; g.add(ra);
-  // left hand + forearm
-  const lh = rb(0.07, 0.065, 0.1, MAT.glove, lGrip[0], lGrip[1], lGrip[2]); g.add(lh);
-  const la = rb(0.07, 0.07, 0.38, MAT.sleeve, lGrip[0] - 0.07, lGrip[1] - 0.1, lGrip[2] + 0.25, -0.35, 0.02); la.rotation.y = 0.28; g.add(la);
-  return { rh, lh };
+  const R = new THREE.Group(); R.position.set(...rGrip); g.add(R);
+  R.add(rb(0.058, 0.07, 0.085, MAT.glove, 0, 0, 0));
+  R.add(rb(0.03, 0.02, 0.07, MAT.glove, 0.0, 0.04, -0.01));
+  const ra = rb(0.07, 0.07, 0.34, MAT.sleeve, 0.035, -0.09, 0.22, -0.35, 0.02); ra.rotation.y = -0.12; R.add(ra);
+  const cuffR = rb(0.076, 0.076, 0.05, MAT.cyan, 0.02, -0.045, 0.06, -0.35, 0.01); R.add(cuffR);
+  const L = new THREE.Group(); L.position.set(...lGrip); g.add(L);
+  L.add(rb(0.07, 0.065, 0.1, MAT.glove, 0, 0, 0));
+  for (let i = 0; i < 4; i++) L.add(rb(0.014, 0.03, 0.03, MAT.glove, -0.025 + i * 0.017, 0.04, -0.03));
+  const la = rb(0.07, 0.07, 0.38, MAT.sleeve, -0.07, -0.1, 0.25, -0.35, 0.02); la.rotation.y = 0.28; L.add(la);
+  const cuffL = rb(0.076, 0.076, 0.05, MAT.cyan, -0.03, -0.04, 0.08, -0.35, 0.01); L.add(cuffL);
+  return { rh: R, lh: L };
 }
 
 // Each builder returns {group, muzzle, parts, hip, adsPos, port}
 export function buildViewmodel(id) {
   const g = new THREE.Group(); const parts = {};
-  let muzzleZ = -0.7, hip = [0.2, -0.2, -0.38], ads = [0, -0.066, -0.3], port = [0.03, 0.03, -0.02];
+  let H, muzzleZ = -0.7, hip = [0.2, -0.2, -0.38], ads = [0, -0.066, -0.3], port = [0.03, 0.03, -0.02];
   if (id === 'rifle') {
     g.add(rb(0.052, 0.085, 0.34, MAT.metal, 0, 0, 0));
     g.add(rb(0.032, 0.014, 0.32, MAT.dark, 0, 0.049, -0.01));
@@ -62,7 +66,7 @@ export function buildViewmodel(id) {
     g.add(flat(0.004, 0.012, 0.2, MAT.cyan, 0.0285, 0.012, -0.0));
     g.add(flat(0.004, 0.012, 0.2, MAT.cyan, -0.0285, 0.012, -0.0));
     muzzleZ = -0.70; ads = [0, -0.068, -0.3];
-    hands(g, [0, -0.13, 0.1], [0, -0.075, -0.27]);
+    H = hands(g, [0, -0.13, 0.1], [0, -0.075, -0.27]);
   } else if (id === 'smg') {
     g.add(rb(0.05, 0.08, 0.26, MAT.metal, 0, 0, 0));
     g.add(rb(0.056, 0.058, 0.16, MAT.dark, 0, -0.005, -0.2));
@@ -76,7 +80,7 @@ export function buildViewmodel(id) {
     g.add(flat(0.004, 0.012, 0.15, MAT.pink, 0.0275, 0.012, 0.0));
     g.add(flat(0.004, 0.012, 0.15, MAT.pink, -0.0275, 0.012, 0.0));
     muzzleZ = -0.48; ads = [0, -0.07, -0.26];
-    hands(g, [0, -0.12, 0.09], [0, -0.1, -0.21]);
+    H = hands(g, [0, -0.12, 0.09], [0, -0.1, -0.21]);
   } else if (id === 'sniper') {
     g.add(rb(0.05, 0.08, 0.42, MAT.metal, 0, 0, 0));
     g.add(cyl(0.012, 0.55, MAT.steel, 0, 0.01, -0.6));
@@ -94,7 +98,7 @@ export function buildViewmodel(id) {
     g.add(flat(0.004, 0.012, 0.3, MAT.cyan, 0.026, 0.012, 0));
     g.add(flat(0.004, 0.012, 0.3, MAT.cyan, -0.026, 0.012, 0));
     muzzleZ = -0.99; hip = [0.21, -0.22, -0.4]; ads = [0, -0.1, -0.26];
-    hands(g, [0, -0.125, 0.12], [0, -0.07, -0.3]);
+    H = hands(g, [0, -0.125, 0.12], [0, -0.07, -0.3]);
   } else { // shotgun
     g.add(rb(0.056, 0.085, 0.3, MAT.metal, 0, 0, 0));
     g.add(cyl(0.015, 0.5, MAT.steel, 0, 0.012, -0.4));
@@ -107,9 +111,9 @@ export function buildViewmodel(id) {
     g.add(flat(0.004, 0.012, 0.18, MAT.gold, 0.029, 0.012, 0));
     g.add(flat(0.004, 0.012, 0.18, MAT.gold, -0.029, 0.012, 0));
     muzzleZ = -0.68; ads = [0, -0.062, -0.3];
-    const h = hands(g, [0, -0.13, 0.1], [0, -0.04, -0.3]);
-    parts.lh = h.lh; parts.lhBase = h.lh.position.clone();
+    H = hands(g, [0, -0.13, 0.1], [0, -0.04, -0.3]);
   }
+  parts.lh = H.lh; parts.rh = H.rh;
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.01, muzzleZ); g.add(muzzle);
   // muzzle flash sprite
   const fm = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), flashMat());

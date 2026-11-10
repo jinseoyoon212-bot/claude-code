@@ -99,3 +99,55 @@ export function sndLand() { if (!ctx) return; const t = ctx.currentTime; tone(t,
 export function sndSwitch() { if (!ctx) return; const t = ctx.currentTime; noise(t, 0.07, { gain: 0.3, f0: 3000, f1: 1200, q: 2 }); tone(t + 0.04, 0.05, 600, 400, { gain: 0.2, type: 'square' }); }
 export function sndSpawn() { if (!ctx) return; const t = ctx.currentTime; tone(t, 0.4, 200, 800, { gain: 0.25, type: 'sine' }); }
 export function sndStart() { if (!ctx) return; const t = ctx.currentTime; tone(t, 0.2, 440, 440, { gain: 0.3, type: 'square' }); tone(t + 0.15, 0.2, 660, 660, { gain: 0.3, type: 'square' }); tone(t + 0.3, 0.4, 880, 880, { gain: 0.3, type: 'triangle' }); }
+
+// ---------- Synthwave background music (procedural) ----------
+let musicGain, musicTimer, nextT = 0, step = 0, musicOn = false;
+const BASS = [55, 55, 82.4, 55, 65.4, 65.4, 98, 65.4, 73.4, 73.4, 110, 73.4, 61.7, 61.7, 92.5, 82.4];
+const CHORDS = [[220, 261.6, 329.6], [261.6, 311.1, 392], [293.7, 349.2, 440], [246.9, 293.7, 370]];
+export function startMusic(level = 0.22) {
+  if (!ctx || musicOn) { if (musicGain) musicGain.gain.value = level; return; }
+  musicOn = true; musicGain = ctx.createGain(); musicGain.gain.value = level; musicGain.connect(master);
+  nextT = ctx.currentTime + 0.1; step = 0;
+  musicTimer = setInterval(schedule, 100);
+}
+export function setMusic(level) { if (musicGain) musicGain.gain.linearRampToValueAtTime(level, ctx.currentTime + 0.4); }
+function schedule() {
+  const spb = 60 / 112 / 4;
+  while (nextT < ctx.currentTime + 0.3) {
+    const t = nextT, s = step % 64, bar = (s / 16) | 0;
+    const f = BASS[s % 16] * (bar % 2 ? 1 : 1);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 6;
+    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(160, t + spb * 0.9);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 0.95);
+    o.connect(lp); lp.connect(g); g.connect(musicGain); o.start(t); o.stop(t + spb);
+    if (s % 4 === 0) { // kick
+      const k = ctx.createOscillator(); k.type = 'sine'; k.frequency.setValueAtTime(140, t); k.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+      const kg = ctx.createGain(); kg.gain.setValueAtTime(0.9, t); kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      k.connect(kg); kg.connect(musicGain); k.start(t); k.stop(t + 0.22);
+    }
+    if (s % 8 === 4) { // snare
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf; const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(0.5, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      n.connect(hp); hp.connect(ng); ng.connect(musicGain); n.start(t, Math.random() * 0.5, 0.2);
+    }
+    if (s % 2 === 0) { // hats
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf; const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7500;
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(s % 4 === 2 ? 0.22 : 0.1, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+      n.connect(hp); hp.connect(ng); ng.connect(musicGain); n.start(t, Math.random() * 0.5, 0.06);
+    }
+    // arpeggio
+    const ch = CHORDS[bar % 4], af = ch[s % 3] * (s % 8 > 3 ? 2 : 1);
+    const a = ctx.createOscillator(); a.type = 'square'; a.frequency.value = af;
+    const alp = ctx.createBiquadFilter(); alp.type = 'lowpass'; alp.frequency.value = 2400;
+    const ag = ctx.createGain(); ag.gain.setValueAtTime(0.0001, t); ag.gain.exponentialRampToValueAtTime(0.09, t + 0.005); ag.gain.exponentialRampToValueAtTime(0.0001, t + spb * 1.6);
+    a.connect(alp); alp.connect(ag); ag.connect(musicGain); a.start(t); a.stop(t + spb * 1.7);
+    if (s % 16 === 0) { // pad
+      for (const pf of ch) { const p = ctx.createOscillator(); p.type = 'sawtooth'; p.frequency.value = pf / 2; p.detune.value = (Math.random() - 0.5) * 14;
+        const pl = ctx.createBiquadFilter(); pl.type = 'lowpass'; pl.frequency.value = 900; const pg = ctx.createGain();
+        pg.gain.setValueAtTime(0.0001, t); pg.gain.linearRampToValueAtTime(0.07, t + 0.4); pg.gain.linearRampToValueAtTime(0.0001, t + spb * 16);
+        p.connect(pl); pl.connect(pg); pg.connect(musicGain); p.start(t); p.stop(t + spb * 16 + 0.1); }
+    }
+    nextT += spb; step++;
+  }
+}

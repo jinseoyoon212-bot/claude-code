@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { buildMap, skyMaterial, HALF } from './map.js';
 import { moveBody, rayWorld, rayBox, raySphere, lineOfSight, makeBox } from './physics.js';
 import { WEAPONS, buildViewmodel } from './weapons.js';
@@ -67,6 +68,24 @@ composer.addPass(new RenderPass(scene, camera));
 const vmPass = new RenderPass(vmScene, vmCam); vmPass.clear = false; vmPass.clearDepth = true; composer.addPass(vmPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.6, 1.0);
 composer.addPass(bloom); composer.addPass(new OutputPass());
+const gradePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uA: { value: 0.00025 }, uT: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uA,uT; uniform vec2 uRes; varying vec2 vUv;
+    void main(){
+      vec2 d = vUv-.5; float r2 = dot(d,d); vec2 off = d*(r2*14.0*uA + uA*1.5);
+      vec3 c; c.r = texture2D(tDiffuse, vUv+off).r; c.g = texture2D(tDiffuse, vUv).g; c.b = texture2D(tDiffuse, vUv-off).b;
+      // light sharpen
+      vec2 px = 1.0/uRes; vec3 blur = (texture2D(tDiffuse,vUv+vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv-vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv+vec2(0.,px.y)).rgb+texture2D(tDiffuse,vUv-vec2(0.,px.y)).rgb)*.25;
+      c += (c-blur)*0.18;
+      float l = dot(c, vec3(.299,.587,.114)); c = mix(vec3(l), c, 1.14);
+      c = (c-.5)*1.07+.5; c *= mix(vec3(1.03,1.0,1.07), vec3(1.07,1.02,0.97), smoothstep(.2,.8,l));
+      float n = fract(sin(dot(vUv*uRes+uT*61.0, vec2(12.9898,78.233)))*43758.5453); c += (n-.5)*.028;
+      c *= 1.0 - smoothstep(.3,.95,length(d)*1.3)*.4;
+      gl_FragColor = vec4(max(c,0.), 1.);
+    }`,
+});
+composer.addPass(gradePass);
 
 function applyQuality(name) {
   qual = QUALITY[name] || QUALITY.med;
@@ -78,7 +97,7 @@ function applyQuality(name) {
 }
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false); composer.setSize(w, h);
+  renderer.setSize(w, h, false); composer.setSize(w, h); gradePass.uniforms.uRes.value.set(w * Math.min(devicePixelRatio, qual.pr), h * Math.min(devicePixelRatio, qual.pr));
   camera.aspect = vmCam.aspect = w / h; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
@@ -114,7 +133,7 @@ const combatants = [P];
 const game = {
   scene, boxes, nav: world.nav, combatants, player: P,
   los: (ax, ay, az, bx, by, bz) => lineOfSight(boxes, ax, ay, az, bx, by, bz),
-  botShoot, respawn,
+  botShoot, respawn, footfall,
 };
 let state = 'menu', matchT = MATCH_TIME, time = 0;
 const stats = { shots: 0, hits: 0, heads: 0 };
@@ -182,6 +201,40 @@ function feed(killer, victim, head) {
   setTimeout(() => d.remove(), 5000);
 }
 
+function footfall(b) {
+  const d = Math.hypot(b.x - P.x, b.z - P.z);
+  puff({ x: b.x, y: b.y + 0.05, z: b.z }, { x: 0, y: 0.3, z: 0 }, 1);
+  if (d < 22) { const pv = panFor(b.x, b.z); A.sndStep(0.14 * pv.vol, pv.pan); }
+}
+const dnums = [];
+function dmgNumber(p, amount, head) {
+  const el = document.createElement('div'); el.className = 'dn' + (head ? ' head' : ''); el.textContent = Math.round(amount);
+  $('hud').appendChild(el); dnums.push({ el, x: p.x + rnd(-0.2, 0.2), y: p.y + 0.2, z: p.z + rnd(-0.2, 0.2), t: 0 });
+  if (dnums.length > 14) dnums.shift().el.remove();
+}
+const _pv = new THREE.Vector3();
+function updateDnums(dt) {
+  for (let i = dnums.length - 1; i >= 0; i--) {
+    const n = dnums[i]; n.t += dt; n.y += dt * 1.1;
+    _pv.set(n.x, n.y, n.z).project(camera);
+    if (n.t > 0.8) { n.el.remove(); dnums.splice(i, 1); continue; }
+    n.el.style.visibility = _pv.z > 1 ? 'hidden' : 'visible';
+    n.el.style.transform = `translate(${(_pv.x * 0.5 + 0.5) * innerWidth}px,${(-_pv.y * 0.5 + 0.5) * innerHeight}px) translate(-50%,-50%)`;
+  }
+}
+// minimap
+const mm = $('minimap'), mctx = mm.getContext('2d'), MMS = 170 / 64;
+const mmStatic = document.createElement('canvas'); mmStatic.width = mmStatic.height = 84 * 4;
+{ const g = mmStatic.getContext('2d'); g.scale(4, 4); g.translate(42, 42);
+  g.fillStyle = 'rgba(40,60,90,.55)'; for (const b of boxes) { if (b.maxY > 8) continue; g.fillStyle = b.maxY > 2 ? 'rgba(120,150,190,.9)' : 'rgba(70,95,130,.8)'; g.fillRect(b.minX, b.minZ, b.maxX - b.minX, b.maxZ - b.minZ); } }
+function drawMinimap() {
+  const c = mctx, sc = 1.35; c.clearRect(0, 0, 170, 170); c.save(); c.beginPath(); c.arc(85, 85, 84, 0, 7); c.clip();
+  c.translate(85, 85); c.rotate(P.yaw); c.translate(-P.x * sc, -P.z * sc); c.drawImage(mmStatic, -42 * sc, -42 * sc, 84 * sc, 84 * sc);
+  for (const b of combatants) { if (b === P || !b.alive) continue; const near = Math.hypot(b.x - P.x, b.z - P.z) < 14;
+    if (near || time - b.lastShotT < 1.4) { c.fillStyle = '#ff2d6f'; c.shadowColor = '#ff2d6f'; c.shadowBlur = 8; c.beginPath(); c.arc(b.x * sc, b.z * sc, 3.2, 0, 7); c.fill(); } }
+  c.restore(); c.shadowBlur = 0; c.fillStyle = '#00e5ff'; c.beginPath(); c.moveTo(85, 76); c.lineTo(91, 93); c.lineTo(85, 89); c.lineTo(79, 93); c.closePath(); c.fill();
+}
+
 // ======================= Combat =======================
 const _nrm = { x: 0, y: 0, z: 0 };
 const tmpBox = makeBox(0, 0, 0, 0, 0, 0);
@@ -217,7 +270,7 @@ function damage(target, amount, attacker, head, fromX, fromZ) {
   if (target.hp <= 0) {
     target.hp = 0; attacker.kills++; target.deaths += 0;
     if (target.isPlayer) { P.alive = false; P.deathT = 0; P.deaths++; P.streak = 0; banner(`${attacker.name} 에게 제압당했습니다`, 'var(--b)'); mouseDown = false; }
-    else target.die();
+    else target.die(attacker);
     if (attacker.isPlayer) { P.streak++; A.sndKill(); banner(P.streak > 1 ? `${target.name} ELIMINATED · ${P.streak} STREAK` : `${target.name} ELIMINATED`); const s = ws[cur], w = WEAPONS[cur]; s.reserve = Math.min(w.reserve * 2, s.reserve + Math.ceil(w.mag / 2)); }
     feed(attacker, target, head);
     updateScoreHud();
@@ -239,7 +292,7 @@ function botShoot(b) {
   tracers.spawn(_v2, _v3, _c, 0.03, 7);
   flashAt(_v2, 0.45, [3, 2, 1]);
   const pv = panFor(b.x, b.z); A.sndShot('smg', pv.vol * 0.55, pv.pan);
-  b.recoil = 1;
+  b.recoil = 1; b.lastShotT = time;
   if (r.target) {
     const dmg = r.head ? 15 : 8;
     const hit = damage(r.target, dmg, b, r.head, b.x, b.z);
@@ -264,7 +317,7 @@ function playerShoot() {
   const scoped = w.scope && adsT > 0.85;
   let spread = lerp(w.hip, w.ads, adsT) + (moving ? w.moveSpread * (1 - adsT * 0.8) : 0) + (P.onGround ? 0 : 0.045) + bloomSp;
   if (scoped && !moving && P.onGround) spread = 0.0003;
-  let anyHit = false, anyHead = false;
+  let anyHit = false, anyHead = false, pelletDmg = 0, lastHitPos = null;
   const ex = camera.position.x, ey = camera.position.y, ez = camera.position.z;
   for (let i = 0; i < w.pellets; i++) {
     const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * spread;
@@ -278,7 +331,7 @@ function playerShoot() {
       if (w.id === 'shotgun') dmg *= clamp(1.25 - r.t / 40, 0.3, 1);
       if (w.id === 'rifle' || w.id === 'smg') dmg *= clamp(1.15 - r.t / 150, 0.55, 1);
       const c = r.target; const hue = c.hue ?? 0.5;
-      if (damage(c, dmg, P, r.head, P.x, P.z)) { anyHit = true; anyHead = anyHead || r.head; }
+      if (damage(c, dmg, P, r.head, P.x, P.z)) { anyHit = true; anyHead = anyHead || r.head; if (w.pellets === 1) dmgNumber(hp3, dmg, r.head); else { pelletDmg += dmg; lastHitPos = hp3; } }
       _c.setHSL(hue, 1, 0.6).multiplyScalar(3.5);
       sparks(hp3, r.head ? 14 : 8, { x: -dir.x, y: 0.4, z: -dir.z }, [_c.r, _c.g, _c.b], 5, 0.07);
       flashAt(hp3, 0.3, [_c.r, _c.g, _c.b]);
@@ -287,6 +340,7 @@ function playerShoot() {
       sparks(hp3, 7, n, [3.2, 2.2, 1], 5, 0.05); puff(hp3, n, 2); decals.add(hp3, n, w.pellets > 1 ? 0.15 : 0.24);
     }
   }
+  if (pelletDmg > 0 && lastHitPos) dmgNumber(lastHitPos, pelletDmg, false);
   if (anyHit) { stats.hits++; if (anyHead) stats.heads++; hitMarker(anyHead); A.sndHit(anyHead); }
   // recoil & feedback
   const k = 1 - adsT * 0.4;
@@ -445,6 +499,12 @@ function updateViewmodel(dt, t) {
     if (vm.parts.pump) { const pp = vm.parts.pump, b = pp.userData.base; const k = clamp((w.interval - fireCd) / 0.5, 0, 1) < 1 && fireCd > 0 ? Math.sin(clamp(1 - fireCd / w.interval, 0, 1) * Math.PI) : 0; pp.position.z = b.z + 0.1 * k; }
     if (vm.parts.bolt) { const b = vm.parts.bolt, bb = b.userData.base; const k = fireCd > 0 && w.interval > 0.5 ? Math.sin(clamp(1 - fireCd / w.interval, 0, 1) * Math.PI) : 0; b.position.z = bb.z + 0.1 * k; b.position.x = bb.x - 0.03 * k; }
   }
+  if (vm.parts.lh) {
+    const lh = vm.parts.lh, b = lh.userData.base; let k = 0;
+    if (reloading) { const p = clamp(reloadT / w.reload, 0, 1); k = p < 0.15 ? p / 0.15 : p < 0.75 ? 1 : (1 - p) / 0.25; k = k * k * (3 - 2 * k); }
+    let pz2 = 0; if (vm.parts.pump) pz2 = vm.parts.pump.position.z - vm.parts.pump.userData.base.z;
+    lh.position.set(b.x - 0.02 * k, b.y - 0.085 * k, b.z + 0.2 * k + pz2); lh.rotation.x = 0.35 * k;
+  }
   g.position.set(px, py, pz); g.rotation.set(rx, ry, rz);
   // flash
   const f = vm.parts.flash;
@@ -493,7 +553,7 @@ function endMatch() {
 function lock() { try { const p = canvas.requestPointerLock?.(); p?.catch?.(() => {}); } catch (e) { /* headless */ } }
 function startGame() {
   qual = QUALITY[$('quality').value]; applyQuality($('quality').value);
-  A.initAudio(); A.resumeAudio(); A.setVolume(+$('vol').value); sens = +$('sens').value;
+  A.initAudio(); A.resumeAudio(); A.setVolume(+$('vol').value); A.startMusic(0.2); sens = +$('sens').value;
   $('menu').classList.add('hidden'); $('end').classList.add('hidden'); $('hud').classList.remove('hidden');
   if (state !== 'paused') { resetMatch(); A.sndStart(); }
   state = 'playing'; lock();
@@ -536,7 +596,7 @@ addEventListener('mousemove', e => {
 });
 
 // ======================= Main loop =======================
-const clock = new THREE.Clock();
+const clock = new THREE.Clock(); let frameN = 0;
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -555,8 +615,10 @@ function frame() {
   if (state !== 'menu') { updateCamera(dt); if (state === 'ended') vmRoot.visible = false; else updateViewmodel(dt, time); }
   addP.update(dt, renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))));
   smokeP.update(dt, renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))));
-  tracers.update(dt); casings.update(dt);
-  if (state === 'playing') updateHud(dt);
+  tracers.update(dt); casings.update(dt); world.animate(time);
+  gradePass.uniforms.uT.value = time % 10;
+  gradePass.uniforms.uA.value = 0.00025 + sprintT * 0.0006 + shake * 0.0009 + (time - P.lastHurt < 0.25 ? 0.0025 : 0);
+  if (state === 'playing') { updateHud(dt); updateDnums(dt); if ((frameN++ & 1) === 0) drawMinimap(); }
   composer.render();
 }
 applyQuality('med');

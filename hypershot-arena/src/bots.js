@@ -24,7 +24,7 @@ export class Bot {
     this.scanT = rnd(0, 0.3); this.fireT = 0; this.burst = 0; this.burstPause = 0;
     this.strafe = 1; this.strafeT = 0; this.stuckT = 0; this.lastX = 0; this.lastZ = 0;
     this.deathT = 0; this.protT = 0; this.phase = 0; this.jitterYaw = 0; this.jitterPitch = 0; this.jitterT = 0;
-    this.moveYaw = 0; this.tagDirty = true; this.lastAttacker = null;
+    this.moveYaw = 0; this.tagDirty = true; this.lastAttacker = null; this.flinch = 0; this.dvx = 0; this.dvz = 0; this.lastStep = 0; this.lastShotT = -99; this.recoil = 0;
     this.buildMesh();
   }
   buildMesh() {
@@ -75,12 +75,13 @@ export class Bot {
     this.tagDirty = true;
   }
   eye(out) { return out.set(this.x, this.y + 1.55, this.z); }
-  die() {
+  die(from) {
+    if (from) { const dx = this.x - from.x, dz = this.z - from.z, d = Math.hypot(dx, dz) || 1; this.dvx = dx / d * 4.5; this.dvz = dz / d * 4.5; }
     this.alive = false; this.deathT = 0; this.deaths++; this.path = []; this.target = null;
     this.tag.visible = false;
   }
   onHurt(attacker) {
-    this.tagDirty = true;
+    this.tagDirty = true; this.flinch = 1;
     if (attacker && attacker.alive && attacker !== this) {
       this.lastAttacker = attacker;
       if (!this.target || !this.targetVisible) { this.lastSeen = { x: attacker.x, z: attacker.z }; this.loseT = 4; this.path = []; this.reactT = Math.max(this.reactT, 0.15); this.target = attacker; this.targetVisible = false; this.scanT = 0; }
@@ -132,8 +133,13 @@ export class Bot {
     if (!this.alive) {
       this.deathT += dt;
       const t = Math.min(1, this.deathT / 0.45), e = 1 - Math.pow(1 - t, 3);
-      this.root.rotation.x = -1.55 * e; this.root.position.y = this.y + 0.15 * e;
+      this.x += this.dvx * dt; this.z += this.dvz * dt; this.dvx *= Math.max(0, 1 - dt * 4); this.dvz *= Math.max(0, 1 - dt * 4);
+      this.x = Math.max(-41.4, Math.min(41.4, this.x)); this.z = Math.max(-41.4, Math.min(41.4, this.z));
+      const fly = Math.sin(Math.min(1, this.deathT / 0.35) * Math.PI) * 0.35;
+      this.root.position.set(this.x, this.y + 0.15 * e + fly, this.z);
+      this.root.rotation.x = -1.55 * e; this.root.rotation.z = Math.sin(this.deathT * 9) * 0.12 * (1 - e);
       this.root.rotation.y = this.yaw;
+      this.armL.rotation.x = -1.3 + e * 2.2; this.armR.rotation.x = -1.35 + e * 2.6; this.legL.rotation.x = e * 0.5; this.legR.rotation.x = -e * 0.4;
       if (this.deathT > 2.6) this.root.visible = false;
       if (this.deathT > 3.2) g.respawn(this);
       return;
@@ -218,7 +224,12 @@ export class Bot {
     this.armR.rotation.z = -0.05; this.armL.rotation.z = 0.5;
     this.gun.rotation.x = this.pitch;
     this.gun.position.set(0.1, 0.18 + Math.sin(this.pitch) * -0.1, -0.4);
-    if (this.recoil > 0) { this.recoil -= dt * 8; this.upper.rotation.x = Math.max(0, this.recoil) * 0.08; } else this.upper.rotation.x = 0;
+    this.flinch = Math.max(0, this.flinch - dt * 5);
+    if (this.recoil > 0) this.recoil -= dt * 8;
+    this.upper.rotation.x = Math.max(0, this.recoil) * 0.08 - this.flinch * 0.35;
+    this.head.rotation.x -= this.flinch * 0.3;
+    const stepN = Math.floor(this.phase / Math.PI);
+    if (stepN !== this.lastStep) { this.lastStep = stepN; if (sp > 3 && this.onGround) g.footfall(this); }
     if (this.tagDirty) this.drawTag();
     this.tag.visible = true;
     // blink while spawn-protected
