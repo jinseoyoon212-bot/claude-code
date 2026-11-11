@@ -10,6 +10,17 @@ Unity 2022.3 LTS 기반 1인칭 공포 탈출 게임입니다. 외부 에셋 없
 3. ▶ Play 버튼을 누르면 시작됩니다.
 4. 실행 파일이 필요하면 **Tools → 폐교 탈출 → Windows 빌드** (결과: `Builds/AbandonedSchool/`)
 
+### exe 자동 빌드 (GitHub Actions)
+
+`.github/workflows/build-windows.yml`이 Windows exe를 빌드해 줍니다. 최초 1회 설정이 필요합니다.
+
+1. 저장소 **Settings → Secrets and variables → Actions**에 `UNITY_EMAIL`, `UNITY_PASSWORD`, `UNITY_LICENSE`를 등록합니다.
+   (`UNITY_LICENSE` 발급: <https://game.ci/docs/github/activation>)
+2. **Actions → Build Windows exe → Run workflow** 실행 → 완료 후 `AbandonedSchool-Windows` 아티팩트를 다운로드합니다.
+3. `v1.0.0` 같은 태그를 푸시하면 zip이 GitHub Release에 자동 첨부됩니다.
+
+Unity가 설치된 PC라면 **Tools → 폐교 탈출 → Windows 빌드**로 `Builds/AbandonedSchool/AbandonedSchool.exe`를 바로 만들 수도 있습니다.
+
 > 한글 UI는 OS에 설치된 폰트(맑은 고딕, Apple SD Gothic Neo, Noto Sans CJK KR 등)를 사용합니다.
 > Input Handling은 기본값(Input Manager)을 사용합니다. Unity 6 등에서 Input System 전용으로 되어 있으면
 > `Project Settings → Player → Active Input Handling`을 **Both**로 바꿔 주세요.

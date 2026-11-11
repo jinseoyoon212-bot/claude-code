@@ -81,15 +81,36 @@ namespace AbandonedSchool.EditorTools
         [MenuItem("Tools/폐교 탈출/Windows 빌드")]
         public static void BuildWindows()
         {
-            if (!File.Exists(ScenePath)) Build();
+            BuildWindowsTo("Builds/AbandonedSchool");
+        }
+
+        /// <summary>CI(GameCI) 진입점. -customBuildPath 인자가 있으면 그 폴더에 exe를 만든다.</summary>
+        public static void BuildWindowsCI()
+        {
+            string dir = "Builds/AbandonedSchool";
+            var args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i] == "-customBuildPath") dir = args[i + 1];
+
+            bool ok = BuildWindowsTo(dir);
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        static bool BuildWindowsTo(string dir)
+        {
+            Build(); // 항상 최신 씬으로 다시 생성
+            dir = dir.TrimEnd('/', '\\');
+            if (dir.EndsWith(".exe")) dir = Path.GetDirectoryName(dir);
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
-                locationPathName = "Builds/AbandonedSchool/AbandonedSchool.exe",
+                locationPathName = dir + "/AbandonedSchool.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None
             };
-            BuildPipeline.BuildPlayer(options);
+            var report = BuildPipeline.BuildPlayer(options);
+            Debug.Log("[폐교 탈출] 빌드 결과: " + report.summary.result + " → " + options.locationPathName);
+            return report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded;
         }
 
         // ------------------------------------------------------------------ 건물 뼈대
