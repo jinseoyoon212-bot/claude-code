@@ -25,3 +25,8 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
+
+# Godot
+.godot/
+dist/
+*.translation
