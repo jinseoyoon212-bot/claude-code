@@ -281,7 +281,7 @@ func _warmup() -> void:
 	sparks(p, Color.WHITE, 3, 1.0, 0.4)
 	ring_effect(p, Color.WHITE, 0.3, 0.5, 0.4)
 	burst_effect(p, Color.WHITE)
-	beam_effect(p, p + Vector3(0, 0.6, 0), Color.WHITE)
+	beam_effect(p, p + Vector3(0.6, 0.2, 0), Color.WHITE)   # 수직이면 look_at이 실패하므로 비스듬히
 	spawn_meteor(p + Vector3(0, 0, 0), 0.0, 0.0)
 
 

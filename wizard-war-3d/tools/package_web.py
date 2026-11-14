@@ -5,7 +5,9 @@ Cloudflare는 파일 하나를 25MiB까지만 받으므로 index.wasm(약 35MB)�
 브라우저에서는 export_presets.cfg의 head_include 스크립트가 index.wasm 요청을
 조각 요청으로 바꿔 이어 붙인 응답을 돌려준다.
 
-사용:  python3 tools/package_web.py build/web build/web_deploy
+사용:  python3 tools/package_web.py <입력 폴더> <출력 폴더> [--isolate]
+  --isolate : 멀티스레드 빌드용. 교차 출처 격리 헤더(_headers)를 만든다.
+(wrangler.jsonc의 name은 Cloudflare Worker 이름과 같아야 하며 기본값은 claude-code)
 """
 import math
 import os
@@ -14,7 +16,9 @@ import sys
 
 CHUNKS = 4  # head_include 스크립트의 N 과 같아야 한다
 
-src, dst = sys.argv[1], sys.argv[2]
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+isolate = "--isolate" in sys.argv
+src, dst = args[0], args[1]
 if os.path.exists(dst):
     shutil.rmtree(dst)
 shutil.copytree(src, dst)
@@ -28,6 +32,9 @@ for i in range(CHUNKS):
     print(f"index.part{i}.wasm  {len(part) / 1048576:.1f} MiB")
 
 open(os.path.join(dst, ".nojekyll"), "w").close()
+if isolate:
+    # 멀티스레드 빌드(SharedArrayBuffer)는 교차 출처 격리 헤더가 있어야 실행된다 (Cloudflare·Netlify 공통 _headers 형식)
+    open(os.path.join(dst, "_headers"), "w").write("/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n")
 # Cloudflare(Workers Builds)에 올리지 않을 파일: 원본 wasm(25MiB 초과)과 설정 파일들
 open(os.path.join(dst, ".assetsignore"), "w").write("index.wasm\nwrangler.jsonc\n.assetsignore\n.nojekyll\n.git\nREADME.md\n")
 open(os.path.join(dst, "wrangler.jsonc"), "w").write("""{

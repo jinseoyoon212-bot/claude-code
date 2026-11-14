@@ -153,7 +153,7 @@ func _setting(k: String, v: String) -> void:
 		"shadows":
 			Save.settings.shadows = not Save.settings.shadows
 			main.sun.shadow_enabled = Save.settings.shadows
-		"numbers", "shake":
+		"numbers", "shake", "fps":
 			Save.settings[k] = not Save.settings[k]
 		"intro":
 			Save.intro_seen = false
@@ -552,7 +552,7 @@ func _draw_settings() -> void:
 		bar(Rect2(x + 320, y + 26, 180, 12), Save.settings[rw[0]], C_GOLD)
 		button(Rect2(x + 512, y + 12, 48, 40), "+", "set:%s:+" % rw[0], true, false)
 		y += 76
-	for rw in [["shadows", "그림자 (끄면 더 부드럽게 동작)"], ["numbers", "피해 숫자 표시"], ["shake", "화면 흔들림"]]:
+	for rw in [["shadows", "그림자 (끄면 더 부드럽게 동작)"], ["numbers", "피해 숫자 표시"], ["shake", "화면 흔들림"], ["fps", "FPS 표시 (성능 확인용)"]]:
 		panel(Rect2(x, y, 600, 58), C_CARD, 12)
 		txt(f_bold, Vector2(x + 24, y + 36), rw[1], 17, C_INK, HORIZONTAL_ALIGNMENT_LEFT, false)
 		var on: bool = Save.settings[rw[0]]

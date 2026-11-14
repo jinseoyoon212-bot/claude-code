@@ -74,7 +74,7 @@ var stars := {}
 var stats := {"kills": 0, "bosses": 0, "elites": 0, "games": 0}
 var endless_best := 0
 var claimed: Array = []
-var settings := {"music": 0.7, "sfx": 0.9, "shadows": true, "numbers": true, "shake": true}
+var settings := {"music": 0.7, "sfx": 0.9, "shadows": true, "numbers": true, "shake": true, "fps": false}
 var dev_unlocked := false
 var current_stage := "s1"
 

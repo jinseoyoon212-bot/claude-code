@@ -163,6 +163,9 @@ func _draw_world_ui() -> void:
 
 func _draw_panels() -> void:
 	var s := size
+	if Save.settings.fps:
+		var fps := Engine.get_frames_per_second()
+		txt(f_bold, Vector2(360, 36), "FPS %d" % fps, 16, C_OK if fps >= 50 else (C_GOLD if fps >= 30 else C_BLOOD))
 	panel(Rect2(16, 16, 330, 92))
 	txt(f_bold, Vector2(30, 42), "대마법사", 15, C_GOLD, HORIZONTAL_ALIGNMENT_LEFT, false)
 	txt(f_body, Vector2(332, 42), "%d / %d" % [main.hero.hp, main.hero.max_hp], 13, C_INK, HORIZONTAL_ALIGNMENT_RIGHT, false)

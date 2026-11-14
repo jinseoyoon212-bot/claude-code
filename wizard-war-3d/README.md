@@ -27,6 +27,10 @@
 - 엔진 파일(`index.wasm`, 약 35MB)은 Cloudflare의 파일당 25MiB 제한 때문에 4조각(`index.partN.wasm`)으로 나눠 올린다. 확장자를 `.wasm`으로 둔 것은 호스팅이 압축해서 보내게 하려는 것(`.bin`은 압축되지 않아 전송량이 5배가 됨).
   브라우저에서는 `export_presets.cfg`의 `head_include` 스크립트가 `index.wasm` 요청을 조각 요청으로 바꿔 이어 붙인다.
   (`.assetsignore`가 원본 `index.wasm`을 Cloudflare 업로드에서 제외)
+- **멀티스레드 웹 빌드**(`Web Threads` 프리셋, `build/web_mt`): 소리를 별도 스레드에서 처리해 화면이 밀려도 소리가 끊기지 않게 한다.
+  `python3 tools/package_web.py build/web_mt build/web_mt_deploy --isolate`로 패키징하면 교차 출처 격리 헤더(`_headers`)가 같이 생성된다.
+  헤더를 줄 수 없는 호스팅(GitHub Pages 등)에서는 실행되지 않으므로 Cloudflare Pages(`cf-pages` 브랜치)에만 올리고,
+  Netlify·Workers(`gh-pages` 브랜치)는 기존 단일 스레드 빌드를 유지한다.
 - Cloudflare Workers Builds: Production branch=`gh-pages`, Build command 비움, Deploy command=`npx wrangler deploy`
 
 ## 조작
