@@ -55,6 +55,7 @@
 
 ## 에셋 출처
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)
+- 배경·건물·나무·수정 등 모든 환경 모델: KayKit Medieval Hexagon / Halloween Bits / Dungeon Remastered, OpenGameArt LowPoly Crystals — 모두 CC0 (`models/env/SOURCES.md`)
 - 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)
 - 폰트: Noto Sans KR, Gowun Batang — SIL OFL (`fonts/OFL.txt`), 완성형 한글 2350자 + 게임 텍스트로 서브셋

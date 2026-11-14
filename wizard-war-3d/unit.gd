@@ -75,7 +75,7 @@ func setup(m, k: String, def: Dictionary) -> void:
 	special_t = def.get("special_cd", 7.0)
 	if kind == "crystal":
 		is_static = true
-		bar_h = 4.6
+		bar_h = 7.2
 		_build_crystal()
 		return
 	model = main.scenes[def.model].instantiate()
@@ -110,47 +110,32 @@ func setup(m, k: String, def: Dictionary) -> void:
 
 
 func _build_crystal() -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.55, 0.9, 1.0)
-	mat.emission_enabled = true
-	mat.emission = Color(0.4, 0.85, 1.0)
-	mat.emission_energy_multiplier = 1.6
+	## 빛의 수정: OpenGameArt의 CC0 저폴리 수정 모델 (빛나도록 발광 재질로 바꿈)
 	var root := Node3D.new()
 	root.name = "Gem"
 	add_child(root)
-	for up in [1, -1]:
-		var mi := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.0
-		cm.bottom_radius = 0.9
-		cm.height = 1.6
-		cm.radial_segments = 6
-		mi.mesh = cm
-		mi.material_override = mat
-		mi.position.y = 0.8 * up
-		if up == -1:
-			mi.rotation.x = PI
-		root.add_child(mi)
-		meshes.append(mi)
-	root.position.y = 3.0
-	var ped := MeshInstance3D.new()
-	var pm := CylinderMesh.new()
-	pm.top_radius = 1.2
-	pm.bottom_radius = 1.6
-	pm.height = 1.2
-	ped.mesh = pm
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0.62, 0.6, 0.66)
-	ped.material_override = sm
-	ped.position.y = 0.6
-	add_child(ped)
+	var gem := MeshInstance3D.new()
+	gem.mesh = load("res://models/env/crystal/crystals_blue.obj")   # OBJ는 장면이 아니라 메시로 불러와진다
+	gem.scale = Vector3.ONE * 0.85
+	root.add_child(gem)
+	meshes.append(gem)
+	for sidx in gem.mesh.get_surface_count():
+		var src: Material = gem.mesh.surface_get_material(sidx)
+		var d: StandardMaterial3D = src.duplicate() if src is StandardMaterial3D else StandardMaterial3D.new()
+		d.albedo_color = Color(0.55, 0.85, 1.0)
+		d.emission_enabled = true
+		d.emission = Color(0.35, 0.75, 1.0)
+		d.emission_energy_multiplier = 1.4
+		d.roughness = 0.25
+		gem.set_surface_override_material(sidx, d)
+	root.position.y = 2.0
 	var light := OmniLight3D.new()
 	light.light_color = Color(0.5, 0.85, 1.0)
 	light.light_energy = 2.5
-	light.omni_range = 10.0
-	light.position.y = 3.0
+	light.omni_range = 11.0
+	light.position.y = 3.5
 	add_child(light)
-	radius = 1.6
+	radius = 2.4
 
 
 func _set_overlay(m: Material) -> void:
@@ -264,8 +249,8 @@ func tick(delta: float, active: bool) -> void:
 		return
 	if kind == "crystal":
 		var g: Node3D = get_node("Gem")
-		g.rotation.y += delta * 0.8
-		g.position.y = 3.0 + sin(main.t * 2.0) * 0.2
+		g.rotation.y += delta * 0.25
+		g.position.y = 2.0 + sin(main.t * 1.6) * 0.12
 		return
 	lock_t = maxf(0.0, lock_t - delta)
 	cd_t -= delta

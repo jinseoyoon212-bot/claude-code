@@ -7,6 +7,11 @@ var shop_tab := "up"
 var toast := ""
 var toast_t := 0.0
 var page_t := 0.0
+var leaving := false      # 지금 화면이 사라지는 중
+var leave_t := 0.0
+var leave_to := ""
+var last_key := ""
+const LEAVE := 0.13       # 사라지는 시간(초)
 var pw_edit: LineEdit
 var pw_error := ""
 var reset_armed := false
@@ -35,12 +40,22 @@ func open_page(p: String) -> void:
 	prev_page = page
 	page = p
 	page_t = 0.0
+	ui_t = 0.0   # 새 화면의 버튼·카드가 순서대로 등장
 	reset_armed = false
 	if p == "password":
 		_show_password()
 	elif pw_edit:
 		pw_edit.queue_free()
 		pw_edit = null
+
+
+func go_page(p: String) -> void:
+	## 화면 전환: 지금 화면이 부드럽게 사라진 뒤 다음 화면이 아래에서 올라오며 나타난다
+	if leaving:
+		return
+	leaving = true
+	leave_t = 0.0
+	leave_to = p
 
 
 func _active() -> bool:
@@ -66,9 +81,12 @@ func _input(ev: InputEvent) -> void:
 		if pw_edit and Rect2(pw_edit.position, pw_edit.size).has_point(ev.position):
 			pw_edit.grab_focus()
 			return
-		var act := click_at(ev.position)
 		get_viewport().set_input_as_handled()
+		if leaving:
+			return
+		var act := click_at(ev.position)
 		if act != "":
+			mark_press(act, ev.position)
 			_action(act)
 
 
@@ -79,14 +97,14 @@ func _action(act: String) -> void:
 	match p[0]:
 		"page":
 			if p[1] == "dev":
-				open_page("cheat" if Save.dev_unlocked else "password")
+				go_page("cheat" if Save.dev_unlocked else "password")
 			else:
-				open_page(p[1])
+				go_page(p[1])
 		"back":
 			if page in ["settings", "cheat"] and main.paused:
-				open_page("pause")
+				go_page("pause")
 			else:
-				open_page("")
+				go_page("")
 		"stage":
 			if Save.stage_unlocked(p[1]):
 				main.start_game(p[1])
@@ -102,6 +120,7 @@ func _action(act: String) -> void:
 			main.set_paused(false)
 		"tab":
 			shop_tab = p[1]
+			ui_t = 0.0   # 카드가 다시 순서대로 등장
 		"buy_up":
 			err = Save.buy_upgrade(p[1])
 			if err == "":
@@ -228,6 +247,26 @@ func _process(d: float) -> void:
 	fit()
 	toast_t -= d
 	page_t += d
+	ui_t += d
+	# 화면 종류(상태/일시정지)가 바뀌면 부드럽게 나타나게 한다
+	var key := "%s|%s" % [main.state, str(main.paused)] if main else ""
+	if key != last_key:
+		last_key = key
+		page_t = 0.0
+		ui_t = 0.0
+	if leaving:
+		leave_t += d
+		if leave_t >= LEAVE:
+			leaving = false
+			open_page(leave_to)
+	var alpha := clampf(page_t / 0.26, 0.0, 1.0)
+	var slide := (1.0 - ease_out(clampf(page_t / 0.36, 0.0, 1.0))) * 20.0
+	if leaving:
+		var lk := clampf(leave_t / LEAVE, 0.0, 1.0)
+		alpha *= 1.0 - lk
+		slide = -10.0 * lk
+	modulate.a = alpha
+	page_xf = Transform2D(0.0, Vector2(0, slide))
 	if pw_edit:
 		pw_edit.position = Vector2(size.x / 2 - 180, size.y / 2 - 30)
 	queue_redraw()
@@ -236,6 +275,9 @@ func _process(d: float) -> void:
 # ---------------- 그리기 ----------------
 func _draw() -> void:
 	clicks.clear()
+	btn_i = 0
+	base_xf = page_xf
+	draw_set_transform_matrix(base_xf)
 	if main == null or main.hero == null:
 		return
 	match main.state:
@@ -261,15 +303,21 @@ func _draw() -> void:
 					_: _draw_pause()
 		"win", "lose":
 			_draw_end()
+	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if touch_ui and size.y > size.x * 1.05:
 		_draw_rotate_hint()
 	if main.white_flash > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, clampf(main.white_flash, 0, 1)))
+	draw_ripples()
 	if toast_t > 0.0:
 		var a := clampf(toast_t * 2.0, 0, 1)
 		var w := 60.0 + toast.length() * 15.0
+		var age := 2.4 - toast_t   # 알림은 아래에서 통통 튀며 올라온다
+		var pop := ease_out_back(clampf(age / 0.28, 0.0, 1.0))
+		draw_set_transform_matrix(Transform2D(0.0, Vector2(1, 1), 0.0, Vector2(0, (1.0 - pop) * 26.0)))
 		panel(Rect2(size.x / 2 - w / 2, size.y - 130, w, 46), Color(0.05, 0.05, 0.1, 0.92 * a), 23, Color(C_GOLD, 0.5 * a))
 		txt(f_bold, Vector2(size.x / 2, size.y - 100), toast, 16, Color(C_INK, a), HORIZONTAL_ALIGNMENT_CENTER, false)
+		draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 func _draw_rotate_hint() -> void:
@@ -375,7 +423,7 @@ func _draw_title() -> void:
 		draw_arc(c, 26, 0, TAU, 40, SKILL_COL[id], 2.0, true)
 		icon(id, c, 32, SKILL_COL[id])
 		txt(f_bold, c + Vector2(0, 40), "Lv%d" % Save.skills[id], 11, C_INK, HORIZONTAL_ALIGNMENT_CENTER)
-	txt(f_body, Vector2(s.x - 24, s.y - 14), "3D 모델 KayKit (CC0) · 아이콘 game-icons.net (CC BY 3.0) · 음악·효과음 자체 제작", 11, C_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+	txt(f_body, Vector2(s.x - 24, s.y - 14), "3D 모델 KayKit·OpenGameArt (CC0) · 아이콘 game-icons.net (CC BY 3.0) · 음악·효과음 자체 제작", 11, C_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 
 
 # ---------------- 스테이지 선택 ----------------
@@ -391,6 +439,7 @@ func _draw_stages() -> void:
 		var st: Dictionary = Save.STAGES[i]
 		var r := Rect2(x0 + (i % cols) * (cw + gap), 100 + (i / cols) * (ch + gap), cw, ch)
 		var unlocked := Save.stage_unlocked(st.id)
+		card_begin(r, i)
 		var env_col: Color = main.ENVS[st.env].hor
 		panel(r, C_CARD if unlocked else Color(0.08, 0.08, 0.12, 0.92), 16, Color(env_col, 0.6) if unlocked else Color(1, 1, 1, 0.06), 2)
 		panel(Rect2(r.position + Vector2(2, 2), Vector2(r.size.x - 4, 70)), Color(env_col, 0.18 if unlocked else 0.05), 14, Color(0, 0, 0, 0), 0)
@@ -412,6 +461,7 @@ func _draw_stages() -> void:
 			clicks.append({"rect": r, "act": "stage:" + st.id})
 		else:
 			txt(f_bold, r.position + Vector2(r.size.x - 20, 36), "잠김", 13, C_BLOOD, HORIZONTAL_ALIGNMENT_RIGHT, false)
+		card_end()
 	txt(f_body, Vector2(s.x / 2, s.y - 48), "별: 클리어 1개 · 수정 체력 50% 이상 2개 · 90% 이상 3개", 13, C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 
 
@@ -423,9 +473,11 @@ func _draw_shop() -> void:
 	for i in tabs.size():
 		var r := Rect2(280 + i * 140, 30, 130, 44)
 		var on: bool = shop_tab == tabs[i][0]
+		fx_begin(r.get_center(), press_scale("tab:" + tabs[i][0]) * (1.04 if (not touch_ui and r.has_point(get_local_mouse_position())) else 1.0))
 		panel(r, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), 22, Color(1, 1, 1, 0.1))
 		icon(tabs[i][2], r.position + Vector2(30, 22), 22, C_DARK if on else C_INK)
 		txt(f_bold, Vector2(r.get_center().x + 12, r.position.y + 29), tabs[i][1], 17, C_DARK if on else C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+		fx_end()
 		clicks.append({"rect": r, "act": "tab:" + tabs[i][0]})
 	var cards: Array = []
 	match shop_tab:
@@ -444,7 +496,10 @@ func _draw_shop() -> void:
 	var ch := 210.0
 	var x0 := s.x / 2 - (cw * cols + gap * (cols - 1)) / 2
 	for i in cards.size():
-		_draw_card(Rect2(x0 + (i % cols) * (cw + gap), 96 + (i / cols) * (ch + gap), cw, ch), cards[i])
+		var cr := Rect2(x0 + (i % cols) * (cw + gap), 96 + (i / cols) * (ch + gap), cw, ch)
+		card_begin(cr, i)
+		_draw_card(cr, cards[i])
+		card_end()
 	if shop_tab == "skill":
 		txt(f_body, Vector2(s.x / 2, 96 + 2 * (ch + gap) + 4), "장착 슬롯 %d / %d · 전투에서는 장착한 스킬만 쓸 수 있습니다" % [Save.equipped.size(), Save.MAX_EQUIP], 13, C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 	button(Rect2(s.x - 250, s.y - 82, 210, 54), "전투 시작", "page:stages", true, true, "attack")
@@ -521,6 +576,7 @@ func _draw_achieve() -> void:
 	for i in Save.ACHIEVEMENTS.size():
 		var a: Dictionary = Save.ACHIEVEMENTS[i]
 		var r := Rect2(x0 + (i % cols) * (cw + gap), 92 + (i / cols) * (ch + gap), cw, ch)
+		card_begin(r, i)
 		var done: bool = Save.claimed.has(a.id)
 		var rdy := Save.achievement_ready(a)
 		panel(r, C_CARD, 12, Color(C_GOLD, 0.7) if rdy else Color(1, 1, 1, 0.08), 2 if rdy else 1)
@@ -535,6 +591,7 @@ func _draw_achieve() -> void:
 			icon("check", br.get_center(), 26, C_OK)
 		else:
 			button(br, "+%dG" % a.reward, "claim:" + a.id, rdy, true)
+		card_end()
 
 
 # ---------------- 설정 ----------------

@@ -83,6 +83,10 @@ var cam_focus: Unit = null
 var cam_focus_t := 0.0
 var slowmo_until := 0
 var white_flash := 0.0
+var env_cache := {}
+var tint_mats := {}
+var clouds: Array = []
+var portal_disc: MeshInstance3D
 
 
 func _ready() -> void:
@@ -338,26 +342,49 @@ func _cyl(pos: Vector3, top: float, bottom: float, h: float, m: Material, seg :=
 	return mi
 
 
-func _tower(pos: Vector3, h: float, wall: Material, roof: Material) -> void:
-	_cyl(pos + Vector3(0, h / 2, 0), 1.6, 1.8, h, wall)
-	_cyl(pos + Vector3(0, h + 0.2, 0), 1.9, 1.9, 0.4, wall)
-	_cyl(pos + Vector3(0, h + 1.6, 0), 0.0, 2.1, 2.8, roof)
-
-
 func _torch(pos: Vector3, col: Color) -> void:
-	_cyl(pos + Vector3(0, 1.0, 0), 0.08, 0.1, 2.0, _mat(Color(0.3, 0.2, 0.12)), 6)
-	var f := _cyl(pos + Vector3(0, 2.15, 0), 0.0, 0.18, 0.4, _mat(col, 0.5, 3.0), 6)
-	f.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	## 던전 팩의 횃불 모델 + 불빛 + 불꽃 입자
+	place("dg/torch_lit.glb", pos + Vector3(0, 0.9, 0), 0.0, 2.2)
 	var l := OmniLight3D.new()
 	l.light_color = col
 	l.light_energy = 1.4
 	l.omni_range = 7.0
-	l.position = pos + Vector3(0, 2.3, 0)
+	l.position = pos + Vector3(0, 2.6, 0)
 	add_child(l)
-	var p := _particles(pos + Vector3(0, 2.3, 0), col, 12, 0.6, 0.2, Vector3(0, 1.2, 0), false)
+	var p := _particles(pos + Vector3(0, 2.5, 0), col, 12, 0.6, 0.2, Vector3(0, 1.2, 0), false)
 	p.emission_sphere_radius = 0.08
 	p.scale_amount_min = 0.5
 	p.scale_amount_max = 0.9
+
+
+# ---------------- 무료 3D 모델 배치 도구 ----------------
+func env_scene(path: String) -> PackedScene:
+	if not env_cache.has(path):
+		env_cache[path] = load("res://models/env/%s" % path)
+	return env_cache[path]
+
+
+func _tint_mat(key: String) -> StandardMaterial3D:
+	if not tint_mats.has(key):
+		var tints := {"dark": Color(0.14, 0.05, 0.22, 0.55), "ice": Color(0.78, 0.9, 1.0, 0.38), "gloom": Color(0.12, 0.05, 0.2, 0.4),
+			"fire": Color(1.0, 0.42, 0.1, 0.3), "night": Color(0.05, 0.08, 0.28, 0.3)}
+		var c: Color = tints[key]
+		tint_mats[key] = _overlay(c)
+	return tint_mats[key]
+
+
+func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "") -> Node3D:
+	## 모델 하나를 월드에 놓는다. tint 를 주면 반투명 색을 덧씌워 분위기를 바꾼다 (얼음/어둠/불꽃).
+	var n: Node3D = env_scene(path).instantiate()
+	n.position = pos
+	n.rotation_degrees.y = rot_deg
+	n.scale = Vector3.ONE * scl
+	add_child(n)
+	if tint != "":
+		var m := _tint_mat(tint)
+		for mi in n.find_children("*", "MeshInstance3D", true, false):
+			mi.material_overlay = m
+	return n
 
 
 func _build_world() -> void:
@@ -396,7 +423,8 @@ func _build_world() -> void:
 
 	var ground := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(140, 80)
+	pm.size = Vector2(320, 220)
+	ground.position = Vector3(0, 0, -50)
 	ground.mesh = pm
 	ground.material_override = _mat(E.ground)
 	add_child(ground)
@@ -415,95 +443,7 @@ func _build_world() -> void:
 	blight.position = Vector3(46, 0.01, 0)
 	add_child(blight)
 
-	# 빛의 성
-	var stone := _mat(Color(0.8, 0.78, 0.74))
-	var blue_roof := _mat(Color(0.2, 0.35, 0.78))
-	_box(Vector3(-39, 3, 0), Vector3(3, 6, 34), stone)
-	for z in range(-16, 17, 2):
-		_box(Vector3(-37.8, 6.4, z), Vector3(0.8, 0.8, 0.9), stone)
-	for z in [-15.0, -6.0, 6.0, 15.0]:
-		_tower(Vector3(-39, 0, z), 9.0, stone, blue_roof)
-	_box(Vector3(-37, 4.5, 0), Vector3(1, 5, 6), _mat(Color(0.35, 0.25, 0.15)))
-	for z in [-3.2, 3.2]:
-		_box(Vector3(-36.5, 7.5, z), Vector3(0.1, 2.5, 1.2), _mat(Color(0.95, 0.8, 0.3), 0.6, 0.4))
-	for z in [-4.5, 4.5]:
-		_torch(Vector3(-34, 0, z), Color(1.0, 0.7, 0.3))
-
-	# 어둠의 요새
-	var dark := _mat(Color(0.2, 0.18, 0.24))
-	var dark_roof := _mat(Color(0.35, 0.1, 0.4))
-	_box(Vector3(39, 3.5, 0), Vector3(3, 7, 34), dark)
-	for z in [-15.0, -7.0, 7.0, 15.0]:
-		_tower(Vector3(39, 0, z), 11.0, dark, dark_roof)
-	for z in [-5.0, 5.0]:
-		_torch(Vector3(32, 0, z), Color(0.7, 0.3, 1.0))
-	var portal := MeshInstance3D.new()
-	var tm := TorusMesh.new()
-	tm.inner_radius = 2.6
-	tm.outer_radius = 3.2
-	tm.rings = 24
-	portal.mesh = tm
-	portal.material_override = _mat(Color(0.7, 0.25, 1.0), 0.5, 2.5)
-	portal.position = Vector3(35, 3.3, 0)
-	portal.rotation_degrees = Vector3(0, 0, 90)
-	portal.name = "Portal"
-	add_child(portal)
-	var core := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 2.6
-	cm.bottom_radius = 2.6
-	cm.height = 0.1
-	core.mesh = cm
-	core.material_override = _overlay(Color(0.4, 0.05, 0.6, 0.7))
-	core.position = Vector3(35, 3.3, 0)
-	core.rotation_degrees = Vector3(0, 0, 90)
-	add_child(core)
-	var pl := OmniLight3D.new()
-	pl.light_color = Color(0.7, 0.3, 1.0)
-	pl.light_energy = 3.0
-	pl.omni_range = 14.0
-	pl.position = Vector3(33, 3, 0)
-	add_child(pl)
-	var pp2 := _particles(Vector3(34.6, 3.3, 0), Color(0.75, 0.35, 1.0), 60, 1.4, 2.6, Vector3(-1.5, 0, 0), false)
-	pp2.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
-	pp2.emission_ring_axis = Vector3(1, 0, 0)
-	pp2.emission_ring_radius = 2.8
-	pp2.emission_ring_inner_radius = 2.4
-	pp2.emission_ring_height = 0.1
-
-	# 나무·바위
-	var trunk := _mat(Color(0.38, 0.26, 0.16))
-	var leaf := _mat(E.leaf)
-	var dead_leaf := _mat(Color(0.26, 0.18, 0.28))
-	var rock := _mat(Color(0.5, 0.5, 0.53) if stage.env != "ice" else Color(0.7, 0.8, 0.88))
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7 + stage_idx
-	for i in 56:
-		var x := rng.randf_range(-38, 38)
-		# 카메라 쪽(+z)은 화면을 가리지 않게 멀리, 반대쪽(-z)은 배경으로 촘촘히
-		var z := rng.randf_range(27, 36) if rng.randf() < 0.3 else -rng.randf_range(17, 32)
-		var s := rng.randf_range(0.8, 1.6)
-		_cyl(Vector3(x, 1.0 * s, z), 0.25 * s, 0.35 * s, 2.0 * s, trunk, 6)
-		_cyl(Vector3(x, 3.0 * s, z), 0.0, 1.7 * s, 2.6 * s, dead_leaf if x > 22 else leaf, 8)
-		_cyl(Vector3(x, 4.4 * s, z), 0.0, 1.2 * s, 2.0 * s, dead_leaf if x > 22 else leaf, 8)
-	for i in 22:
-		var r := MeshInstance3D.new()
-		var sp := SphereMesh.new()
-		sp.radial_segments = 6
-		sp.rings = 3
-		var s := rng.randf_range(0.5, 1.4)
-		sp.radius = s
-		sp.height = s * 1.3
-		r.mesh = sp
-		r.material_override = rock
-		r.position = Vector3(rng.randf_range(-30, 30), 0.2, rng.randf_range(10, 16) * (1 if rng.randf() < 0.5 else -1))
-		add_child(r)
-	if stage.env == "fire":
-		for i in 10:
-			var p := Vector3(rng.randf_range(-25, 28), 0, rng.randf_range(11, 16) * (1 if rng.randf() < 0.5 else -1))
-			var f := _particles(p, Color(1.0, 0.5, 0.15), 24, 1.0, 0.4, Vector3(0, 2.5, 0), false)
-			f.scale_amount_min = 1.5
-			f.scale_amount_max = 3.0
+	_build_set()
 
 	# 날씨/분위기 입자
 	var fx := _particles(Vector3(0, 6, 0), Color.WHITE, 160, 6.0, 0.0, Vector3.ZERO, false)
@@ -530,6 +470,139 @@ func _build_world() -> void:
 		"ash":
 			fx.color = Color(0.75, 0.55, 0.9, 0.7)
 			fx.gravity = Vector3(-0.2, 0.3, 0)
+
+
+func _build_set() -> void:
+	## 전장의 모든 사물: KayKit(CC0) 모델로 배치. 스테이지마다 나무·색조가 달라진다.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7 + stage_idx
+	var envn: String = stage.env
+	var tint := ""
+	match envn:
+		"ice": tint = "ice"
+		"dark": tint = "dark"
+		"fire": tint = "fire"
+
+	# ===== 빛의 진영 (왼쪽): 성벽·탑·성 =====
+	for z in [-24.0, -16.0, -8.0, 8.0, 16.0, 24.0]:
+		place("hex/wall_straight.gltf", Vector3(-40, 0, z), 90, 4.0, "ice" if envn == "ice" else "")
+	place("hex/wall_straight_gate.gltf", Vector3(-40, 0, 0), 90, 4.0, "ice" if envn == "ice" else "")
+	for z in [-28.0, -12.0, 12.0, 28.0]:
+		place("hex/building_tower_A_blue.gltf", Vector3(-40, 0, z), 90, 5.0, "ice" if envn == "ice" else "")
+	place("hex/building_castle_blue.gltf", Vector3(-54, 0, 0), -90, 5.5, "ice" if envn == "ice" else "")
+	for z in [-5.5, 5.5]:
+		place("hex/flag_blue.gltf", Vector3(-36.8, 0, z), 90, 9.0)
+		_torch(Vector3(-34, 0, z), Color(1.0, 0.7, 0.3))
+	# 진영 건물과 야영 도구
+	place("hex/building_barracks_blue.gltf", Vector3(-31, 0, -22), 0, 5.0)
+	place("hex/building_archeryrange_blue.gltf", Vector3(-23, 0, -26), 0, 5.0)
+	place("hex/building_blacksmith_blue.gltf", Vector3(-35, 0, -19.5), 0, 4.5)
+	place("hex/building_market_blue.gltf", Vector3(-31, 0, 21), 0, 5.0)
+	var camp := [["tent", -33.0, -9.5, 20.0, 6.0], ["weaponrack", -31.5, -7.5, 0.0, 8.0], ["target", -29.0, 9.0, 200.0, 8.0],
+		["barrel", -34.0, 9.5, 0.0, 8.0], ["crate_A_big", -34.0, -12.0, 30.0, 8.0], ["bucket_arrows", -31.0, 10.5, 0.0, 9.0],
+		["sack", -33.0, 12.0, 0.0, 8.0], ["wheelbarrow", -28.5, -10.5, 60.0, 8.0], ["resource_lumber", -35.0, 13.0, 0.0, 8.0], ["resource_stone", -29.5, 12.5, 0.0, 8.0]]
+	for c in camp:
+		place("hex/%s.gltf" % c[0], Vector3(c[1], 0, c[2]), c[3], c[4], "ice" if envn == "ice" else "")
+
+	# ===== 어둠의 진영 (오른쪽): 문·납골당·묘지·울타리 =====
+	place("hw/arch_gate.gltf", Vector3(35.6, 0, 0), 90, 1.9, "gloom")
+	place("hw/crypt.gltf", Vector3(47, 0, 0), -90, 1.8, "gloom")
+	place("hex/building_castle_red.gltf", Vector3(66, 0, 0), -90, 6.5, "dark")
+	for z in [-18.0, 18.0]:
+		place("hex/building_tower_A_red.gltf", Vector3(56, 0, z), 0, 6.0, "dark")
+	for z in [-27.0, -21.0, -15.0, -9.0, 9.0, 15.0, 21.0, 27.0]:
+		place("hw/fence.gltf", Vector3(39, 0, z), 90, 1.5, "gloom")
+	for z in [-5.6, 5.6]:
+		place("hw/post_skull.gltf", Vector3(36.8, 1.29 * 1.0, z), 0, 1.0, "gloom")
+		place("hw/lantern_standing.gltf", Vector3(32.5, 0, z * 1.3), 0, 2.0)
+		_torch(Vector3(31.5, 0, z * 1.7), Color(0.7, 0.3, 1.0))
+	var grave := ["gravestone", "grave_A", "grave_B", "gravemarker_A", "gravemarker_B", "coffin"]
+	for i in 16:
+		var gz := rng.randf_range(8.5, 17.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+		place("hw/%s.gltf" % grave[i % grave.size()], Vector3(rng.randf_range(24, 36.5), 0, gz), rng.randf_range(0, 360), rng.randf_range(1.2, 1.7), "gloom")
+	# 해골·뼈는 길 밖(|z| 5.5 이상)에 작게
+	for nm in ["skull", "ribcage", "bone_A", "bone_B", "skull", "bone_A", "ribcage", "bone_B"]:
+		var bz := rng.randf_range(5.8, 9.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+		place("hw/%s.gltf" % nm, Vector3(rng.randf_range(22, 34), 0.0, bz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
+
+	# ===== 숲: 스테이지마다 다른 나무 =====
+	var clusters := ["trees_A_large", "trees_B_large", "trees_A_medium", "trees_B_medium", "trees_A_small", "trees_B_small"]
+	for i in 30:
+		var x := lerpf(-62.0, 62.0, i / 29.0) + rng.randf_range(-2.0, 2.0)
+		var z := -rng.randf_range(17.0, 25.0)
+		if absf(x) > 52.0:
+			continue
+		var sc := rng.randf_range(5.0, 6.5)
+		match envn:
+			"fire":
+				var pine := ["tree_pine_orange_large", "tree_pine_orange_medium", "tree_pine_orange_small", "tree_dead_medium"]
+				place("hw/%s.gltf" % pine[i % pine.size()], Vector3(x, 0, z), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
+			"dark":
+				var dead := ["tree_dead_large", "tree_dead_medium", "tree_dead_small"]
+				place("hw/%s.gltf" % dead[i % dead.size()], Vector3(x, 0, z), rng.randf_range(0, 360), rng.randf_range(1.0, 1.5))
+			_:
+				place("hex/%s.gltf" % clusters[i % clusters.size()], Vector3(x, 0, z), rng.randf_range(0, 360), sc, tint)
+	for i in 18:   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
+		var x2 := rng.randf_range(-33, 33)
+		var z2 := rng.randf_range(12.5, 16.0) * (1.0 if rng.randf() < 0.35 else -1.0)
+		var single := "tree_single_A" if i % 2 == 0 else "tree_single_B"
+		if envn == "dark":
+			place("hw/tree_dead_small.gltf", Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(1.0, 1.4))
+		elif envn == "fire":
+			place("hw/tree_pine_orange_small.gltf", Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(0.8, 1.1))
+		else:
+			place("hex/%s.gltf" % single, Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(4.0, 5.5), tint)
+	for i in 22:   # 바위
+		var rk := "rock_single_%s" % ["A", "B", "C", "D", "E"][i % 5]
+		place("hex/%s.gltf" % rk, Vector3(rng.randf_range(-32, 32), 0, rng.randf_range(9.5, 16.5) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(6.0, 10.0), tint)
+
+	# ===== 먼 배경: 언덕과 산, 구름 =====
+	var hills := ["hills_A", "hills_B", "hills_C", "hills_A_trees"]
+	for i in 12:
+		var hx := lerpf(-90.0, 90.0, i / 11.0) + rng.randf_range(-4, 4)
+		place("hex/%s.gltf" % hills[i % hills.size()], Vector3(hx, 0, -rng.randf_range(38.0, 46.0)), rng.randf_range(0, 360), rng.randf_range(9.0, 12.0), tint)
+	var mts := ["mountain_A_grass_trees", "mountain_B_grass_trees", "mountain_C_grass_trees"]
+	for i in 9:
+		var mx := lerpf(-100.0, 100.0, i / 8.0) + rng.randf_range(-5, 5)
+		place("hex/%s.gltf" % mts[i % mts.size()], Vector3(mx, 0, -rng.randf_range(58.0, 70.0)), rng.randf_range(0, 360), rng.randf_range(13.0, 17.0), tint)
+	clouds.clear()
+	for i in 9:
+		var cn := "cloud_big" if i % 3 != 2 else "cloud_small"
+		var cl := place("hex/%s.gltf" % cn, Vector3(rng.randf_range(-100, 100), rng.randf_range(28, 42), -rng.randf_range(20, 70)), 0, rng.randf_range(6.0, 10.0), "dark" if envn == "dark" else ("fire" if envn == "fire" else ""))
+		cl.set_meta("speed", rng.randf_range(0.5, 1.4))
+		clouds.append(cl)
+
+	# 불꽃 스테이지: 곳곳에 타오르는 불
+	if envn == "fire":
+		for i in 10:
+			var p := Vector3(rng.randf_range(-25, 28), 0, rng.randf_range(11, 16) * (1 if rng.randf() < 0.5 else -1))
+			var f := _particles(p, Color(1.0, 0.5, 0.15), 24, 1.0, 0.4, Vector3(0, 2.5, 0), false)
+			f.scale_amount_min = 1.5
+			f.scale_amount_max = 3.0
+
+	# 포탈: 어둠의 문 안쪽에 소용돌이 원판과 입자
+	portal_disc = MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 2.9
+	cm.bottom_radius = 2.9
+	cm.height = 0.1
+	portal_disc.mesh = cm
+	portal_disc.material_override = _overlay(Color(0.45, 0.06, 0.65, 0.75))
+	portal_disc.position = Vector3(35.0, 3.6, 0)
+	portal_disc.rotation_degrees = Vector3(0, 0, 90)
+	add_child(portal_disc)
+	var pl := OmniLight3D.new()
+	pl.light_color = Color(0.7, 0.3, 1.0)
+	pl.light_energy = 3.0
+	pl.omni_range = 14.0
+	pl.position = Vector3(33, 3, 0)
+	add_child(pl)
+	var pp2 := _particles(Vector3(34.6, 3.6, 0), Color(0.75, 0.35, 1.0), 60, 1.4, 2.6, Vector3(-1.5, 0, 0), false)
+	pp2.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	pp2.emission_ring_axis = Vector3(1, 0, 0)
+	pp2.emission_ring_radius = 2.9
+	pp2.emission_ring_inner_radius = 2.5
+	pp2.emission_ring_height = 0.1
 
 
 func _particles(pos: Vector3, col: Color, amount: int, life: float, spd: float, grav: Vector3, one_shot := true) -> CPUParticles3D:
@@ -1069,9 +1142,12 @@ func _process(delta: float) -> void:
 		else:
 			keep.append(u)
 	units = keep
-	var portal := get_node_or_null("Portal")
-	if portal:
-		portal.rotation.x += delta * 0.8
+	if portal_disc:
+		portal_disc.scale = Vector3.ONE * (1.0 + 0.06 * sin(t * 3.0))
+	for c in clouds:
+		c.position.x += float(c.get_meta("speed")) * delta
+		if c.position.x > 110.0:
+			c.position.x = -110.0
 	_update_camera(delta)
 
 

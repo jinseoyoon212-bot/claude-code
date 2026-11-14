@@ -6,6 +6,9 @@ var joy_center := Vector2.ZERO
 var joy_pos := Vector2.ZERO
 var btn_touch := {}
 var buttons := {}
+var appear_t := 0.0         # 전투 화면이 나타난 뒤 경과 (페이드 인)
+var prev_cd := {}           # 버튼별 직전 대기시간 비율 (사용·준비완료 순간 감지)
+var ready_ms := {}          # 버튼이 다시 쓸 수 있게 된 시각
 
 const SLOT_KEYS := ["Q", "E", "R", "F"]
 const ITEM_KEYS := ["1", "2", "3"]
@@ -60,6 +63,7 @@ func _input(ev: InputEvent) -> void:
 		if ev.pressed:
 			var act := click_at(ev.position)
 			if act == "pause":
+				mark_press("pause", ev.position)
 				Sfx.play("click")
 				main.set_paused(true)
 				return
@@ -93,6 +97,8 @@ func _input(ev: InputEvent) -> void:
 
 func _press(b: String, down: bool) -> void:
 	var bt: Dictionary = buttons.get(b, {})
+	if down and buttons.has(b):
+		mark_press(b, buttons[b].c)
 	match bt.get("kind", ""):
 		"attack":
 			main.touch_attack = down
@@ -109,7 +115,12 @@ func _press(b: String, down: bool) -> void:
 					Sfx.play("error")
 
 
-func _process(_d: float) -> void:
+func _process(d: float) -> void:
+	if main and main.state == "play":
+		appear_t += d
+	elif main:
+		appear_t = 0.0
+	modulate.a = clampf(appear_t / 0.45, 0.0, 1.0)
 	fit()
 	_layout()
 	queue_redraw()
@@ -117,6 +128,8 @@ func _process(_d: float) -> void:
 
 func _draw() -> void:
 	clicks.clear()
+	btn_i = 0
+	base_xf = Transform2D.IDENTITY
 	if main == null or main.hero == null or main.state in ["gate", "intro", "title"]:
 		return
 	_draw_world_ui()
@@ -219,6 +232,15 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		rdy = cdk <= 0.0
 	elif bt.kind == "item":
 		rdy = Save.items[id] > 0
+	# 스킬을 쓴 순간(키보드든 터치든)은 눌린 모션, 다시 쓸 수 있게 된 순간은 파동
+	var pc: float = prev_cd.get(bname, 0.0)
+	if bt.kind in ["skill", "dash"]:
+		if pc <= 0.0 and cdk > 0.0:
+			mark_press(bname)
+		elif pc > 0.0 and cdk <= 0.0:
+			ready_ms[bname] = Time.get_ticks_msec()
+		prev_cd[bname] = cdk
+	fx_begin(c, press_scale(bname) * (0.92 if pressed else 1.0))
 	if rdy and bt.kind == "skill":
 		draw_circle(c, r + 4, Color(col, 0.12 + 0.06 * sin(main.t * 4.0)))
 	draw_circle(c, r, Color(0.07, 0.07, 0.16, 0.82) if not pressed else Color(0.3, 0.26, 0.1, 0.92))
@@ -238,6 +260,13 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		var kw := 22.0 if bt.key.length() == 1 else 44.0
 		panel(Rect2(kp - Vector2(kw / 2, 10), Vector2(kw, 20)), Color(0, 0, 0, 0.8), 10)
 		txt(f_bold, kp + Vector2(0, 5), bt.key, 11, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+	var pk := press_k(bname)
+	if pk < 1.0:
+		draw_circle(c, r, Color(1, 1, 1, 0.3 * (1.0 - pk)))
+	fx_end()
+	var rk := (Time.get_ticks_msec() - int(ready_ms.get(bname, -10000))) / 520.0
+	if rk < 1.0:   # 다시 쓸 수 있게 되면 파동이 한 번 퍼진다
+		draw_arc(c, r + 3.0 + 22.0 * ease_out(rk), 0, TAU, 40, Color(col, 0.85 * (1.0 - rk)), 4.0, true)
 
 
 func _draw_joystick() -> void:
