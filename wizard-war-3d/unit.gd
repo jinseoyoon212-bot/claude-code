@@ -20,6 +20,10 @@ var radius := 0.6
 var bar_h := 2.6
 var is_hero := false
 var is_static := false
+var is_boss := false
+var elite := false
+var enraged := false
+var scripted := false   # 인트로 연출용: AI 대신 스크립트가 움직임
 
 var cd_t := 0.0
 var dead := false
@@ -42,6 +46,7 @@ var summon_t := 10.0
 var model: Node3D
 var anim: AnimationPlayer
 var cur_anim := ""
+var anim_speed := 1.0
 var meshes: Array = []
 var base_overlay: Material = null
 var run_anim := "Running_A"
@@ -66,6 +71,8 @@ func setup(m, k: String, def: Dictionary) -> void:
 	radius = def.get("radius", 0.55) * sc
 	bar_h = 2.7 * sc
 	cd_t = randf() * cd
+	is_boss = def.get("boss", false)
+	special_t = def.get("special_cd", 7.0)
 	if kind == "crystal":
 		is_static = true
 		bar_h = 4.6
@@ -155,7 +162,7 @@ func loop_anim(a: String) -> void:
 	if anim == null or lock_t > 0.0 or cur_anim == a:
 		return
 	cur_anim = a
-	anim.play(a, 0.18)
+	anim.play(a, 0.18, anim_speed)
 
 
 func play_once(a: String, lock: float, spd := 1.0) -> void:
@@ -178,16 +185,45 @@ func forward() -> Vector3:
 	return Vector3(sin(rotation.y), 0, cos(rotation.y))
 
 
-func take_damage(amount: float, _src = null) -> void:
+func make_elite() -> void:
+	elite = true
+	max_hp *= 2.5
+	hp = max_hp
+	dmg *= 1.5
+	display_name = "정예 " + display_name
+	if model:
+		model.scale *= 1.25
+	radius *= 1.25
+	bar_h *= 1.25
+	base_overlay = main.elite_mat
+	_set_overlay(base_overlay)
+
+
+func take_damage(amount: float, _src = null, crit := false) -> void:
 	if dead:
 		return
+	if team == 0 and Save.cheats.god and (is_hero or kind == "crystal"):
+		return
+	if team == 1 and Save.cheats.one_hit:
+		amount = hp + 1.0
 	if shield_t > 0.0:
 		main.add_floater(position + Vector3(0, bar_h, 0), "막음", Color(0.5, 0.9, 1.0))
 		return
 	hp -= amount
 	flash_t = 0.12
 	_set_overlay(main.flash_mat)
-	main.add_floater(position + Vector3(0, bar_h, 0), str(int(round(amount))), Color(1, 0.85, 0.4) if team == 1 else Color(1, 0.45, 0.45))
+	if Save.settings.numbers:
+		if crit:
+			main.add_floater(position + Vector3(0, bar_h + 0.3, 0), "치명타 %d" % int(round(amount)), Color(1.0, 0.95, 0.3), 1.4)
+		else:
+			main.add_floater(position + Vector3(0, bar_h, 0), str(int(round(amount))), Color(1, 0.85, 0.4) if team == 1 else Color(1, 0.45, 0.45))
+	if team == 1:
+		Sfx.play("hit", 0.6)
+	if is_boss and not enraged and hp < max_hp * 0.4 and hp > 0.0:
+		enraged = true
+		speed *= 1.4
+		cd *= 0.65
+		main.on_boss_enrage(self)
 	if hp <= 0.0:
 		hp = 0.0
 		die()
@@ -205,6 +241,8 @@ func die() -> void:
 		anim.play("Death_A", 0.1)
 	if kind == "crystal":
 		get_node("Gem").visible = false
+	if team == 1:
+		Sfx.play("bones", 0.8)
 	main.on_death(self)
 
 
@@ -240,8 +278,8 @@ func tick(delta: float, active: bool) -> void:
 		pending_t -= delta
 		if pending_t < 0.0:
 			_release_attack()
-	if is_hero or not active:
-		if not active and not is_hero:
+	if is_hero or scripted or not active:
+		if not active and not is_hero and not scripted:
 			loop_anim(idle_anim)
 		return
 	_ai(delta)
@@ -252,7 +290,7 @@ func _ai(delta: float) -> void:
 	if retarget_t <= 0.0 or target == null or target.dead:
 		retarget_t = 0.35 + randf() * 0.3
 		target = main.nearest_enemy(self, aggro)
-	if kind == "boss":
+	if is_boss:
 		_boss_specials(delta)
 	var moving := false
 	if target:
@@ -310,7 +348,7 @@ func _release_attack() -> void:
 		return
 	if ranged:
 		var dir: Vector3 = tg.position - position
-		main.spawn_proj(self, tg, dmg * power, position + Vector3(0, 1.3 * (2.0 if kind == "boss" else 1.0), 0) + dir.normalized() * 0.6, dir)
+		main.spawn_proj(self, tg, dmg * power, position + Vector3(0, 1.3 * (2.0 if is_boss else 1.0), 0) + dir.normalized() * 0.6, dir)
 	else:
 		var dist := position.distance_to(tg.position) - tg.radius - radius
 		if dist <= attack_range + 0.8:
@@ -321,10 +359,10 @@ func _boss_specials(delta: float) -> void:
 	special_t -= delta
 	summon_t -= delta
 	if summon_t <= 0.0 and lock_t <= 0.0:
-		summon_t = 13.0
+		summon_t = 9.0 if enraged else 13.0
 		play_once("Spellcast_Summon", 1.2)
 		main.boss_summon(self)
 	elif special_t <= 0.0 and lock_t <= 0.0 and target:
-		special_t = 7.0
-		play_once("Spellcast_Long", 1.0)
+		special_t = 4.5 if enraged else 7.0
+		play_once("Spellcast_Long" if anim and anim.has_animation("Spellcast_Long") else attack_anim, 1.0)
 		main.boss_wave(self)

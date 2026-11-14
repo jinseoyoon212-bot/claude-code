@@ -33,3 +33,4 @@ lights_and_shadows/directional_shadow/size=2048
 [autoload]
 
 Save="*res://save.gd"
+Sfx="*res://audio.gd"

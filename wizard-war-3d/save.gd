@@ -1,11 +1,12 @@
 extends Node
-## 저장 데이터와 상점 목록 (자동 로드 싱글톤 "Save").
+## 저장 데이터, 상점·스테이지·업적 목록, 설정, 개발자 치트 (자동 로드 싱글톤 "Save").
 
 const PATH := "user://wizardwar.cfg"
 const MAX_UP := 5
 const MAX_SKILL := 5
 const MAX_ITEM := 9
 const MAX_EQUIP := 4
+const DEV_PASSWORD := "devmaster"
 
 const UPGRADES := [
 	{"id": "power", "name": "마력 강화", "icon": "up_power", "base": 40},
@@ -33,17 +34,58 @@ const ITEMS := [
 	{"id": "potion_crystal", "name": "수정의 정수", "desc": "빛의 수정 체력 40% 회복", "icon": "potion_crystal", "price": 40},
 ]
 
-var gold := 100
+## 스테이지: waves=웨이브 수(0이면 무한), mult=적 체력·공격 배율, elite=정예 확률
+const STAGES := [
+	{"id": "s1", "name": "성문 앞 전투", "sub": "해골 군단의 첫 습격", "icon": "castle", "waves": 3, "mult": 1.0, "elite": 0.0,
+		"boss": "boss_general", "env": "day", "reward": 150},
+	{"id": "s2", "name": "달빛 숲", "sub": "망령왕이 숲을 뒤덮는다", "icon": "moon", "waves": 4, "mult": 1.25, "elite": 0.05,
+		"boss": "boss_lich", "env": "night", "reward": 250},
+	{"id": "s3", "name": "불타는 평원", "sub": "그림자 암살자의 습격", "icon": "flame", "waves": 4, "mult": 1.55, "elite": 0.1,
+		"boss": "boss_rogue", "env": "fire", "reward": 350},
+	{"id": "s4", "name": "얼어붙은 호수", "sub": "서리 거인이 깨어났다", "icon": "snow", "waves": 5, "mult": 1.9, "elite": 0.15,
+		"boss": "boss_golem", "env": "ice", "reward": 450},
+	{"id": "s5", "name": "어둠의 요새", "sub": "어둠의 군주 모르가스와의 결전", "icon": "portal", "waves": 5, "mult": 2.3, "elite": 0.2,
+		"boss": "boss", "env": "dark", "reward": 700},
+	{"id": "endless", "name": "끝없는 밤", "sub": "얼마나 버틸 수 있는가 (3스테이지 클리어 시 해금)", "icon": "infinity", "waves": 0, "mult": 1.0, "elite": 0.1,
+		"boss": "", "env": "dark", "reward": 0},
+]
+
+const ACHIEVEMENTS := [
+	{"id": "kill_1", "name": "첫 처치", "desc": "적 1명 처치", "stat": "kills", "goal": 1, "reward": 20},
+	{"id": "kill_100", "name": "해골 사냥꾼", "desc": "적 100명 처치", "stat": "kills", "goal": 100, "reward": 150},
+	{"id": "kill_500", "name": "군단 파괴자", "desc": "적 500명 처치", "stat": "kills", "goal": 500, "reward": 400},
+	{"id": "kill_2000", "name": "빛의 전설", "desc": "적 2000명 처치", "stat": "kills", "goal": 2000, "reward": 1000},
+	{"id": "boss_1", "name": "군주 사냥", "desc": "보스 1마리 처치", "stat": "bosses", "goal": 1, "reward": 150},
+	{"id": "boss_10", "name": "어둠의 천적", "desc": "보스 10마리 처치", "stat": "bosses", "goal": 10, "reward": 600},
+	{"id": "stage_all", "name": "빛의 수호자", "desc": "5개 스테이지 모두 클리어", "stat": "cleared", "goal": 5, "reward": 1000},
+	{"id": "stars_15", "name": "완벽한 방어", "desc": "별 15개 모으기", "stat": "stars", "goal": 15, "reward": 1200},
+	{"id": "skills_all", "name": "대현자", "desc": "스킬 7종 모두 습득", "stat": "skills", "goal": 7, "reward": 400},
+	{"id": "endless_10", "name": "밤을 견딘 자", "desc": "끝없는 밤 웨이브 10 도달", "stat": "endless", "goal": 10, "reward": 600},
+	{"id": "elite_20", "name": "정예 사냥꾼", "desc": "정예 적 20명 처치", "stat": "elites", "goal": 20, "reward": 300},
+	{"id": "rich", "name": "부자 마법사", "desc": "골드 3000 이상 보유", "stat": "gold", "goal": 3000, "reward": 200},
+]
+
+var gold := 150
 var up := {"power": 0, "hp": 0, "speed": 0, "knight": 0, "crystal": 0, "mastery": 0}
 var skills := {"shield": 1, "nova": 1, "summon": 1, "chain": 0, "frost": 0, "heal": 0, "meteor": 0}
 var equipped: Array = ["shield", "nova", "summon"]
 var items := {"potion_hp": 1, "potion_mana": 0, "potion_crystal": 0}
-var best_wave := 0
-var wins := 0
-var next_action := ""   # 씬을 다시 불러온 뒤 할 일: "start" / "shop"
+var stars := {}
+var stats := {"kills": 0, "bosses": 0, "elites": 0, "games": 0}
+var endless_best := 0
+var claimed: Array = []
+var settings := {"music": 0.7, "sfx": 0.9, "shadows": true, "numbers": true, "shake": true}
+var dev_unlocked := false
+var current_stage := "s1"
+
+# 실행 중에만 유지되는 값
+var next_action := ""
+var intro_seen := false
+var cheats := {"god": false, "one_hit": false, "no_cd": false, "speed": 1}
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_data()
 
 
@@ -52,31 +94,120 @@ func load_data() -> void:
 	if cfg.load(PATH) != OK:
 		return
 	gold = int(cfg.get_value("p", "gold", gold))
-	best_wave = int(cfg.get_value("p", "best_wave", 0))
-	wins = int(cfg.get_value("p", "wins", 0))
-	var u: Dictionary = cfg.get_value("p", "up", {})
-	for k in up:
-		up[k] = int(u.get(k, 0))
-	var s: Dictionary = cfg.get_value("p", "skills", {})
-	for k in skills:
-		skills[k] = int(s.get(k, skills[k]))
-	var it: Dictionary = cfg.get_value("p", "items", {})
-	for k in items:
-		items[k] = int(it.get(k, items[k]))
+	endless_best = int(cfg.get_value("p", "endless_best", 0))
+	dev_unlocked = bool(cfg.get_value("p", "dev", false))
+	current_stage = str(cfg.get_value("p", "stage", "s1"))
+	for pair in [[up, "up"], [skills, "skills"], [items, "items"], [stats, "stats"], [settings, "settings"]]:
+		var src: Dictionary = cfg.get_value("p", pair[1], {})
+		var dst: Dictionary = pair[0]
+		for k in dst:
+			if src.has(k):
+				dst[k] = src[k]
+	stars = cfg.get_value("p", "stars", {})
+	claimed = cfg.get_value("p", "claimed", [])
 	var eq: Array = cfg.get_value("p", "equipped", equipped)
 	equipped = eq.filter(func(e): return skills.has(e) and skills[e] > 0).slice(0, MAX_EQUIP)
+	if equipped.is_empty():
+		equipped = ["shield"]
 
 
 func save_data() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("p", "gold", gold)
-	cfg.set_value("p", "best_wave", best_wave)
-	cfg.set_value("p", "wins", wins)
+	cfg.set_value("p", "endless_best", endless_best)
+	cfg.set_value("p", "dev", dev_unlocked)
+	cfg.set_value("p", "stage", current_stage)
 	cfg.set_value("p", "up", up)
 	cfg.set_value("p", "skills", skills)
 	cfg.set_value("p", "items", items)
+	cfg.set_value("p", "stats", stats)
+	cfg.set_value("p", "settings", settings)
+	cfg.set_value("p", "stars", stars)
+	cfg.set_value("p", "claimed", claimed)
 	cfg.set_value("p", "equipped", equipped)
 	cfg.save(PATH)
+
+
+func reset_all() -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+	gold = 150
+	for k in up: up[k] = 0
+	skills = {"shield": 1, "nova": 1, "summon": 1, "chain": 0, "frost": 0, "heal": 0, "meteor": 0}
+	equipped = ["shield", "nova", "summon"]
+	items = {"potion_hp": 1, "potion_mana": 0, "potion_crystal": 0}
+	stars = {}
+	stats = {"kills": 0, "bosses": 0, "elites": 0, "games": 0}
+	endless_best = 0
+	claimed = []
+	current_stage = "s1"
+	save_data()
+
+
+# ---------- 스테이지 ----------
+func stage(id: String) -> Dictionary:
+	for s in STAGES:
+		if s.id == id:
+			return s
+	return STAGES[0]
+
+
+func stage_unlocked(id: String) -> bool:
+	if id == "s1":
+		return true
+	if id == "endless":
+		return int(stars.get("s3", 0)) > 0
+	for i in STAGES.size():
+		if STAGES[i].id == id:
+			return int(stars.get(STAGES[i - 1].id, 0)) > 0
+	return false
+
+
+func total_stars() -> int:
+	var n := 0
+	for k in stars:
+		n += int(stars[k])
+	return n
+
+
+func cleared_count() -> int:
+	var n := 0
+	for s in STAGES:
+		if s.id != "endless" and int(stars.get(s.id, 0)) > 0:
+			n += 1
+	return n
+
+
+# ---------- 업적 ----------
+func stat_value(st: String) -> int:
+	match st:
+		"cleared": return cleared_count()
+		"stars": return total_stars()
+		"skills": return skills.values().filter(func(v): return v > 0).size()
+		"endless": return endless_best
+		"gold": return gold
+	return int(stats.get(st, 0))
+
+
+func achievement_ready(a: Dictionary) -> bool:
+	return not claimed.has(a.id) and stat_value(a.stat) >= a.goal
+
+
+func unclaimed_count() -> int:
+	return ACHIEVEMENTS.filter(func(a): return achievement_ready(a)).size()
+
+
+func claim(id: String) -> String:
+	for a in ACHIEVEMENTS:
+		if a.id == id:
+			if claimed.has(id):
+				return "이미 받은 보상입니다"
+			if stat_value(a.stat) < a.goal:
+				return "아직 조건을 달성하지 못했습니다"
+			claimed.append(id)
+			gold += a.reward
+			save_data()
+			return ""
+	return "알 수 없는 업적"
 
 
 # ---------- 가격 ----------
@@ -153,6 +284,35 @@ func toggle_equip(id: String) -> String:
 	return ""
 
 
+# ---------- 개발자 치트 ----------
+func cheat(id: String) -> String:
+	match id:
+		"gold":
+			gold += 10000
+		"max_up":
+			for k in up: up[k] = MAX_UP
+		"max_skill":
+			for k in skills: skills[k] = MAX_SKILL
+			equipped = ["meteor", "chain", "nova", "shield"]
+		"items":
+			for k in items: items[k] = MAX_ITEM
+		"stages":
+			for s in STAGES:
+				if s.id != "endless":
+					stars[s.id] = 3
+		"god", "one_hit", "no_cd":
+			cheats[id] = not cheats[id]
+			return ("켜짐: " if cheats[id] else "꺼짐: ") + {"god": "무적 모드", "one_hit": "한 방 처치", "no_cd": "대기시간 없음"}[id]
+		"speed":
+			cheats.speed = 1 if cheats.speed >= 3 else cheats.speed + 1
+			return "게임 속도 x%d" % cheats.speed
+		"lock":
+			dev_unlocked = false
+			cheats = {"god": false, "one_hit": false, "no_cd": false, "speed": 1}
+	save_data()
+	return "적용 완료"
+
+
 # ---------- 수치 ----------
 func up_desc(id: String, lv: int) -> String:
 	match id:
@@ -171,7 +331,6 @@ func skill_cd(id: String) -> float:
 
 
 func sv(id: String, lv: int) -> Dictionary:
-	## 스킬 레벨별 수치
 	lv = maxi(1, lv)
 	match id:
 		"shield": return {"dur": 3.0 + 0.5 * lv}
