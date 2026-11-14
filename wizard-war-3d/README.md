@@ -24,7 +24,7 @@
   python3 tools/package_web.py build/web build/web_deploy   # wasm을 4조각으로 분할 + wrangler 설정 생성
   # build/web_deploy 안의 파일을 gh-pages 브랜치 루트에 올린다
   ```
-- 엔진 파일(`index.wasm`, 약 35MB)은 Cloudflare의 파일당 25MiB 제한 때문에 4조각(`index.wasm.N.bin`)으로 나눠 올린다.
+- 엔진 파일(`index.wasm`, 약 35MB)은 Cloudflare의 파일당 25MiB 제한 때문에 4조각(`index.partN.wasm`)으로 나눠 올린다. 확장자를 `.wasm`으로 둔 것은 호스팅이 압축해서 보내게 하려는 것(`.bin`은 압축되지 않아 전송량이 5배가 됨).
   브라우저에서는 `export_presets.cfg`의 `head_include` 스크립트가 `index.wasm` 요청을 조각 요청으로 바꿔 이어 붙인다.
   (`.assetsignore`가 원본 `index.wasm`을 Cloudflare 업로드에서 제외)
 - Cloudflare Workers Builds: Production branch=`gh-pages`, Build command 비움, Deploy command=`npx wrangler deploy`

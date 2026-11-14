@@ -24,8 +24,8 @@ data = open(wasm, "rb").read()
 size = math.ceil(len(data) / CHUNKS)
 for i in range(CHUNKS):
     part = data[i * size:(i + 1) * size]
-    open(os.path.join(dst, f"index.wasm.{i}.bin"), "wb").write(part)
-    print(f"index.wasm.{i}.bin  {len(part) / 1048576:.1f} MiB")
+    open(os.path.join(dst, f"index.part{i}.wasm"), "wb").write(part)
+    print(f"index.part{i}.wasm  {len(part) / 1048576:.1f} MiB")
 
 open(os.path.join(dst, ".nojekyll"), "w").close()
 # Cloudflare(Workers Builds)에 올리지 않을 파일: 원본 wasm(25MiB 초과)과 설정 파일들
