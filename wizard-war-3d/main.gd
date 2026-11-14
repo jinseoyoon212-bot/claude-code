@@ -822,12 +822,15 @@ func _update_intro(delta: float) -> void:
 		var grow := clampf((it - em) / 0.35, 0.0, 1.0)
 		u.model.scale = base * lerpf(0.35, 1.0, grow)
 		var sx: float = u.get_meta("stop_x")
-		if u.position.x > sx:
+		# 위치(Vector3)는 32비트라 정지 위치로 맞춰도 아주 조금 커질 수 있다.
+		# 오차 없이 비교하면 일부 병사가 도착한 뒤에도 "이동 중"으로 남아 제자리에서 계속 달린다.
+		if u.position.x > sx + 0.02:
 			u.position.x = maxf(sx, u.position.x - 7.0 * delta)
 			var dz: float = float(u.get_meta("slot_z")) - u.position.z
 			u.position.z += clampf(dz, -2.2 * delta, 2.2 * delta)
 			u.loop_anim(u.run_anim)
-		elif u.cur_anim == u.run_anim:
+		else:
+			u.position.x = sx
 			u.position.z = u.get_meta("slot_z")
 			u.loop_anim(u.idle_anim)
 	if crossed.call(0.9):
