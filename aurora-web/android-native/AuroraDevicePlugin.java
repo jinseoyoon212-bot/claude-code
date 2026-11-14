@@ -2,6 +2,7 @@ package com.aurora.agent;
 
 import android.Manifest;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -118,6 +119,18 @@ public class AuroraDevicePlugin extends Plugin {
             if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP); startAny(i); }
             JSObject o = new JSObject(); o.put("ok", i != null); call.resolve(o);
         } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    /** 접근성 '목록'을 거치지 않고 우리 서비스의 상세(켜기/끄기) 페이지로 바로 이동 (안드로이드 14+). 실패하면 일반 접근성 설정으로 대체 */
+    @PluginMethod public void openA11yDetails(final PluginCall call) {
+        JSObject o = new JSObject();
+        try {
+            Intent i = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS");
+            i.putExtra("android.intent.extra.COMPONENT_NAME", new ComponentName(ctx().getPackageName(), AuroraAccessibilityService.class.getName()).flattenToString());
+            startAny(i); o.put("opened", "details"); call.resolve(o); return;
+        } catch (Throwable t) { /* 아래 대체 경로 */ }
+        try { startAny(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); o.put("opened", "list"); call.resolve(o); }
+        catch (Throwable t) { call.reject(String.valueOf(t)); }
     }
 
     @PluginMethod public void openAppInfo(final PluginCall call) {

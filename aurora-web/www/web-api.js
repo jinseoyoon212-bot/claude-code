@@ -71,6 +71,7 @@
       if (!D) return 'APK 앱 안에서만 쓸 수 있어요.';
       try {
         if (n === 'a11y') { await D.openAccessibilitySettings(); return '접근성 설정을 열었어요. 목록에서 "설치된 앱/다운로드한 앱"을 찾아 Aurora Agent를 켜세요.'; }
+        if (n === 'detail') { const r = await D.openA11yDetails(); return r.opened === 'details' ? 'Aurora Agent 접근성 페이지를 열었어요. 스위치를 켜세요. (막히면 [앱 정보]에서 제한된 설정 허용 후 다시)' : '이 기기는 상세 페이지를 지원하지 않아 일반 접근성 설정을 열었어요.'; }
         if (n === 'appinfo') { await D.openAppInfo(); return '앱 정보를 열었어요. 오른쪽 위 ⋮ → "제한된 설정 허용"이 있으면 누르세요.'; }
         if (n === 'files') { await D.requestAllFilesAccess(); return '파일 권한 화면을 열었어요. Aurora Agent를 허용하세요.'; }
         if (n === 'secure') { await D.enableA11yViaSecureSettings(); return '접근성을 켰어요! 진단 버튼으로 확인해 보세요.'; }
