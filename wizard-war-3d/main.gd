@@ -671,11 +671,12 @@ const SWING_T := 10.85    # 무기 휘두르기 시작
 const CLASH_T := 11.15    # 공중에서 무기 충돌
 const FALL_T := 11.75     # 서로 튕겨 나가며 낙하
 const LAND_T := 12.45     # 착지
+const INTRO_BOSS_SCALE := 1.5
 const HERO_INTRO := Vector3(-11, 0, 0)
 const BOSS_INTRO := Vector3(-3, 0, 0)
 const CLASH_POS := Vector3(-7.75, 4.25, 0.3)
 const HERO_PEAK := Vector3(-9.0, 2.6, 0)
-const BOSS_PEAK := Vector3(-4.9, 0.9, 0)
+const BOSS_PEAK := Vector3(-5.7, 2.0, 0)
 
 var intro_boss: Unit = null
 
@@ -692,6 +693,9 @@ func begin_intro() -> void:
 	# 적 군단: 맨 앞은 어둠의 군주, 뒤로 세 줄
 	intro_boss = spawn_unit("boss", Vector3(34, 0, 0))
 	intro_boss.run_anim = "Running_A"
+	# 인트로에서는 대마법사와 맞붙는 장면이 어색하지 않게 크기를 줄인다 (전투 보스는 2.2배 그대로)
+	intro_boss.model.scale = Vector3.ONE * INTRO_BOSS_SCALE
+	intro_boss.radius = 0.55 * INTRO_BOSS_SCALE
 	intro_boss.set_meta("stop_x", BOSS_INTRO.x)
 	intro_boss.set_meta("delay", 0.0)
 	intro_units.append(intro_boss)
@@ -763,7 +767,7 @@ func _update_intro(delta: float) -> void:
 		intro_boss.position = _arc(BOSS_INTRO, BOSS_PEAK, k, true)
 		if randf() < 0.6:
 			sparks(hero.position + Vector3(0, 1.2, 0), Color(1, 0.85, 0.4), 3, 1.0, 0.4)
-			sparks(intro_boss.position + Vector3(0, 2.0, 0), Color(0.7, 0.3, 1.0), 3, 1.0, 0.4)
+			sparks(intro_boss.position + Vector3(0, 1.4, 0), Color(0.7, 0.3, 1.0), 3, 1.0, 0.4)
 	# 4) 공중에서 무기 충돌
 	if crossed.call(CLASH_T):
 		Sfx.play("impact")
