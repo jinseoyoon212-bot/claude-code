@@ -38,3 +38,9 @@ snow.svg          snowflake-1   by lorc
 speed.svg         fast-forward-button   by delapouite
 moon.svg          moon   by lorc
 infinity.svg      night-sky   by lorc
+back.svg          return-arrow   by lorc
+retry.svg         anticlockwise-rotation   by delapouite
+cancel.svg        cancel   by sbed
+upgrade.svg       upgrade   by delapouite
+exit.svg          exit-door   by delapouite
+equip.svg         swap-bag   by lorc

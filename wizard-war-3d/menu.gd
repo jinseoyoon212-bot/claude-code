@@ -14,9 +14,9 @@ var dev_taps := 0
 var dev_tap_t := 0.0
 
 const INTRO_LINES := [
-	[0.6, 3.4, "천 년의 봉인이 깨지던 밤"],
-	[4.0, 6.9, "어둠의 군주 모르가스가 해골 군단을 일으켰다"],
-	[7.5, 10.2, "마지막 대마법사가 빛의 수정 앞에 선다"],
+	[0.6, 3.0, "천 년의 봉인이 깨지던 밤"],
+	[3.4, 6.6, "어둠의 군주 모르가스가 해골 군단을 이끌고 진격한다"],
+	[7.0, 9.6, "빛의 군단 맨 앞에, 마지막 대마법사가 선다"],
 ]
 
 
@@ -286,7 +286,7 @@ func _logo(c: Vector2, scale_k: float, a: float) -> void:
 func _draw_intro() -> void:
 	var s := size
 	var it: float = main.intro_t
-	var bar_h := s.y * 0.12 * clampf(it / 1.0, 0, 1) * (1.0 - clampf((it - 12.8) / 1.2, 0, 1))
+	var bar_h := s.y * 0.12 * clampf(it / 1.0, 0, 1) * (1.0 - clampf((it - 14.4) / 1.2, 0, 1))
 	draw_rect(Rect2(0, 0, s.x, bar_h), Color.BLACK)
 	draw_rect(Rect2(0, s.y - bar_h, s.x, bar_h), Color.BLACK)
 	if it < 0.8:
@@ -298,8 +298,8 @@ func _draw_intro() -> void:
 			var full: String = ln[2]
 			var n := mini(full.length(), int((it - ln[0]) * 22.0))
 			txt(f_disp, Vector2(s.x / 2, s.y - bar_h - 40), full.substr(0, n), 30, Color(C_INK, a), HORIZONTAL_ALIGNMENT_CENTER)
-	if it >= 10.6:
-		var k := clampf((it - 10.6) / 0.5, 0, 1)
+	if it >= 11.5:
+		var k := clampf((it - 11.5) / 0.5, 0, 1)
 		var sc := lerpf(1.8, 1.0, 1.0 - pow(1.0 - k, 3))
 		_logo(Vector2(s.x / 2, s.y * 0.24), sc, k)
 	txt(f_bold, Vector2(s.x - 30, s.y - 20), "화면을 누르면 건너뛰기  ▶", 14, Color(C_DIM, 0.8), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -539,7 +539,7 @@ func _draw_password() -> void:
 	txt(f_disp, Vector2(s.x / 2, r.position.y + 100), "개발자 인증", 26, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 	if pw_error != "":
 		txt(f_bold, Vector2(s.x / 2, s.y / 2 + 52), pw_error, 14, C_BLOOD, HORIZONTAL_ALIGNMENT_CENTER, false)
-	button(Rect2(s.x / 2 - 200, r.end.y - 66, 190, 48), "취소", "back", true, false)
+	button(Rect2(s.x / 2 - 200, r.end.y - 66, 190, 48), "취소", "back", true, false, "cancel")
 	button(Rect2(s.x / 2 + 10, r.end.y - 66, 190, 48), "확인", "pw_ok", true, true)
 
 
@@ -598,7 +598,7 @@ func _draw_pause() -> void:
 	if Save.dev_unlocked:
 		button(Rect2(x, yy, 320, 52), "치트 메뉴", "page:cheat", true, false, "dev")
 		yy += 64
-	button(Rect2(x, yy, 320, 52), "포기하고 나가기", "to_title:stages", true, false, "skull")
+	button(Rect2(x, yy, 320, 52), "포기하고 나가기", "to_title:stages", true, false, "exit")
 
 
 # ---------------- 결과 ----------------

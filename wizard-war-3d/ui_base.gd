@@ -30,7 +30,7 @@ const SKILL_COL := {
 const ICON_NAMES := ["attack", "shield", "nova", "summon", "chain", "frost", "heal", "meteor", "potion_hp", "potion_mana",
 	"potion_crystal", "up_power", "up_hp", "up_speed", "up_knight", "up_crystal", "up_mastery", "gold", "dash", "pause",
 	"settings", "trophy", "lock", "star", "boss", "dev", "castle", "music", "sound", "check", "portal", "skull", "flame",
-	"snow", "speed", "moon", "infinity"]
+	"snow", "speed", "moon", "infinity", "back", "retry", "cancel", "upgrade", "exit", "equip"]
 
 
 func _ready() -> void:
@@ -95,6 +95,29 @@ func icon(id: String, c: Vector2, sz: float, col: Color) -> void:
 		draw_texture_rect(icons[id], Rect2(c - Vector2(sz, sz) / 2, Vector2(sz, sz)), false, col)
 
 
+func auto_icon(act: String, label: String) -> String:
+	## 아이콘을 따로 주지 않은 버튼에 동작에 맞는 아이콘을 고른다
+	var a := act.split(":")[0]
+	match a:
+		"back": return "back"
+		"retry": return "retry"
+		"pw_ok": return "check"
+		"resume": return "attack"
+		"start": return "attack"
+		"buy_up": return "upgrade" if label != "최대" else "check"
+		"buy_skill":
+			if label == "최대": return "check"
+			return "gold" if label.begins_with("구매") else "upgrade"
+		"buy_item": return "gold"
+		"equip": return "cancel" if label == "해제" else "equip"
+		"claim": return "gold"
+		"set":
+			if label == "켜짐": return "check"
+			if label == "꺼짐": return "cancel"
+		"to_title": return "exit"
+	return ""
+
+
 func button(r: Rect2, label: String, act: String, enabled := true, primary := true, ic := "") -> void:
 	var bg := C_GOLD if primary else Color(0.2, 0.2, 0.36)
 	if not enabled:
@@ -105,6 +128,16 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 	var fc := C_DARK if primary and enabled else (C_INK if enabled else C_DIM)
 	var fs := 15 if r.size.y < 44 else (20 if r.size.y < 58 else 24)
 	var cx := r.get_center().x
+	if label == "+" or label == "-":
+		# 아이콘 전용 +/- 버튼
+		var c := r.get_center()
+		draw_line(c - Vector2(9, 0), c + Vector2(9, 0), fc, 3.0, true)
+		if label == "+":
+			draw_line(c - Vector2(0, 9), c + Vector2(0, 9), fc, 3.0, true)
+		clicks.append({"rect": r, "act": act})
+		return
+	if ic == "":
+		ic = auto_icon(act, label)
 	if ic != "":
 		var tw := f_bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		icon(ic, Vector2(cx - tw / 2 - 6, r.get_center().y), fs * 1.3, fc)

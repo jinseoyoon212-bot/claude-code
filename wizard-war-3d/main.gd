@@ -653,14 +653,31 @@ func _slowmo(ms: int) -> void:
 
 
 # ---------------- 인트로 ----------------
+## 카메라 키프레임: [시간, 카메라 위치, 바라보는 곳]
 const INTRO_KEYS := [
 	[0.0, Vector3(44, 4, 9), Vector3(35, 3.3, 0)],
-	[3.6, Vector3(30, 6, 13), Vector3(24, 1.5, 0)],
-	[7.2, Vector3(2, 8, 16), Vector3(-6, 1.5, 0)],
-	[10.2, Vector3(-14.5, 3.2, 6.5), Vector3(-20, 2.0, 0)],
-	[13.5, Vector3(-9, 7, 14), Vector3(-18, 1.5, 0)],
+	[3.0, Vector3(34, 5, 12), Vector3(27, 1.5, 0)],
+	[6.6, Vector3(12, 6, 14), Vector3(3, 1.5, 0)],
+	[9.4, Vector3(-7, 3.2, 14), Vector3(-7, 1.8, 0)],
+	[10.7, Vector3(-7.2, 4.4, 11.0), Vector3(-7.2, 3.2, 0)],
+	[11.3, Vector3(-7.5, 4.6, 9.4), Vector3(-7.5, 3.6, 0)],
+	[12.6, Vector3(-7, 4.2, 12), Vector3(-7, 2.6, 0)],
+	[15.5, Vector3(-9, 7, 14), Vector3(-18, 1.5, 0)],
 ]
-const INTRO_LEN := 14.5
+const INTRO_LEN := 16.0
+const CROUCH_T := 9.7     # 도약 준비
+const LEAP_T := 10.25     # 도약
+const SWING_T := 10.85    # 무기 휘두르기 시작
+const CLASH_T := 11.15    # 공중에서 무기 충돌
+const FALL_T := 11.75     # 서로 튕겨 나가며 낙하
+const LAND_T := 12.45     # 착지
+const HERO_INTRO := Vector3(-11, 0, 0)
+const BOSS_INTRO := Vector3(-3, 0, 0)
+const CLASH_POS := Vector3(-7.75, 4.25, 0.3)
+const HERO_PEAK := Vector3(-9.0, 2.6, 0)
+const BOSS_PEAK := Vector3(-4.9, 0.9, 0)
+
+var intro_boss: Unit = null
 
 
 func begin_intro() -> void:
@@ -668,37 +685,117 @@ func begin_intro() -> void:
 	intro_t = 0.0
 	Sfx.music("music_title")
 	Sfx.play("whoosh", 0.7)
-	for i in 16:
-		var k: String = ["minion", "minion", "warrior", "dark_mage", "rogue"][i % 5]
-		var u := spawn_unit(k, Vector3(33 + (i % 4) * 2.0, 0, -6 + (i / 4) * 4.0 + randf()))
+	# 아군: 대마법사가 군단의 맨 앞에 선다
+	hero.position = HERO_INTRO
+	hero.face(Vector3(1, 0, 0), true)
+	hero.scripted = true
+	# 적 군단: 맨 앞은 어둠의 군주, 뒤로 세 줄
+	intro_boss = spawn_unit("boss", Vector3(34, 0, 0))
+	intro_boss.run_anim = "Running_A"
+	intro_boss.set_meta("stop_x", BOSS_INTRO.x)
+	intro_boss.set_meta("delay", 0.0)
+	intro_units.append(intro_boss)
+	var kinds := ["warrior", "minion", "rogue", "minion", "dark_mage"]
+	for i in 18:
+		var row := i / 6
+		var z := -6.25 + (i % 6) * 2.5
+		var u := spawn_unit(kinds[(i + row) % kinds.size()], Vector3(37 + row * 2.5 + randf(), 0, z))
+		u.set_meta("stop_x", BOSS_INTRO.x + 3.2 + row * 2.4 + randf() * 0.6)
+		u.set_meta("delay", 0.3 + randf() * 0.6)
+		intro_units.append(u)
+	for u in intro_units:
 		u.scripted = true
 		u.face(Vector3(-1, 0, 0), true)
-		u.loop_anim(u.run_anim)
-		intro_units.append(u)
-	var b := spawn_unit("boss", Vector3(36, 0, 0))
-	b.scripted = true
-	b.face(Vector3(-1, 0, 0), true)
-	b.loop_anim(b.run_anim)
-	intro_units.append(b)
+		u.loop_anim(u.idle_anim)
+
+
+func _arc(from: Vector3, to: Vector3, k: float, up: bool) -> Vector3:
+	## 도약/낙하 궤적: x·z는 부드럽게, y는 포물선
+	k = clampf(k, 0.0, 1.0)
+	var p := from.lerp(to, 1.0 - pow(1.0 - k, 2.0))
+	if up:
+		p.y = to.y * sin(k * PI / 2.0)
+	else:
+		p.y = from.y * (1.0 - k * k)
+	return p
 
 
 func _update_intro(delta: float) -> void:
 	var prev := intro_t
 	intro_t += delta
+	var it := intro_t
+	# 1) 적 군단 진격 → 아군 앞에서 정지
 	for u in intro_units:
-		u.position.x -= u.speed * 1.2 * delta
-	if prev < 3.8 and intro_t >= 3.8:
+		if u == intro_boss and it >= CROUCH_T:
+			continue
+		var sx: float = u.get_meta("stop_x")
+		if it > 1.0 + float(u.get_meta("delay")) and u.position.x > sx:
+			u.position.x = maxf(sx, u.position.x - 6.5 * delta)
+			u.loop_anim(u.run_anim)
+		elif u.cur_anim == u.run_anim:
+			u.loop_anim(u.idle_anim)
+	var crossed := func(at: float) -> bool: return prev < at and it >= at
+	if crossed.call(3.4):
 		Sfx.play("boss", 0.9)
-	if prev < 8.4 and intro_t >= 8.4:
-		hero.play_once("Spellcast_Raise", 1.2)
+	if crossed.call(8.2):
+		hero.play_once("Spellcast_Raise", 1.0)
 		sparks(hero.position + Vector3(0.4, 2.6, 0), Color(1, 0.85, 0.4), 40, 6.0, 1.0)
-		Sfx.play("summon", 0.8)
-	if prev < 10.6 and intro_t >= 10.6:
+		Sfx.play("summon", 0.7)
+	# 2) 도약 준비
+	if crossed.call(CROUCH_T):
+		hero.play_once("Jump_Start", 0.6)
+		intro_boss.play_once("Jump_Start", 0.6)
+		sparks(hero.position + Vector3(0, 0.3, 0), Color(0.8, 0.75, 0.6), 16, 3.0, 0.5)
+		sparks(intro_boss.position + Vector3(0, 0.3, 0), Color(0.6, 0.5, 0.7), 16, 3.0, 0.5)
+	# 3) 동시에 공중으로 도약
+	if crossed.call(LEAP_T):
+		hero.play_once("Jump_Idle", 0.7)
+		intro_boss.play_once("Jump_Idle", 0.7)
+		Sfx.play("dash")
+		Sfx.play("whoosh", 0.6)
+	if crossed.call(SWING_T):
+		hero.play_once("2H_Melee_Attack_Chop", 0.9, 1.3)
+		intro_boss.play_once("2H_Melee_Attack_Chop", 0.9, 1.3)
+		_slowmo(1100)
+	if it >= LEAP_T and it < CLASH_T:
+		var k := (it - LEAP_T) / (CLASH_T - LEAP_T)
+		hero.position = _arc(HERO_INTRO, HERO_PEAK, k, true)
+		intro_boss.position = _arc(BOSS_INTRO, BOSS_PEAK, k, true)
+		if randf() < 0.6:
+			sparks(hero.position + Vector3(0, 1.2, 0), Color(1, 0.85, 0.4), 3, 1.0, 0.4)
+			sparks(intro_boss.position + Vector3(0, 2.0, 0), Color(0.7, 0.3, 1.0), 3, 1.0, 0.4)
+	# 4) 공중에서 무기 충돌
+	if crossed.call(CLASH_T):
 		Sfx.play("impact")
-		white_flash = 1.0
-		shake = 0.6
-		for i in 4:
-			sparks(hero.position + Vector3(randf_range(-3, 3), 3, randf_range(-2, 2)), Color(1, 0.85, 0.4), 40, 9.0, 1.4)
+		Sfx.play("explode", 0.8)
+		white_flash = 0.55
+		shake = 1.0
+		sparks(CLASH_POS, Color(1.0, 0.85, 0.4), 90, 14.0, 1.0)
+		sparks(CLASH_POS, Color(0.75, 0.3, 1.0), 90, 14.0, 1.0)
+		burst_effect(CLASH_POS, Color(1, 1, 0.9))
+		ring_effect(Vector3(CLASH_POS.x, 0, 0), Color(1.0, 0.85, 0.4), 0.5, 14.0, 1.0)
+		ring_effect(Vector3(CLASH_POS.x, 0, 0), Color(0.75, 0.3, 1.0), 0.5, 10.0, 1.2)
+	if it >= CLASH_T and it < FALL_T:
+		var j := Vector3(randf() - 0.5, randf() - 0.5, 0) * 0.06
+		hero.position = HERO_PEAK + j
+		intro_boss.position = BOSS_PEAK - j
+	# 5) 서로 튕겨 나가며 착지
+	if it >= FALL_T and it < LAND_T:
+		var k := (it - FALL_T) / (LAND_T - FALL_T)
+		hero.position = _arc(HERO_PEAK, HERO_INTRO + Vector3(-1.5, 0, 0), k, false)
+		intro_boss.position = _arc(BOSS_PEAK, BOSS_INTRO + Vector3(1.5, 0, 0), k, false)
+	if crossed.call(LAND_T):
+		hero.position = HERO_INTRO + Vector3(-1.5, 0, 0)
+		intro_boss.position = BOSS_INTRO + Vector3(1.5, 0, 0)
+		hero.play_once("Jump_Land", 0.5)
+		intro_boss.play_once("Jump_Land", 0.5)
+		shake = 0.5
+		Sfx.play("hit")
+		sparks(hero.position + Vector3(0, 0.3, 0), Color(0.8, 0.75, 0.6), 24, 4.0, 0.6)
+		sparks(intro_boss.position + Vector3(0, 0.3, 0), Color(0.6, 0.5, 0.7), 30, 5.0, 0.6)
+	if it > LAND_T + 0.6:
+		hero.loop_anim("Idle")
+		intro_boss.loop_anim(intro_boss.idle_anim)
 	if intro_t >= INTRO_LEN:
 		end_intro()
 
@@ -711,6 +808,14 @@ func end_intro() -> void:
 		units.erase(u)
 		u.queue_free()
 	intro_units.clear()
+	intro_boss = null
+	hero.scripted = false
+	hero.position = Vector3(-20, 0, 0)
+	hero.face(Vector3(1, 0, 0), true)
+	hero.lock_t = 0.0
+	hero.cur_anim = ""
+	hero.loop_anim("Idle")
+	slowmo_until = 0
 	state = "title"
 	white_flash = maxf(white_flash, 0.5)
 	Sfx.music("music_title")
