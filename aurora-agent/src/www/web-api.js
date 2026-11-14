@@ -4,7 +4,7 @@
 (() => {
   const KEY = 'aurora-settings';
   const MOODS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'thinking', 'sleepy', 'love', 'laugh'];
-  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
+  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', serverUrl: '', token: '', mode: 'auto', phoneAuto: false, screenControl: false };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];

@@ -5,16 +5,16 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const clip = (s, n = 20000) => (s.length > n ? s.slice(0, n) + `\n...[${s.length - n}자 생략]` : s);
 
-  const SYSTEM = `당신은 "오로라"라는 귀여운 AI 에이전트이고, 지금 사용자의 안드로이드 폰 안에서 직접 동작합니다.
+  const SYSTEM = (screen) => `당신은 "오로라"라는 귀여운 AI 에이전트이고, 지금 사용자의 안드로이드 폰 안에서 직접 동작합니다.
 규칙:
 1. 단순한 질문·대화는 도구 없이 짧게 바로 답합니다. 폰 조작이 필요할 때만 도구를 씁니다.
 2. 한국어로 친근하고 간결하게 답합니다. 모든 답변의 맨 첫 줄에 기분 태그: [기분:${MOODS.join('|')}]
 3. 파일: 공유 저장소는 /sdcard (다운로드 /sdcard/Download, 사진 /sdcard/DCIM, 문서 /sdcard/Documents). 권한 오류가 나면 request_all_files_access를 호출해 사용자가 허용하게 안내합니다.
 4. run_command는 안드로이드 sh(toybox)이고 앱 권한으로 실행됩니다. 루트가 아니므로 다른 앱의 내부 데이터(/data/data)와 시스템 영역은 못 만집니다. 이 한계는 솔직히 알려줍니다.
-5. 앱 실행은 launch_app에 name(앱 이름)만 주면 한 번에 됩니다(list_apps 불필요). 이후 screen_read로 화면 확인 → screen_click_text / screen_tap / screen_type / screen_swipe → 필요할 때만 screen_read로 결과 확인. 좌표는 screen_read의 @x,y를 씁니다.
-   속도가 중요합니다: 도구 호출 횟수를 최소화하고, 서로 독립적인 호출은 한 번에 여러 개 요청하세요.
-6. 화면 조작이 "접근성 서비스 꺼짐" 오류면 open_accessibility_settings를 호출하고 'Aurora Agent'를 켜 달라고 안내합니다.
-7. 결제·송금·삭제·메시지 전송처럼 되돌리기 어려운 동작은 실행 전에 사용자에게 한 번 더 말로 확인합니다.
+${screen ? `5. 앱 실행은 launch_app에 name(앱 이름)만 주면 한 번에 됩니다(list_apps 불필요). 이후 screen_read로 화면 확인 → screen_click_text / screen_tap / screen_type / screen_swipe → 필요할 때만 screen_read로 결과 확인. 좌표는 screen_read의 @x,y를 씁니다.
+   속도가 중요합니다: 도구 호출 횟수를 최소화하고, 서로 독립적인 호출은 한 번에 여러 개 요청하세요.` : `5. 화면 직접 조작(탭·스와이프·화면 읽기)은 꺼져 있습니다. 화면을 눌러서 하는 방식은 쓰지 말고, 명령 한 번으로 끝나는 방식만 쓰세요: run_command, adb_command(Shizuku, 예: svc wifi enable, am start, pm list packages, settings put), launch_app(name=앱 이름), open_intent, 파일 도구. adb_command로도 input tap/swipe/uiautomator 같은 화면 조작은 하지 마세요. 명령으로 안 되는 일은 솔직히 안 된다고 알리고, 사용자가 원하면 설정에서 '화면 직접 조작'을 켜야 한다고 안내하세요.`}
+${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에게 설정의 [Shizuku로 접근성 켜기]를 안내하세요(Shizuku가 실행 중이면 접근성 없이도 화면 조작이 됩니다).
+` : ''}7. 결제·송금·삭제·메시지 전송처럼 되돌리기 어려운 동작은 실행 전에 사용자에게 한 번 더 말로 확인합니다.
 8. 작업을 마치면 무엇을 했는지 한두 문장으로 요약합니다.`;
 
   const S = (props, req = []) => ({ type: 'object', properties: props, required: req });
@@ -101,6 +101,7 @@
     const front = async () => { if (uiUsed) { await comeBack(); await sleep(700); } };
     const ask = async (title, detail) => { if (settings.phoneAuto) return true; await front(); return window.confirm(title + '\n\n' + detail + '\n\n허용할까요?'); };
 
+    const toolList = TOOLS.filter((t) => settings.screenControl || !(t.name.startsWith('screen_') || t.name === 'open_accessibility_settings'));
     let ctrl = null;
     async function controlMode() {
       if (ctrl) return ctrl;
@@ -118,6 +119,7 @@
       }
       if (UI.has(name)) uiUsed = true;
       const j = (o) => clip(JSON.stringify(o));
+      if (name.startsWith('screen_') && !settings.screenControl) return '화면 직접 조작은 꺼져 있어요. 명령(run_command/adb_command)이나 launch_app으로 처리하세요.';
       if (name.startsWith('screen_')) {
         const m = await controlMode();
         if (m === 'shizuku') return await shzScreen(name, i);
@@ -159,7 +161,7 @@
 
     for (let n = 0; n < 30; n++) {
       let data;
-      try { data = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, system: SYSTEM, tools: TOOLS, messages, onWait: (s) => notify({ type: 'wait', seconds: s }) }); }
+      try { data = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, system: SYSTEM(!!settings.screenControl), tools: toolList, messages, onWait: (s) => notify({ type: 'wait', seconds: s }) }); }
       catch (e) { return { error: String(e.message || e) }; }
       messages.push({ role: 'assistant', content: data.content });
       if (data.stop_reason !== 'tool_use') {
