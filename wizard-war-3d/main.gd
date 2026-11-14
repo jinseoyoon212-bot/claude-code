@@ -655,22 +655,23 @@ func _slowmo(ms: int) -> void:
 # ---------------- 인트로 ----------------
 ## 카메라 키프레임: [시간, 카메라 위치, 바라보는 곳]
 const INTRO_KEYS := [
-	[0.0, Vector3(44, 4, 9), Vector3(35, 3.3, 0)],
-	[3.0, Vector3(34, 5, 12), Vector3(27, 1.5, 0)],
-	[6.6, Vector3(12, 6, 14), Vector3(3, 1.5, 0)],
-	[9.4, Vector3(-7, 3.2, 14), Vector3(-7, 1.8, 0)],
-	[10.7, Vector3(-7.2, 4.4, 11.0), Vector3(-7.2, 3.2, 0)],
-	[11.3, Vector3(-7.5, 4.6, 9.4), Vector3(-7.5, 3.6, 0)],
-	[12.6, Vector3(-7, 4.2, 12), Vector3(-7, 2.6, 0)],
+	[0.0, Vector3(26, 3.2, 7.5), Vector3(34.5, 2.6, 0)],
+	[3.2, Vector3(23, 4.5, 11), Vector3(29, 1.5, 0)],
+	[6.6, Vector3(10, 6, 14), Vector3(2, 1.5, 0)],
+	[9.3, Vector3(-7, 3.2, 14), Vector3(-7, 1.8, 0)],
+	[10.3, Vector3(-7.2, 4.2, 11.0), Vector3(-7.2, 3.0, 0)],
+	[10.9, Vector3(-7.5, 4.6, 9.4), Vector3(-7.5, 3.6, 0)],
+	[12.3, Vector3(-7, 4.0, 12.5), Vector3(-7, 2.2, 0)],
 	[15.5, Vector3(-9, 7, 14), Vector3(-18, 1.5, 0)],
 ]
 const INTRO_LEN := 16.0
-const CROUCH_T := 9.7     # 도약 준비
-const LEAP_T := 10.25     # 도약
-const SWING_T := 10.85    # 무기 휘두르기 시작
-const CLASH_T := 11.15    # 공중에서 무기 충돌
-const FALL_T := 11.75     # 서로 튕겨 나가며 낙하
-const LAND_T := 12.45     # 착지
+const PORTAL_EXIT := Vector3(34.4, 0, 0)
+const CROUCH_T := 9.55     # 도약 준비 (웅크리기)
+const LEAP_T := 10.0       # 발을 떼는 순간
+const FLY_T := 0.72        # 도약 → 충돌까지 비행 시간
+const CLASH_T := LEAP_T + FLY_T
+const HITSTOP := 0.14      # 충돌 순간 멈춤
+const GRAV := 24.0
 const INTRO_BOSS_SCALE := 1.5
 const HERO_INTRO := Vector3(-11, 0, 0)
 const BOSS_INTRO := Vector3(-3, 0, 0)
@@ -679,97 +680,158 @@ const HERO_PEAK := Vector3(-9.0, 2.6, 0)
 const BOSS_PEAK := Vector3(-5.7, 2.0, 0)
 
 var intro_boss: Unit = null
+var jumpers := {}   # Unit -> 점프 상태
 
 
 func begin_intro() -> void:
 	state = "intro"
 	intro_t = 0.0
+	jumpers.clear()
 	Sfx.music("music_title")
 	Sfx.play("whoosh", 0.7)
 	# 아군: 대마법사가 군단의 맨 앞에 선다
 	hero.position = HERO_INTRO
 	hero.face(Vector3(1, 0, 0), true)
 	hero.scripted = true
-	# 적 군단: 맨 앞은 어둠의 군주, 뒤로 세 줄
-	intro_boss = spawn_unit("boss", Vector3(34, 0, 0))
+	# 적 군단: 포탈에서 한 명씩 걸어 나와 대열을 갖춘다 (맨 앞은 어둠의 군주)
+	intro_boss = spawn_unit("boss", PORTAL_EXIT)
 	intro_boss.run_anim = "Running_A"
-	# 인트로에서는 대마법사와 맞붙는 장면이 어색하지 않게 크기를 줄인다 (전투 보스는 2.2배 그대로)
 	intro_boss.model.scale = Vector3.ONE * INTRO_BOSS_SCALE
 	intro_boss.radius = 0.55 * INTRO_BOSS_SCALE
-	intro_boss.set_meta("stop_x", BOSS_INTRO.x)
-	intro_boss.set_meta("delay", 0.0)
-	intro_units.append(intro_boss)
+	_intro_slot(intro_boss, BOSS_INTRO.x, 0.0, 0.9)
 	var kinds := ["warrior", "minion", "rogue", "minion", "dark_mage"]
 	for i in 18:
 		var row := i / 6
-		var z := -6.25 + (i % 6) * 2.5
-		var u := spawn_unit(kinds[(i + row) % kinds.size()], Vector3(37 + row * 2.5 + randf(), 0, z))
-		u.set_meta("stop_x", BOSS_INTRO.x + 3.2 + row * 2.4 + randf() * 0.6)
-		u.set_meta("delay", 0.3 + randf() * 0.6)
-		intro_units.append(u)
+		var u := spawn_unit(kinds[(i + row) % kinds.size()], PORTAL_EXIT + Vector3(0, 0, randf_range(-1.4, 1.4)))
+		_intro_slot(u, BOSS_INTRO.x + 3.2 + row * 2.4 + randf() * 0.6, -6.25 + (i % 6) * 2.5, 1.7 + i * 0.19)
 	for u in intro_units:
 		u.scripted = true
+		u.visible = false
 		u.face(Vector3(-1, 0, 0), true)
-		u.loop_anim(u.idle_anim)
+		u.loop_anim(u.run_anim)
 
 
-func _arc(from: Vector3, to: Vector3, k: float, up: bool) -> Vector3:
-	## 도약/낙하 궤적: x·z는 부드럽게, y는 포물선
-	k = clampf(k, 0.0, 1.0)
-	var p := from.lerp(to, 1.0 - pow(1.0 - k, 2.0))
-	if up:
-		p.y = to.y * sin(k * PI / 2.0)
-	else:
-		p.y = from.y * (1.0 - k * k)
-	return p
+func _intro_slot(u: Unit, stop_x: float, slot_z: float, emerge: float) -> void:
+	u.set_meta("stop_x", stop_x)
+	u.set_meta("slot_z", slot_z)
+	u.set_meta("emerge", emerge)
+	u.set_meta("base_scale", u.model.scale)
+	intro_units.append(u)
+
+
+func _start_jump(u: Unit, peak: Vector3) -> void:
+	## 비행 시간 FLY_T 뒤에 peak에 닿도록 초속도를 계산 (실제 포물선)
+	var v := Vector3((peak.x - u.position.x) / FLY_T, (peak.y + 0.5 * GRAV * FLY_T * FLY_T) / FLY_T, (peak.z - u.position.z) / FLY_T)
+	jumpers[u] = {"v": v, "phase": "air", "sq": 1.25, "lean": 0.0, "lean_to": 0.22, "land_t": 0.0}
+
+
+func _update_jumper(u: Unit, st: Dictionary, delta: float, frozen: bool) -> void:
+	var base: Vector3 = u.get_meta("base_scale")
+	if not frozen:
+		match st.phase:
+			"air":
+				st.v.y -= GRAV * delta
+				u.position += st.v * delta
+				if u.position.y <= 0.0 and st.v.y < 0.0:
+					# 착지: 발이 닿는 순간 무릎을 굽히며 찌그러지고, 남은 속도로 미끄러진다
+					u.position.y = 0.0
+					st.phase = "skid"
+					st.sq = 0.72
+					st.lean_to = 0.0
+					st.v.y = 0.0
+					u.play_once("Jump_Land", 0.6)
+					Sfx.play("hit", 0.9)
+					shake = maxf(shake, 0.45)
+					sparks(u.position + Vector3(0, 0.15, 0), Color(0.78, 0.72, 0.6), 30, 4.5, 0.7)
+					ring_effect(u.position, Color(0.85, 0.8, 0.7), 0.3, 2.6, 0.5)
+			"skid":
+				var hv := Vector3(st.v.x, 0, st.v.z)
+				var sp := maxf(0.0, hv.length() - 14.0 * delta)
+				st.v = hv.normalized() * sp if sp > 0.0 else Vector3.ZERO
+				u.position += st.v * delta
+				if sp > 0.5 and randf() < 0.5:
+					sparks(u.position + Vector3(0, 0.1, 0), Color(0.78, 0.72, 0.6), 3, 1.5, 0.4)
+				st.land_t += delta
+				if sp <= 0.0 and st.land_t > 0.55:
+					st.phase = "done"
+					u.loop_anim(u.idle_anim)
+	# 찌그러짐/늘어남은 스프링처럼 1로 돌아온다 (부피 유지)
+	st.sq = lerpf(st.sq, 1.0, minf(1.0, delta * (7.0 if st.phase == "air" else 9.0)))
+	var sx := 1.0 / sqrt(st.sq)
+	u.model.scale = Vector3(base.x * sx, base.y * st.sq, base.z * sx)
+	st.lean = lerpf(st.lean, st.lean_to, minf(1.0, delta * 8.0))
+	u.model.rotation.x = st.lean
 
 
 func _update_intro(delta: float) -> void:
 	var prev := intro_t
 	intro_t += delta
 	var it := intro_t
-	# 1) 적 군단 진격 → 아군 앞에서 정지
+	var crossed := func(at: float) -> bool: return prev < at and it >= at
+	# 1) 포탈에서 등장 → 진격 → 아군 앞에서 정지
 	for u in intro_units:
-		if u == intro_boss and it >= CROUCH_T:
+		if jumpers.has(u) or (u == intro_boss and it >= CROUCH_T):
 			continue
+		var em: float = u.get_meta("emerge")
+		if it < em:
+			continue
+		var base: Vector3 = u.get_meta("base_scale")
+		if not u.visible:
+			u.visible = true
+			sparks(u.position + Vector3(0, 1.5, 0), Color(0.75, 0.35, 1.0), 14, 4.0, 0.5)
+			if u == intro_boss:
+				ring_effect(u.position, Color(0.75, 0.3, 1.0), 0.5, 5.0, 0.8)
+		var grow := clampf((it - em) / 0.35, 0.0, 1.0)
+		u.model.scale = base * lerpf(0.35, 1.0, grow)
 		var sx: float = u.get_meta("stop_x")
-		if it > 1.0 + float(u.get_meta("delay")) and u.position.x > sx:
-			u.position.x = maxf(sx, u.position.x - 6.5 * delta)
+		if u.position.x > sx:
+			u.position.x = maxf(sx, u.position.x - 7.0 * delta)
+			var dz: float = float(u.get_meta("slot_z")) - u.position.z
+			u.position.z += clampf(dz, -2.2 * delta, 2.2 * delta)
 			u.loop_anim(u.run_anim)
 		elif u.cur_anim == u.run_anim:
+			u.position.z = u.get_meta("slot_z")
 			u.loop_anim(u.idle_anim)
-	var crossed := func(at: float) -> bool: return prev < at and it >= at
+	if crossed.call(0.9):
+		Sfx.play("summon", 0.6)
 	if crossed.call(3.4):
 		Sfx.play("boss", 0.9)
 	if crossed.call(8.2):
 		hero.play_once("Spellcast_Raise", 1.0)
 		sparks(hero.position + Vector3(0.4, 2.6, 0), Color(1, 0.85, 0.4), 40, 6.0, 1.0)
 		Sfx.play("summon", 0.7)
-	# 2) 도약 준비
+	if not hero.has_meta("base_scale"):
+		hero.set_meta("base_scale", hero.model.scale)
+	# 2) 도약 준비: 웅크리며 힘을 모은다
 	if crossed.call(CROUCH_T):
-		hero.play_once("Jump_Start", 0.6)
-		intro_boss.play_once("Jump_Start", 0.6)
-		sparks(hero.position + Vector3(0, 0.3, 0), Color(0.8, 0.75, 0.6), 16, 3.0, 0.5)
-		sparks(intro_boss.position + Vector3(0, 0.3, 0), Color(0.6, 0.5, 0.7), 16, 3.0, 0.5)
-	# 3) 동시에 공중으로 도약
+		for u in [hero, intro_boss]:
+			u.position.y = 0.0
+			u.play_once("Jump_Start", 0.5)
+			jumpers[u] = {"v": Vector3.ZERO, "phase": "crouch", "sq": 1.0, "lean": 0.0, "lean_to": 0.12, "land_t": 0.0}
+		sparks(hero.position + Vector3(0, 0.2, 0), Color(1, 0.85, 0.4), 12, 2.0, 0.6)
+		sparks(intro_boss.position + Vector3(0, 0.2, 0), Color(0.7, 0.3, 1.0), 12, 2.0, 0.6)
+	if it >= CROUCH_T and it < LEAP_T:
+		for u in [hero, intro_boss]:
+			jumpers[u].sq = lerpf(1.0, 0.82, clampf((it - CROUCH_T) / (LEAP_T - CROUCH_T), 0, 1))
+	# 3) 발을 떼고 실제 포물선으로 날아오른다
 	if crossed.call(LEAP_T):
-		hero.play_once("Jump_Idle", 0.7)
-		intro_boss.play_once("Jump_Idle", 0.7)
+		_start_jump(hero, HERO_PEAK)
+		_start_jump(intro_boss, BOSS_PEAK)
+		hero.play_once("Jump_Idle", 0.5)
+		intro_boss.play_once("Jump_Idle", 0.5)
 		Sfx.play("dash")
 		Sfx.play("whoosh", 0.6)
-	if crossed.call(SWING_T):
-		hero.play_once("2H_Melee_Attack_Chop", 0.9, 1.3)
-		intro_boss.play_once("2H_Melee_Attack_Chop", 0.9, 1.3)
-		_slowmo(1100)
-	if it >= LEAP_T and it < CLASH_T:
-		var k := (it - LEAP_T) / (CLASH_T - LEAP_T)
-		hero.position = _arc(HERO_INTRO, HERO_PEAK, k, true)
-		intro_boss.position = _arc(BOSS_INTRO, BOSS_PEAK, k, true)
-		if randf() < 0.6:
-			sparks(hero.position + Vector3(0, 1.2, 0), Color(1, 0.85, 0.4), 3, 1.0, 0.4)
-			sparks(intro_boss.position + Vector3(0, 1.4, 0), Color(0.7, 0.3, 1.0), 3, 1.0, 0.4)
-	# 4) 공중에서 무기 충돌
+		for u in [hero, intro_boss]:
+			sparks(u.position + Vector3(0, 0.15, 0), Color(0.78, 0.72, 0.6), 24, 4.0, 0.6)
+			ring_effect(u.position, Color(0.85, 0.8, 0.7), 0.3, 2.2, 0.4)
+	if crossed.call(CLASH_T - 0.36):
+		hero.play_once("2H_Melee_Attack_Chop", 0.9, 1.6)
+		intro_boss.play_once("2H_Melee_Attack_Chop", 0.9, 1.6)
+		_slowmo(950)
+	# 4) 공중에서 무기 충돌 → 짧게 멈췄다가 서로 튕겨 나간다
 	if crossed.call(CLASH_T):
+		hero.position = HERO_PEAK
+		intro_boss.position = BOSS_PEAK
 		Sfx.play("impact")
 		Sfx.play("explode", 0.8)
 		white_flash = 0.55
@@ -779,27 +841,25 @@ func _update_intro(delta: float) -> void:
 		burst_effect(CLASH_POS, Color(1, 1, 0.9))
 		ring_effect(Vector3(CLASH_POS.x, 0, 0), Color(1.0, 0.85, 0.4), 0.5, 14.0, 1.0)
 		ring_effect(Vector3(CLASH_POS.x, 0, 0), Color(0.75, 0.3, 1.0), 0.5, 10.0, 1.2)
-	if it >= CLASH_T and it < FALL_T:
-		var j := Vector3(randf() - 0.5, randf() - 0.5, 0) * 0.06
-		hero.position = HERO_PEAK + j
-		intro_boss.position = BOSS_PEAK - j
-	# 5) 서로 튕겨 나가며 착지
-	if it >= FALL_T and it < LAND_T:
-		var k := (it - FALL_T) / (LAND_T - FALL_T)
-		hero.position = _arc(HERO_PEAK, HERO_INTRO + Vector3(-1.5, 0, 0), k, false)
-		intro_boss.position = _arc(BOSS_PEAK, BOSS_INTRO + Vector3(1.5, 0, 0), k, false)
-	if crossed.call(LAND_T):
-		hero.position = HERO_INTRO + Vector3(-1.5, 0, 0)
-		intro_boss.position = BOSS_INTRO + Vector3(1.5, 0, 0)
-		hero.play_once("Jump_Land", 0.5)
-		intro_boss.play_once("Jump_Land", 0.5)
-		shake = 0.5
-		Sfx.play("hit")
-		sparks(hero.position + Vector3(0, 0.3, 0), Color(0.8, 0.75, 0.6), 24, 4.0, 0.6)
-		sparks(intro_boss.position + Vector3(0, 0.3, 0), Color(0.6, 0.5, 0.7), 30, 5.0, 0.6)
-	if it > LAND_T + 0.6:
-		hero.loop_anim("Idle")
-		intro_boss.loop_anim(intro_boss.idle_anim)
+		for u in [hero, intro_boss]:
+			if u.anim:
+				u.anim.speed_scale = 0.05
+	var frozen := it >= CLASH_T and it < CLASH_T + HITSTOP
+	if crossed.call(CLASH_T + HITSTOP):
+		jumpers[hero].v = Vector3(-6.5, 4.5, 0)
+		jumpers[intro_boss].v = Vector3(5.5, 4.0, 0)
+		for u in [hero, intro_boss]:
+			if u.anim:
+				u.anim.speed_scale = 1.0
+			u.play_once("Hit_A", 0.5)
+			jumpers[u].lean_to = -0.35
+			jumpers[u].sq = 1.15
+	for u in jumpers:
+		var st: Dictionary = jumpers[u]
+		if st.phase == "crouch":
+			_update_jumper(u, st, delta, true)
+		else:
+			_update_jumper(u, st, delta, frozen)
 	if intro_t >= INTRO_LEN:
 		end_intro()
 
@@ -814,6 +874,12 @@ func end_intro() -> void:
 	intro_units.clear()
 	intro_boss = null
 	hero.scripted = false
+	if hero.has_meta("base_scale"):
+		hero.model.scale = hero.get_meta("base_scale")
+	hero.model.rotation.x = 0.0
+	if hero.anim:
+		hero.anim.speed_scale = 1.0
+	jumpers.clear()
 	hero.position = Vector3(-20, 0, 0)
 	hero.face(Vector3(1, 0, 0), true)
 	hero.lock_t = 0.0
@@ -1358,11 +1424,11 @@ func _separate() -> void:
 	var n := units.size()
 	for i in n:
 		var a: Unit = units[i]
-		if a.dead:
+		if a.dead or not a.visible:
 			continue
 		for j in range(i + 1, n):
 			var b: Unit = units[j]
-			if b.dead:
+			if b.dead or not b.visible:
 				continue
 			var d: Vector3 = b.position - a.position
 			d.y = 0

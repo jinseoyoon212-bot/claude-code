@@ -298,8 +298,8 @@ func _draw_intro() -> void:
 			var full: String = ln[2]
 			var n := mini(full.length(), int((it - ln[0]) * 22.0))
 			txt(f_disp, Vector2(s.x / 2, s.y - bar_h - 40), full.substr(0, n), 30, Color(C_INK, a), HORIZONTAL_ALIGNMENT_CENTER)
-	if it >= 11.5:
-		var k := clampf((it - 11.5) / 0.5, 0, 1)
+	if it >= 12.6:
+		var k := clampf((it - 12.6) / 0.5, 0, 1)
 		var sc := lerpf(1.8, 1.0, 1.0 - pow(1.0 - k, 3))
 		_logo(Vector2(s.x / 2, s.y * 0.24), sc, k)
 	txt(f_bold, Vector2(s.x - 30, s.y - 20), "화면을 누르면 건너뛰기  ▶", 14, Color(C_DIM, 0.8), HORIZONTAL_ALIGNMENT_RIGHT)
