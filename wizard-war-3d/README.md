@@ -13,6 +13,13 @@
 - **업적 12개**(골드 보상), **설정**(음량·그림자·피해 숫자·화면 흔들림·인트로 다시 보기·초기화)
 - **개발자 치트 메뉴**: 타이틀의 [개발자] 버튼 또는 로고 5번 연타 → 비밀번호 입력 (`save.gd`의 `DEV_PASSWORD`)
 
+## 웹 버전
+- 주소: https://jinseoyoon212-bot.github.io/claude-code/ (`gh-pages` 브랜치)
+- 기기를 자동 인식: 휴대폰·태블릿은 터치 버튼과 조이스틱, PC는 화면 아래 단축키 바만 표시
+- 터치 노트북처럼 둘 다 되는 기기는 실제로 손가락을 쓰면 터치 UI, 키보드를 누르면 단축키 바로 바뀜
+- 휴대폰을 세로로 들면 "가로로 돌려주세요" 안내와 함께 자동 일시정지
+- 웹 빌드: `godot --headless --path . --export-release "Web" build/web/index.html` (단일 스레드 빌드라 GitHub Pages에서 별도 헤더 없이 동작)
+
 ## 조작
 | PC | 모바일 | 동작 |
 |---|---|---|
@@ -35,4 +42,4 @@
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)
 - 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)
-- 폰트: Noto Sans KR, Gowun Batang — SIL OFL (`fonts/OFL.txt`)
+- 폰트: Noto Sans KR, Gowun Batang — SIL OFL (`fonts/OFL.txt`), 완성형 한글 2350자 + 게임 텍스트로 서브셋

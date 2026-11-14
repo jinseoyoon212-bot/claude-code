@@ -13,6 +13,9 @@ const ITEM_KEYS := ["1", "2", "3"]
 
 func _layout() -> void:
 	var s := size
+	if not touch_ui:
+		_layout_hotbar()
+		return
 	buttons = {"attack": {"c": Vector2(s.x - 125, s.y - 125), "r": 66.0, "kind": "attack", "key": "Space"}}
 	buttons["dash"] = {"c": Vector2(s.x - 410, s.y - 70), "r": 40.0, "kind": "dash", "key": "Shift"}
 	var slots := [Vector2(s.x - 290, s.y - 70), Vector2(s.x - 280, s.y - 200), Vector2(s.x - 175, s.y - 275), Vector2(s.x - 55, s.y - 265)]
@@ -20,6 +23,24 @@ func _layout() -> void:
 		buttons["slot%d" % i] = {"c": slots[i], "r": 44.0, "kind": "skill", "id": Save.equipped[i], "key": SLOT_KEYS[i]}
 	for i in Save.ITEMS.size():
 		buttons["item%d" % i] = {"c": Vector2(s.x / 2 - 80.0 + i * 80.0, s.y - 50), "r": 32.0, "kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i]}
+
+
+func _layout_hotbar() -> void:
+	## PC·웹(마우스/키보드): 화면 아래 가운데 단축키 바 (공격은 Space/클릭이라 버튼 없음)
+	var s := size
+	buttons = {}
+	var row: Array = []
+	for i in Save.equipped.size():
+		row.append({"kind": "skill", "id": Save.equipped[i], "key": SLOT_KEYS[i], "r": 30.0})
+	row.append({"kind": "dash", "key": "Shift", "r": 26.0})
+	for i in Save.ITEMS.size():
+		row.append({"kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i], "r": 24.0})
+	var gap := 72.0
+	var x0 := s.x / 2 - gap * (row.size() - 1) / 2.0
+	for i in row.size():
+		var b: Dictionary = row[i]
+		b["c"] = Vector2(x0 + i * gap, s.y - 58)
+		buttons["hb%d" % i] = b
 
 
 func _active() -> bool:
@@ -102,12 +123,15 @@ func _draw() -> void:
 	if main.state != "play":
 		return
 	_draw_panels()
+	if not touch_ui and buttons.size() > 0:
+		var xs: Array = buttons.values().map(func(b): return b.c.x)
+		panel(Rect2(xs.min() - 48, size.y - 104, xs.max() - xs.min() + 96, 92), Color(0.04, 0.04, 0.1, 0.72), 18, Color(1, 1, 1, 0.08))
 	for b in buttons:
 		_draw_button(b, buttons[b])
 	if touch_ui:
 		_draw_joystick()
 	else:
-		txt(f_body, Vector2(24, size.y - 22), "WASD 이동 · Space/클릭 공격 · Shift 대시 · Q E R F 스킬 · 1 2 3 물약 · Esc 일시정지", 13, C_DIM)
+		txt(f_body, Vector2(24, size.y - 18), "WASD 이동 · Space/클릭 공격 · Shift 대시 · Esc 일시정지", 13, C_DIM)
 
 
 func _draw_world_ui() -> void:
@@ -201,7 +225,8 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		draw_circle(c + Vector2(r * 0.72, -r * 0.72), 12, C_GOLD if rdy else Color(0.3, 0.3, 0.35))
 		txt(f_bold, c + Vector2(r * 0.72, -r * 0.72 + 6), str(Save.items[id]), 14, C_DARK, HORIZONTAL_ALIGNMENT_CENTER, false)
 	if bt.kind == "skill":
-		txt(f_bold, c + Vector2(0, r + 14), "Lv%d" % Save.skills[id], 11, Color(col, 0.9), HORIZONTAL_ALIGNMENT_CENTER)
+		if touch_ui:
+			txt(f_bold, c + Vector2(0, r + 14), "Lv%d" % Save.skills[id], 11, Color(col, 0.9), HORIZONTAL_ALIGNMENT_CENTER)
 	if not touch_ui and bt.has("key"):
 		var kp := c + Vector2(-r * 0.72, r * 0.72)
 		var kw := 22.0 if bt.key.length() == 1 else 44.0

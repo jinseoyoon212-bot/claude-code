@@ -8,7 +8,9 @@ var f_bold: Font
 var f_disp: Font
 var icons := {}
 var clicks: Array = []
-var touch_ui := false
+var touch_ui: bool:
+	get:
+		return Save.touch_ui
 
 const C_GOLD := Color("e8b84a")
 const C_INK := Color("f1ead6")
@@ -42,7 +44,6 @@ func _ready() -> void:
 	fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800}
 	f_bold = fv
 	f_disp = load("res://fonts/GowunBatang-Bold.ttf")
-	touch_ui = OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 	for n in ICON_NAMES:
 		icons[n] = load("res://icons/%s.svg" % n)
 

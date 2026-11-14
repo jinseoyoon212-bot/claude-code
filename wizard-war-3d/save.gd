@@ -82,11 +82,50 @@ var current_stage := "s1"
 var next_action := ""
 var intro_seen := false
 var cheats := {"god": false, "one_hit": false, "no_cd": false, "speed": 1}
+var touch_ui := false        # true면 터치 버튼·조이스틱, false면 키보드·마우스용 단축키 바
+var touch_device := false    # 기기가 터치 위주(휴대폰·태블릿)인지
+var _last_mouse_ms := -10000
+var _pending_touch_ms := -1
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_detect_device()
+	if not FileAccess.file_exists(PATH) and touch_device and OS.has_feature("web"):
+		settings.shadows = false   # 모바일 브라우저는 그림자를 꺼서 부드럽게
 	load_data()
+
+
+func _detect_device() -> void:
+	## 기기 종류를 자동으로 판별한다
+	if OS.has_feature("web"):
+		var js := "(window.matchMedia && matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)"
+		touch_device = bool(JavaScriptBridge.eval(js, true))
+	else:
+		touch_device = OS.has_feature("mobile")
+	touch_ui = touch_device
+
+
+func _input(ev: InputEvent) -> void:
+	## 실제 입력으로 조작 방식을 다시 판별한다
+	## (터치 노트북에서 손가락을 쓰면 터치 UI, 키보드를 누르면 단축키 바)
+	var now := Time.get_ticks_msec()
+	if ev is InputEventMouseButton:
+		_last_mouse_ms = now
+	elif ev is InputEventKey and ev.pressed and touch_ui and not touch_device:
+		touch_ui = false
+	elif ev is InputEventKey and ev.pressed and touch_ui and ev.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE]:
+		touch_ui = false
+	elif ev is InputEventScreenTouch and ev.pressed and not touch_ui:
+		_pending_touch_ms = now
+
+
+func _process(_d: float) -> void:
+	# 마우스 클릭이 만든 가짜 터치가 아니라 진짜 손가락 터치일 때만 터치 UI로 전환
+	if _pending_touch_ms >= 0 and Time.get_ticks_msec() - _pending_touch_ms > 120:
+		if absi(_pending_touch_ms - _last_mouse_ms) > 150:
+			touch_ui = true
+		_pending_touch_ms = -1
 
 
 func load_data() -> void:

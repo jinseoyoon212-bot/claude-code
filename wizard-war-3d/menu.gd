@@ -254,6 +254,8 @@ func _draw() -> void:
 					_: _draw_pause()
 		"win", "lose":
 			_draw_end()
+	if touch_ui and size.y > size.x * 1.05:
+		_draw_rotate_hint()
 	if main.white_flash > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, clampf(main.white_flash, 0, 1)))
 	if toast_t > 0.0:
@@ -261,6 +263,19 @@ func _draw() -> void:
 		var w := 60.0 + toast.length() * 15.0
 		panel(Rect2(size.x / 2 - w / 2, size.y - 130, w, 46), Color(0.05, 0.05, 0.1, 0.92 * a), 23, Color(C_GOLD, 0.5 * a))
 		txt(f_bold, Vector2(size.x / 2, size.y - 100), toast, 16, Color(C_INK, a), HORIZONTAL_ALIGNMENT_CENTER, false)
+
+
+func _draw_rotate_hint() -> void:
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.08, 0.97))
+	var k := size.x / 420.0   # 세로 화면은 기준 해상도가 커지므로 글자를 키운다
+	var c := size / 2
+	var phone := Rect2(c.x - 26 * k, c.y - 120 * k, 52 * k, 92 * k)
+	panel(phone, Color(0, 0, 0, 0), int(8 * k), C_GOLD, int(3 * k))
+	draw_arc(c + Vector2(0, -74 * k), 70 * k, -0.5, 0.8, 24, C_GOLD, 3.0 * k, true)
+	txt(f_disp, c + Vector2(0, 30 * k), "화면을 가로로 돌려주세요", int(24 * k), C_GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	txt(f_body, c + Vector2(0, 62 * k), "이 게임은 가로 화면에서 플레이합니다", int(13 * k), C_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	if main.state == "play" and not main.paused:
+		main.set_paused(true)
 
 
 func _dim(a := 0.6) -> void:
