@@ -2,6 +2,8 @@ package com.aurora.agent;
 
 import android.Manifest;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -177,6 +179,17 @@ public class AuroraDevicePlugin extends Plugin {
         } catch (Throwable t) { call.reject(String.valueOf(t)); }
     }
 
+    @PluginMethod public void setClipboard(final PluginCall call) {
+        final String text = call.getString("text", "");
+        getActivity().runOnUiThread(new Runnable() { public void run() {
+            try {
+                ClipboardManager cm = (ClipboardManager) ctx().getSystemService(Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(ClipData.newPlainText("aurora", text));
+                JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
+            } catch (Throwable t) { call.reject(String.valueOf(t)); }
+        }});
+    }
+
     // ---------- Shizuku (PC 없이 무선 디버깅 권한으로 접근성 켜기 / adb 수준 명령) ----------
     private static final int SHIZUKU_REQ = 4242;
     private PluginCall shizukuCall;
@@ -205,7 +218,7 @@ public class AuroraDevicePlugin extends Plugin {
         try (InputStream in = p.getInputStream()) { byte[] b = new byte[4096]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n); }
         int code = p.waitFor(); te.join(1000);
         String o; synchronized (err) { o = new String(out.toByteArray(), "UTF-8") + new String(err.toByteArray(), "UTF-8"); }
-        return clip(o.trim(), 20000) + (code != 0 ? "\n[종료코드 " + code + "]" : "");
+        return clip(o.trim(), 400000) + (code != 0 ? "\n[종료코드 " + code + "]" : "");
     }
 
     @PluginMethod public void shizukuStatus(final PluginCall call) {

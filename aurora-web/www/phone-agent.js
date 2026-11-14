@@ -41,6 +41,53 @@
   const UI = new Set(['launch_app', 'open_intent', 'screen_click_text', 'screen_tap', 'screen_swipe', 'screen_type', 'screen_global']);
   const SHELL = new Set(['run_command', 'write_file', 'adb_command']);
 
+
+  // ---- 접근성이 막힌 기기용: Shizuku(adb 권한)로 화면 읽기/탭/스와이프/입력 ----
+  const sh = async (c) => ((await dev().shizukuShell({ command: c })).output || '').trim();
+  const dec = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, ' ').replace(/&amp;/g, '&');
+  function parseUi(raw) {
+    const nodes = [];
+    for (const line of raw.split('\n')) {
+      const g = (k) => { const m = line.match(new RegExp('(?:^|[\\s<])' + k + '="([^"]*)"')); return m ? dec(m[1]) : ''; };
+      const b = line.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/); if (!b) continue;
+      const [l, t, r, bt] = b.slice(1).map(Number); if (r <= l || bt <= t) continue;
+      nodes.push({ text: g('text'), desc: g('content-desc'), id: g('resource-id'), pkg: g('package'), click: g('clickable') === 'true', edit: /EditText/.test(g('class')), x: (l + r) >> 1, y: (t + bt) >> 1 });
+    }
+    return nodes;
+  }
+  async function uiDump() {
+    const raw = await sh("uiautomator dump /data/local/tmp/au.xml >/dev/null 2>&1; cat /data/local/tmp/au.xml | sed 's/></>\\n</g' | grep 'bounds=' | grep -E ' text=\"[^\"]+\"| content-desc=\"[^\"]+\"| clickable=\"true\"| class=\"android.widget.EditText\"'");
+    return parseUi(raw);
+  }
+  const keyOf = { back: 4, home: 3, recents: 187 };
+  async function shzScreen(name, i) {
+    switch (name) {
+      case 'screen_read': {
+        const n = await uiDump(); if (!n.length) return '화면 정보를 읽지 못했어요(보안 화면이거나 전환 중일 수 있어요). 잠시 후 다시 시도하세요.';
+        return clip(`앱: ${n[0].pkg} (요소 ${n.length}개)\n` + n.slice(0, 120).map((e) => `${e.text || e.desc || e.id || '(이름없음)'}${e.click ? ' [클릭]' : ''}${e.edit ? ' [입력]' : ''} @${e.x},${e.y}`).join('\n'));
+      }
+      case 'screen_click_text': {
+        const q = String(i.text).toLowerCase(), n = await uiDump(); const nm = (e) => (e.text || e.desc).toLowerCase();
+        const hit = n.find((e) => nm(e) === q) || (i.exact ? null : n.find((e) => nm(e).includes(q)));
+        if (!hit) return JSON.stringify({ ok: false, reason: '화면에서 못 찾았어요: ' + i.text });
+        await sh(`input tap ${hit.x} ${hit.y}`); return JSON.stringify({ ok: true, tapped: hit.text || hit.desc });
+      }
+      case 'screen_tap': await sh(`input tap ${Math.round(i.x)} ${Math.round(i.y)}`); return '{"ok":true}';
+      case 'screen_swipe': await sh(`input swipe ${Math.round(i.x1)} ${Math.round(i.y1)} ${Math.round(i.x2)} ${Math.round(i.y2)} ${Math.round(i.durationMs || 350)}`); return '{"ok":true}';
+      case 'screen_global':
+        if (keyOf[i.action]) await sh(`input keyevent ${keyOf[i.action]}`);
+        else await sh(i.action === 'notifications' ? 'cmd statusbar expand-notifications' : 'cmd statusbar expand-settings');
+        return '{"ok":true}';
+      case 'screen_type': {
+        try { await dev().setClipboard({ text: i.text }); await sh('input keyevent 279'); return '{"ok":true,"method":"paste"}'; }
+        catch (e) {
+          if (/^[\x20-\x7e]+$/.test(i.text)) { await sh(`input text '${i.text.replace(/'/g, '').replace(/ /g, '%s')}'`); return '{"ok":true,"method":"input"}'; }
+          return '{"ok":false,"reason":"한글 입력은 클립보드 권한이 필요해요"}';
+        }
+      }
+    }
+  }
+
   const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
   async function runPhoneAgent({ settings, history, notify }) {
@@ -51,8 +98,17 @@
     const lastUser = String(history[history.length - 1].content).slice(0, 200);
     let uiGranted = !!settings.phoneAuto, uiUsed = false;
 
-    const front = async () => { if (uiUsed) { try { await D.bringToFront(); } catch {} await sleep(700); } };
+    const front = async () => { if (uiUsed) { await comeBack(); await sleep(700); } };
     const ask = async (title, detail) => { if (settings.phoneAuto) return true; await front(); return window.confirm(title + '\n\n' + detail + '\n\n허용할까요?'); };
+
+    let ctrl = null;
+    async function controlMode() {
+      if (ctrl) return ctrl;
+      try { if ((await D.a11yDiagnose()).connected) return (ctrl = 'a11y'); } catch {}
+      try { if ((await D.shizukuStatus()).granted) return (ctrl = 'shizuku'); } catch {}
+      return null;
+    }
+    const comeBack = async () => { try { await D.bringToFront(); } catch {} if (ctrl === 'shizuku') { try { await sh('monkey -p com.aurora.agent -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1'); } catch {} } };
 
     async function tool(name, i) {
       if (SHELL.has(name) && !(await ask(name === 'write_file' ? '파일 쓰기' : '명령 실행', name !== 'write_file' ? i.command : i.path + '\n\n' + String(i.content).slice(0, 500)))) return '사용자가 거부했습니다.';
@@ -62,6 +118,11 @@
       }
       if (UI.has(name)) uiUsed = true;
       const j = (o) => clip(JSON.stringify(o));
+      if (name.startsWith('screen_')) {
+        const m = await controlMode();
+        if (m === 'shizuku') return await shzScreen(name, i);
+        if (m === null) return '화면 조작 수단이 없어요. 앱 설정의 [Shizuku로 접근성 켜기] 또는 Shizuku 실행(무선 디버깅)이 필요하다고 사용자에게 안내하세요.';
+      }
       switch (name) {
         case 'run_command': { const r = await D.runCommand({ command: i.command, cwd: i.cwd }); return clip(`${r.output || '(출력 없음)'}\n[종료코드 ${r.exitCode}${r.timedOut ? ', 시간초과' : ''}]`); }
         case 'read_file': return (await D.readFile({ path: i.path })).content;
@@ -105,7 +166,7 @@
         let text = data.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
         let mood = 'neutral'; const m = text.match(/^\s*\[기분:([a-z]+)\]\s*/);
         if (m) { if (MOODS.includes(m[1])) mood = m[1]; text = text.slice(m[0].length); }
-        if (uiUsed) { try { await D.bringToFront(); } catch {} }
+        if (uiUsed) await comeBack();
         return { text, mood };
       }
       const results = [];
@@ -116,7 +177,7 @@
       }
       messages.push({ role: 'user', content: results });
     }
-    if (uiUsed) { try { await D.bringToFront(); } catch {} }
+    if (uiUsed) await comeBack();
     return { text: '작업이 너무 길어져서 여기서 멈췄어요. 이어서 말씀해 주세요.', mood: 'surprised' };
   }
   window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev() };

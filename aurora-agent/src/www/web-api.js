@@ -64,7 +64,20 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function waitConnected(D, tries) { for (let i = 0; i < tries; i++) { await sleep(1500); try { if ((await D.a11yDiagnose()).connected) return true; } catch {} } return false; }
+  async function appopsAllow(D) {
+    try { const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
+      await sh('appops set com.aurora.agent ACCESS_RESTRICTED_SETTINGS allow'); } catch {}
+  }
+  async function collectDump(D) {
+    const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
+    const list = await sh('settings get secure enabled_accessibility_services'), en = await sh('settings get secure accessibility_enabled');
+    const ops = await sh('appops get com.aurora.agent ACCESS_RESTRICTED_SETTINGS');
+    const logs = await sh('logcat -d -t 600 | grep -iE "accessib|aurora" | tail -12');
+    const d = await D.a11yDiagnose();
+    return `켜진 서비스 목록: ${list}\naccessibility_enabled: ${en}\n제한된 설정(appops): ${ops}\n앱 쪽 연결됨: ${d.connected ? '예' : '아니오'} / 시스템 인식: ${d.registered ? '예' : '아니오'} (안드로이드 ${d.android})\n--- 로그 ---\n${logs || '(관련 줄 없음)'}`;
+  }
   async function restartA11y(D) {
+    await appopsAllow(D);
     const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
     const cn = 'com.aurora.agent/com.aurora.agent.AuroraAccessibilityService';
     let cur = await sh('settings get secure enabled_accessibility_services'); if (cur === 'null' || cur.includes('[종료코드')) cur = '';
@@ -94,20 +107,15 @@
           if (!s.running) return '② Shizuku 앱을 열고 "무선 디버깅으로 시작"을 따라 하세요 (개발자 옵션 → 무선 디버깅 켜기 → 페어링 코드로 기기 페어링 → 알림에 코드 입력 → Shizuku의 "시작"). 실행 중으로 바뀌면 이 버튼을 다시 누르세요.';
           if (n === 'shz_status') return 'Shizuku 실행 중이에요. 권한: ' + (s.granted ? '허용됨 ✅' : '아직 안 줌 (아래 [Shizuku로 접근성 켜기]를 누르면 요청해요)');
           if (!s.granted) { const r = await D.shizukuRequestPermission(); if (!r.granted) return '③ Shizuku 권한 요청이 거부됐어요. 다시 누르고 "허용"을 선택하세요.'; }
+          await appopsAllow(D);
           await D.shizukuEnableAccessibility();
           if (await waitConnected(D, 6)) return '✅ 접근성이 켜지고 연결됐어요! 이제 화면 조작을 쓸 수 있어요.';
           await restartA11y(D);                                   // 연결이 안 되면 껐다 켜서 다시 시도
           if (await waitConnected(D, 6)) return '✅ 재시작 후 접근성이 연결됐어요! 이제 화면 조작을 쓸 수 있어요.';
-          return '접근성 설정은 켰지만 연결이 안 돼요. [Shizuku 자세한 진단]을 누르고 나온 글을 알려 주세요.';
+          return '이 기기는 접근성 켜기를 막고 있어요. 그래도 Shizuku로 화면 조작이 되니, 대화창에서 "설정 앱 열어줘" 같은 요청을 해 보세요.\n\n' + await collectDump(D);
         }
         if (n === 'shz_restart') { await restartA11y(D); return (await waitConnected(D, 6)) ? '✅ 연결됐어요!' : '재시작했지만 아직 연결 전이에요. [Shizuku 자세한 진단] 결과를 알려 주세요.'; }
-        if (n === 'shz_dump') {
-          const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
-          const list = await sh('settings get secure enabled_accessibility_services'), en = await sh('settings get secure accessibility_enabled');
-          const dump = await sh('dumpsys accessibility | grep -iE "aurora|crash|binding|bound" | head -25');
-          const d = await D.a11yDiagnose();
-          return `켜진 서비스 목록: ${list}\naccessibility_enabled: ${en}\n앱 쪽 연결됨: ${d.connected ? '예' : '아니오'} / 시스템 인식: ${d.registered ? '예' : '아니오'} (안드로이드 ${d.android})\n--- dumpsys ---\n${dump || '(관련 줄 없음)'}`;
-        }
+        if (n === 'shz_dump') return await collectDump(D);
         if (n === 'diag') {
           const r = await D.a11yDiagnose();
           const head = `시스템 인식: ${r.registered ? '예' : '아니오'} / 켜짐: ${r.enabledInSettings ? '예' : '아니오'} / 연결됨: ${r.connected ? '예' : '아니오'} (안드로이드 ${r.android}, ${r.maker})`;
