@@ -6,7 +6,7 @@ const ARENA_Z := 14.0
 const PORTAL := Vector3(31, 0, 0)
 const CRYSTAL_POS := Vector3(-29, 0, 0)
 const MAX_WAVE := 5
-const CD_MAX := {"attack": 0.3, "shield": 10.0, "nova": 8.0, "summon": 22.0}
+const GOLD := {"minion": 4, "warrior": 10, "dark_mage": 8, "boss": 250}
 
 var KINDS := {}
 var scenes := {}
@@ -24,7 +24,7 @@ var flash_mat: StandardMaterial3D
 var proj_mesh: SphereMesh
 var proj_mats := {}
 
-var state := "title"   # title / play / win / lose
+var state := "title"   # title / shop / play / win / lose
 var t := 0.0
 var wave := 0
 var spawn_queue: Array = []
@@ -34,7 +34,10 @@ var banner := ""
 var banner_sub := ""
 var banner_t := 0.0
 var kills := 0
-var cds := {"attack": 0.0, "shield": 0.0, "nova": 0.0, "summon": 0.0}
+var cds := {"attack": 0.0}
+var cd_max := {"attack": 0.3}
+var earned := 0
+var meteors: Array = []
 var move_input := Vector2.ZERO
 var touch_attack := false
 var shake := 0.0
@@ -67,7 +70,7 @@ func _ready() -> void:
 			"ranged": true, "scale": 1.15, "hide": ["Spellbook", "Spellbook_open", "1H_Wand"], "overlay": hero_mat},
 		"ally_mage": {"name": "견습 마법사", "model": "Mage", "team": 0, "hp": 80.0, "speed": 3.8, "range": 10.0, "aggro": 14.0, "dmg": 11.0, "cd": 1.6,
 			"ranged": true, "scale": 0.9, "hide": ["Spellbook_open", "2H_Staff", "Spellbook"], "attack": "1H_Ranged_Shoot"},
-		"knight": {"name": "빛의 기사", "model": "Knight", "team": 0, "hp": 170.0, "speed": 4.0, "range": 0.6, "aggro": 13.0, "dmg": 15.0, "cd": 1.1,
+		"knight": {"name": "빛의 기사", "model": "Knight", "team": 0, "hp": 170.0, "speed": 4.2, "range": 0.6, "aggro": 16.0, "dmg": 15.0, "cd": 1.1,
 			"hide": ["1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Spike_Shield", "2H_Sword"]},
 		"minion": {"name": "해골 병사", "model": "Skeleton_Minion", "team": 1, "hp": 50.0, "speed": 3.3, "range": 0.5, "aggro": 9.0, "dmg": 8.0, "cd": 1.2,
 			"weapons": [["Skeleton_Blade", "handslot.r"]], "idle": "Idle_Combat"},
@@ -99,13 +102,24 @@ func _ready() -> void:
 	hero = spawn_unit("hero", Vector3(-20, 0, 0))
 	hero.is_hero = true
 	hero.face(Vector3(1, 0, 0), true)
+	hero.max_hp *= 1.0 + 0.15 * Save.up.hp
+	hero.hp = hero.max_hp
+	hero.dmg *= 1.0 + 0.15 * Save.up.power
+	crystal.max_hp *= 1.0 + 0.2 * Save.up.crystal
+	crystal.hp = crystal.max_hp
+	cd_max.attack = 0.3 / (1.0 + 0.12 * Save.up.speed)
+	for id in Save.SKILL_ORDER:
+		cds[id] = 0.0
+		cd_max[id] = Save.skill_cd(id)
 	for i in 4:
 		var u := spawn_unit("knight", Vector3(-15, 0, -6 + i * 4))
 		u.home = u.position
+		u.form_off = Vector3(3.5, 0, -4.5 + i * 3.0)
 		u.face(Vector3(1, 0, 0), true)
 	for i in 3:
 		var u := spawn_unit("ally_mage", Vector3(-21, 0, -6 + i * 6))
 		u.home = u.position
+		u.form_off = Vector3(-2.5, 0, -4.0 + i * 4.0)
 		u.face(Vector3(1, 0, 0), true)
 
 	shield_bubble = MeshInstance3D.new()
@@ -148,6 +162,13 @@ func _ready() -> void:
 	hud = load("res://hud.gd").new()
 	hud.main = self
 	layer.add_child(hud)
+
+	if Save.next_action == "start":
+		Save.next_action = ""
+		begin_battle()
+	elif Save.next_action == "shop":
+		Save.next_action = ""
+		state = "shop"
 
 
 # ---------------- 전장 만들기 ----------------
@@ -332,6 +353,11 @@ func spawn_unit(kind: String, pos: Vector3) -> Unit:
 	u.setup(self, kind, KINDS[kind])
 	u.position = pos
 	units.append(u)
+	if kind == "knight" or kind == "ally_mage":
+		var k: float = 1.0 + 0.15 * Save.up.knight
+		u.max_hp *= k
+		u.hp = u.max_hp
+		u.power = k
 	return u
 
 
@@ -351,10 +377,20 @@ func nearest_enemy(u: Unit, r: float) -> Unit:
 func on_death(u: Unit) -> void:
 	if u.team == 1:
 		kills += 1
+		if state == "play" and GOLD.has(u.kind):
+			var g: int = GOLD[u.kind]
+			earned += g
+			Save.gold += g
+			add_floater(u.position + Vector3(0, u.bar_h + 0.6, 0), "+%dG" % g, Color(1.0, 0.82, 0.3))
 	if u == boss and state == "play":
 		state = "win"
 		end_t = 0.0
 		show_banner("승리!", "어둠의 군주가 쓰러졌습니다", 99.0)
+		earned += 150
+		Save.gold += 150
+		Save.wins += 1
+		Save.best_wave = maxi(Save.best_wave, wave)
+		Save.save_data()
 		for o in units:
 			if o.team == 1 and not o.dead:
 				o.die()
@@ -364,6 +400,8 @@ func on_death(u: Unit) -> void:
 		state = "lose"
 		end_t = 0.0
 		show_banner("패배", "대마법사가 쓰러졌습니다" if u == hero else "빛의 수정이 파괴되었습니다", 99.0)
+		Save.best_wave = maxi(Save.best_wave, wave)
+		Save.save_data()
 		for o in units:
 			if o.team == 1 and not o.dead:
 				o.play_once("Cheer", 99.0)
@@ -381,9 +419,12 @@ func add_floater(pos: Vector3, txt: String, col: Color) -> void:
 
 # ---------------- 게임 흐름 ----------------
 func start_game() -> void:
-	if state != "title":
-		get_tree().reload_current_scene()
-		return
+	# 상점에서 산 강화를 반영하려고 항상 씬을 새로 불러온 뒤 전투를 시작한다
+	Save.next_action = "start"
+	get_tree().reload_current_scene()
+
+
+func begin_battle() -> void:
 	state = "play"
 	next_wave_t = 1.0
 	show_banner("전투 시작", "빛의 수정을 지키고 어둠의 군주를 쓰러뜨리세요")
@@ -412,9 +453,11 @@ func reinforce() -> void:
 	for i in 2:
 		var u := spawn_unit("knight", Vector3(-27, 0, -3 + i * 6))
 		u.home = Vector3(-15, 0, -4 + i * 8 + randf() * 2)
+		u.form_off = Vector3(randf_range(2.0, 5.0), 0, randf_range(-6.0, 6.0))
 		n += 1
 	var m := spawn_unit("ally_mage", Vector3(-28, 0, 0))
 	m.home = Vector3(-21, 0, randf_range(-6, 6))
+	m.form_off = Vector3(randf_range(-4.0, -2.0), 0, randf_range(-5.0, 5.0))
 	hero.heal(hero.max_hp * 0.35)
 	crystal.heal(120)
 	show_banner("증원군 도착", "빛의 기사 2명, 견습 마법사 1명 합류 · 체력 회복", 2.4)
@@ -438,6 +481,7 @@ func _process(delta: float) -> void:
 		u.tick(delta, active)
 	_separate()
 	_update_projs(delta)
+	_update_meteors(delta)
 	for f in floaters:
 		f.t -= delta
 		f.pos.y += delta * 1.5
@@ -486,7 +530,11 @@ func _update_waves(delta: float) -> void:
 			if u.team == 1 and not u.dead:
 				return
 		next_wave_t = 3.5
-		show_banner("웨이브 %d 방어 성공" % wave, "잠시 후 다음 웨이브가 시작됩니다", 2.4)
+		var bonus := 20 * wave
+		earned += bonus
+		Save.gold += bonus
+		Save.save_data()
+		show_banner("웨이브 %d 방어 성공" % wave, "보너스 +%d 골드 · 잠시 후 다음 웨이브" % bonus, 2.4)
 
 
 func _update_hero(delta: float) -> void:
@@ -516,7 +564,7 @@ func _update_hero(delta: float) -> void:
 
 
 func hero_attack() -> void:
-	cds.attack = CD_MAX.attack
+	cds.attack = cd_max.attack
 	var tg := nearest_enemy(hero, hero.attack_range)
 	var dir := hero.forward()
 	if tg:
@@ -527,32 +575,173 @@ func hero_attack() -> void:
 	spawn_proj(hero, tg, hero.dmg * (0.9 + randf() * 0.2), hero.position + Vector3(0, 1.5, 0) + dir.normalized() * 0.7, dir)
 
 
+func use_slot(i: int) -> void:
+	if i < Save.equipped.size():
+		use_skill(Save.equipped[i])
+
+
 func use_skill(s: String) -> void:
-	if state != "play" or hero.dead or cds[s] > 0.0:
+	if state != "play" or hero.dead or not cds.has(s) or cds[s] > 0.0 or Save.skills.get(s, 0) <= 0:
 		return
-	cds[s] = CD_MAX[s]
+	cds[s] = cd_max[s]
+	var v := Save.sv(s, Save.skills[s])
 	match s:
 		"shield":
-			hero.shield_t = 3.5
+			hero.shield_t = v.dur
 			hero.play_once("Block", 0.5)
 		"nova":
 			hero.play_once("Spellcast_Long", 0.45, 1.6)
-			ring_effect(hero.position, Color(1.0, 0.85, 0.4), 0.5, 7.0, 0.5)
+			ring_effect(hero.position, Color(1.0, 0.85, 0.4), 0.5, v.rad, 0.5)
 			shake = 0.6
 			for u in units:
-				if u.team == 1 and not u.dead and u.position.distance_to(hero.position) < 7.0:
-					u.take_damage(70.0)
+				if u.team == 1 and not u.dead and u.position.distance_to(hero.position) < v.rad:
+					u.take_damage(v.dmg * (1.0 + 0.15 * Save.up.power))
 					var away: Vector3 = u.position - hero.position
 					away.y = 0
 					u.knock = away.normalized() * (4.0 if u.kind == "boss" else 14.0)
 		"summon":
 			hero.play_once("Spellcast_Raise", 0.6)
-			for i in 2:
-				var p := hero.position + Vector3(1.5, 0, -1.8 + i * 3.6)
+			for i in v.count:
+				var p := hero.position + Vector3(1.5, 0, -1.8 * (v.count - 1) / 2.0 + i * 1.8)
 				var k := spawn_unit("knight", p)
 				k.home = p
+				k.form_off = Vector3(randf_range(1.5, 4.5), 0, randf_range(-5.0, 5.0))
 				k.face(Vector3(1, 0, 0), true)
 				ring_effect(p, Color(0.55, 0.9, 1.0), 0.3, 2.5, 0.6)
+		"chain":
+			hero.play_once("Spellcast_Shoot", 0.3, 1.6)
+			var from := hero.position + Vector3(0, 1.5, 0)
+			var hit_list: Array = []
+			var cur: Unit = hero
+			for j in v.jumps:
+				var best: Unit = null
+				var bd := 14.0 * 14.0 if j == 0 else 8.0 * 8.0
+				for u in units:
+					if u.team == 1 and not u.dead and not hit_list.has(u):
+						var d: float = cur.position.distance_squared_to(u.position)
+						if d < bd:
+							bd = d
+							best = u
+				if best == null:
+					break
+				var to := best.position + Vector3(0, 1.2, 0)
+				beam_effect(from, to, Color(0.7, 0.85, 1.0))
+				best.take_damage(v.dmg * (1.0 + 0.15 * Save.up.power))
+				hit_list.append(best)
+				cur = best
+				from = to
+			if hit_list.is_empty():
+				cds[s] = 0.5
+		"frost":
+			hero.play_once("Spellcast_Long", 0.45, 1.6)
+			ring_effect(hero.position, Color(0.6, 0.9, 1.0), 0.5, v.rad, 0.8)
+			for u in units:
+				if u.team == 1 and not u.dead and u.position.distance_to(hero.position) < v.rad:
+					u.take_damage(v.dmg * (1.0 + 0.15 * Save.up.power))
+					u.slow_t = v.dur
+					add_floater(u.position + Vector3(0, u.bar_h + 0.5, 0), "둔화", Color(0.6, 0.9, 1.0))
+		"heal":
+			hero.play_once("Spellcast_Raise", 0.6)
+			hero.heal(hero.max_hp * v.hero)
+			add_floater(hero.position + Vector3(0, hero.bar_h, 0), "+%d" % int(hero.max_hp * v.hero), Color(0.5, 1.0, 0.6))
+			ring_effect(hero.position, Color(0.5, 1.0, 0.6), 0.5, 10.0, 0.7)
+			for u in units:
+				if u.team == 0 and not u.dead and u != hero:
+					u.heal(u.max_hp * v.ally)
+		"meteor":
+			hero.play_once("Spellcast_Raise", 0.6)
+			shake = 0.3
+			var targets: Array = units.filter(func(u): return u.team == 1 and not u.dead and u.position.distance_to(hero.position) < 22.0)
+			for i in v.count:
+				var p: Vector3
+				if not targets.is_empty():
+					p = targets[i % targets.size()].position + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
+				else:
+					p = hero.position + Vector3(randf_range(3, 12), 0, randf_range(-6, 6))
+				spawn_meteor(p, v.dmg * (1.0 + 0.15 * Save.up.power), i * 0.18)
+
+
+func use_item(id: String) -> void:
+	if state != "play" or hero.dead or Save.items.get(id, 0) <= 0:
+		return
+	match id:
+		"potion_hp":
+			if hero.hp >= hero.max_hp:
+				return
+			hero.heal(hero.max_hp * 0.5)
+			ring_effect(hero.position, Color(0.5, 1.0, 0.6), 0.3, 3.0, 0.5)
+		"potion_mana":
+			for k in cds:
+				cds[k] = 0.0
+			ring_effect(hero.position, Color(0.6, 0.5, 1.0), 0.3, 3.0, 0.5)
+		"potion_crystal":
+			if crystal.hp >= crystal.max_hp:
+				return
+			crystal.heal(crystal.max_hp * 0.4)
+			ring_effect(crystal.position, Color(0.5, 0.9, 1.0), 0.5, 4.0, 0.6)
+	Save.items[id] -= 1
+	Save.save_data()
+
+
+func beam_effect(a: Vector3, b: Vector3, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	var ln := a.distance_to(b)
+	bm.size = Vector3(0.12, 0.12, ln)
+	mi.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = col
+	mi.material_override = m
+	add_child(mi)
+	mi.position = (a + b) / 2.0
+	if ln > 0.01:
+		mi.look_at(b, Vector3.UP)
+	effects.append({"node": mi, "mat": m, "t": 0.0, "dur": 0.35, "s0": 1.0, "s1": 1.0, "a0": 1.0})
+	burst_effect(b, col)
+
+
+func spawn_meteor(p: Vector3, d: float, delay: float) -> void:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.6
+	sm.height = 1.2
+	sm.radial_segments = 10
+	sm.rings = 6
+	mi.mesh = sm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(1.0, 0.55, 0.2)
+	mi.material_override = m
+	mi.position = p + Vector3(-6, 18, 0)
+	mi.visible = false
+	add_child(mi)
+	meteors.append({"node": mi, "target": p, "t": -delay, "dmg": d, "start": mi.position})
+
+
+func _update_meteors(delta: float) -> void:
+	var keep: Array = []
+	for mt in meteors:
+		mt.t += delta
+		var node: MeshInstance3D = mt.node
+		if mt.t < 0.0:
+			keep.append(mt)
+			continue
+		node.visible = true
+		var k: float = mt.t / 0.5
+		node.position = mt.start.lerp(mt.target, minf(k, 1.0))
+		if k >= 1.0:
+			ring_effect(mt.target, Color(1.0, 0.55, 0.2), 0.3, 3.0, 0.4)
+			burst_effect(mt.target + Vector3(0, 0.5, 0), Color(1.0, 0.6, 0.25))
+			shake = maxf(shake, 0.25)
+			for u in units:
+				if u.team == 1 and not u.dead and u.position.distance_to(mt.target) < 2.8:
+					u.take_damage(mt.dmg)
+			node.queue_free()
+		else:
+			keep.append(mt)
+	meteors = keep
 
 
 func boss_summon(b: Unit) -> void:
@@ -700,12 +889,20 @@ func _update_camera(delta: float) -> void:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventKey and ev.pressed and not ev.echo:
 		match ev.physical_keycode:
-			KEY_Q, KEY_1:
-				use_skill("shield")
-			KEY_E, KEY_2:
-				use_skill("nova")
-			KEY_R, KEY_3:
-				use_skill("summon")
+			KEY_Q:
+				use_slot(0)
+			KEY_E:
+				use_slot(1)
+			KEY_R:
+				use_slot(2)
+			KEY_F:
+				use_slot(3)
+			KEY_1:
+				use_item("potion_hp")
+			KEY_2:
+				use_item("potion_mana")
+			KEY_3:
+				use_item("potion_crystal")
 			KEY_ENTER:
 				if state != "play":
 					start_game()

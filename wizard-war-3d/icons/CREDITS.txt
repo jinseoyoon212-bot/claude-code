@@ -1,0 +1,21 @@
+Icons from game-icons.net (https://game-icons.net), licensed CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0/) unless noted. Recolored/background removed.
+
+attack.svg        fire-ray          by Lorc
+shield.svg        magic-shield      by Lorc
+nova.svg          star-swirl        by Lorc
+summon.svg        visored-helm      by Lorc
+chain.svg         chain-lightning   by Willdabeast
+frost.svg         snowflake-2       by Lorc
+heal.svg          healing           by Delapouite
+meteor.svg        meteor-impact     by Lorc
+potion_hp.svg     health-potion     by Delapouite
+potion_mana.svg   magic-potion      by Delapouite
+potion_crystal.svg crystal-growth   by Lorc
+up_power.svg      wizard-staff      by Lorc
+up_hp.svg         heart-plus        by Zeromancer (CC0)
+up_speed.svg      hourglass         by Lorc
+up_knight.svg     crossed-swords    by Lorc
+up_crystal.svg    crystal-bars      by Lorc
+up_mastery.svg    spell-book        by Delapouite
+gold.svg          two-coins         by Delapouite

@@ -11,12 +11,20 @@
 | Q | 결계 | 3.5초 무적 |
 | E | 별빛 폭발 | 주변 적 피해 + 넉백 |
 | R | 기사 소환 | 빛의 기사 2명 소환 |
+| F | 4번째 슬롯 | 상점에서 산 스킬 |
+| 1 2 3 | 물약 버튼 | 치유 물약 · 마력 물약 · 수정의 정수 |
+
+## 상점
+- 적 처치·웨이브 방어·승리로 골드를 얻고 저장된다 (`user://wizardwar.cfg`).
+- 강화 6종(각 5단계), 스킬 7종(구매 후 5레벨까지, 최대 4개 장착), 물약 3종(최대 9개).
 
 ## 구조
 - `main.gd` 전장 생성, 웨이브, 영웅 조작, 투사체, 카메라
 - `unit.gd` 모든 유닛(영웅·아군·적·수정)의 AI와 애니메이션
-- `hud.gd` 체력바, 스킬 버튼, 가상 조이스틱, 시작/결과 화면
+- `hud.gd` 체력바, 아이콘 버튼, 가상 조이스틱, 시작/상점/결과 화면
+- `save.gd` 저장 데이터와 상점 목록 (자동 로드 `Save`)
 
 ## 에셋 출처
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)
+- 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 폰트: Noto Sans KR, Gowun Batang — SIL OFL (`fonts/OFL.txt`)

@@ -33,6 +33,9 @@ var shield_t := 0.0
 var flash_t := 0.0
 var knock := Vector3.ZERO
 var home := Vector3.ZERO
+var form_off := Vector3.ZERO
+var slow_t := 0.0
+var power := 1.0
 var special_t := 6.0
 var summon_t := 10.0
 
@@ -229,6 +232,7 @@ func tick(delta: float, active: bool) -> void:
 	lock_t = maxf(0.0, lock_t - delta)
 	cd_t -= delta
 	shield_t = maxf(0.0, shield_t - delta)
+	slow_t = maxf(0.0, slow_t - delta)
 	if knock.length_squared() > 0.01:
 		position += knock * delta
 		knock = knock.lerp(Vector3.ZERO, minf(1.0, delta * 6.0))
@@ -268,10 +272,14 @@ func _ai(delta: float) -> void:
 		_move(to_c.normalized(), delta)
 		moving = true
 	else:
-		var to_h := home - position
+		var dest := home
+		var h: Unit = main.hero
+		if h != null and not h.dead:
+			dest = h.position + form_off
+		var to_h := dest - position
 		to_h.y = 0
-		if to_h.length() > 1.5:
-			_move(to_h.normalized(), delta)
+		if to_h.length() > 1.2:
+			_move(to_h.normalized(), delta, minf(1.6, 0.6 + to_h.length() * 0.15))
 			moving = true
 		else:
 			face(Vector3(1, 0, 0))
@@ -279,13 +287,13 @@ func _ai(delta: float) -> void:
 		loop_anim(run_anim if moving else idle_anim)
 
 
-func _move(dir: Vector3, delta: float) -> void:
-	position += dir * speed * delta * (0.35 if lock_t > 0.0 else 1.0)
+func _move(dir: Vector3, delta: float, mult := 1.0) -> void:
+	position += dir * speed * mult * delta * (0.35 if lock_t > 0.0 else 1.0) * (0.4 if slow_t > 0.0 else 1.0)
 	face(dir)
 
 
 func _start_attack() -> void:
-	cd_t = cd * (0.85 + randf() * 0.3)
+	cd_t = cd * (0.85 + randf() * 0.3) * (1.6 if slow_t > 0.0 else 1.0)
 	pending_target = target
 	if ranged:
 		play_once(attack_anim, 0.6)
@@ -302,11 +310,11 @@ func _release_attack() -> void:
 		return
 	if ranged:
 		var dir: Vector3 = tg.position - position
-		main.spawn_proj(self, tg, dmg, position + Vector3(0, 1.3 * (2.0 if kind == "boss" else 1.0), 0) + dir.normalized() * 0.6, dir)
+		main.spawn_proj(self, tg, dmg * power, position + Vector3(0, 1.3 * (2.0 if kind == "boss" else 1.0), 0) + dir.normalized() * 0.6, dir)
 	else:
 		var dist := position.distance_to(tg.position) - tg.radius - radius
 		if dist <= attack_range + 0.8:
-			tg.take_damage(dmg * (0.85 + randf() * 0.3), self)
+			tg.take_damage(dmg * power * (0.85 + randf() * 0.3), self)
 
 
 func _boss_specials(delta: float) -> void:
