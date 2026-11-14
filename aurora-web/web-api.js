@@ -62,6 +62,19 @@
     } catch (e) { return { error: String(e.message || e) }; }
   }
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function waitConnected(D, tries) { for (let i = 0; i < tries; i++) { await sleep(1500); try { if ((await D.a11yDiagnose()).connected) return true; } catch {} } return false; }
+  async function restartA11y(D) {
+    const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
+    const cn = 'com.aurora.agent/com.aurora.agent.AuroraAccessibilityService';
+    let cur = await sh('settings get secure enabled_accessibility_services'); if (cur === 'null' || cur.includes('[종료코드')) cur = '';
+    const others = cur.split(':').filter((x) => x && x !== cn);
+    await sh(`settings put secure enabled_accessibility_services '${others.join(':')}'`);
+    await sleep(1500);
+    await sh(`settings put secure enabled_accessibility_services '${others.concat(cn).join(':')}'`);
+    await sh('settings put secure accessibility_enabled 1');
+  }
+
   window.api = {
     getSettings: async () => load(),
     setSettings: async (p) => { const s = { ...load(), ...p }; save(s); sameOriginBridge = null; return s; },
@@ -82,9 +95,18 @@
           if (n === 'shz_status') return 'Shizuku 실행 중이에요. 권한: ' + (s.granted ? '허용됨 ✅' : '아직 안 줌 (아래 [Shizuku로 접근성 켜기]를 누르면 요청해요)');
           if (!s.granted) { const r = await D.shizukuRequestPermission(); if (!r.granted) return '③ Shizuku 권한 요청이 거부됐어요. 다시 누르고 "허용"을 선택하세요.'; }
           await D.shizukuEnableAccessibility();
-          await new Promise((res) => setTimeout(res, 1500));
-          const r = await D.a11yDiagnose();
-          return r.connected ? '✅ 접근성이 켜지고 연결됐어요! 이제 화면 조작을 쓸 수 있어요.' : '접근성 설정은 켰어요. 아직 연결 전이에요. 몇 초 뒤 [접근성 진단]을 눌러 확인하세요.';
+          if (await waitConnected(D, 6)) return '✅ 접근성이 켜지고 연결됐어요! 이제 화면 조작을 쓸 수 있어요.';
+          await restartA11y(D);                                   // 연결이 안 되면 껐다 켜서 다시 시도
+          if (await waitConnected(D, 6)) return '✅ 재시작 후 접근성이 연결됐어요! 이제 화면 조작을 쓸 수 있어요.';
+          return '접근성 설정은 켰지만 연결이 안 돼요. [Shizuku 자세한 진단]을 누르고 나온 글을 알려 주세요.';
+        }
+        if (n === 'shz_restart') { await restartA11y(D); return (await waitConnected(D, 6)) ? '✅ 연결됐어요!' : '재시작했지만 아직 연결 전이에요. [Shizuku 자세한 진단] 결과를 알려 주세요.'; }
+        if (n === 'shz_dump') {
+          const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
+          const list = await sh('settings get secure enabled_accessibility_services'), en = await sh('settings get secure accessibility_enabled');
+          const dump = await sh('dumpsys accessibility | grep -iE "aurora|crash|binding|bound" | head -25');
+          const d = await D.a11yDiagnose();
+          return `켜진 서비스 목록: ${list}\naccessibility_enabled: ${en}\n앱 쪽 연결됨: ${d.connected ? '예' : '아니오'} / 시스템 인식: ${d.registered ? '예' : '아니오'} (안드로이드 ${d.android})\n--- dumpsys ---\n${dump || '(관련 줄 없음)'}`;
         }
         if (n === 'diag') {
           const r = await D.a11yDiagnose();
