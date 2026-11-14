@@ -8,7 +8,7 @@ const { createBridge } = require('./server');
 
 let win, bridge = null, remoteError = '';
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = { apiKey: '', model: 'claude-sonnet-5-5', autoApprove: false, remoteEnabled: false, remotePort: 8765, remoteToken: '' };
+const defaults = { provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5-5', autoApprove: false, remoteEnabled: false, remotePort: 8765, remoteToken: '' };
 
 function loadSettings() {
   let s; try { s = { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { s = { ...defaults }; }
@@ -56,7 +56,7 @@ ipcMain.handle('remote:info', () => remoteInfo());
 
 ipcMain.handle('agent:send', async (_e, history) => {
   const settings = loadSettings();
-  if (!settings.apiKey) return { error: 'API 키가 없어요. 오른쪽 위 ⚙ 설정에서 Anthropic API 키를 입력해 주세요.' };
+  if (!settings.apiKey) return { error: 'API 키가 없어요. 오른쪽 위 ⚙ 설정에서 API 키를 입력해 주세요.' };
   const confirm = async (title, detail) => {
     if (settings.autoApprove) return true;
     const r = await dialog.showMessageBox(win, {

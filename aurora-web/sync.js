@@ -8,7 +8,7 @@ html = html
   .replace('</head>', '<style>[data-only=desktop]{display:none!important}[data-only=web]{display:block!important}[data-only=web].row{display:flex!important}html,body{height:100dvh}#form{padding-bottom:calc(12px + env(safe-area-inset-bottom))}#gear{top:calc(10px + env(safe-area-inset-top))}</style></head>');
 for (const out of [path.join(__dirname, 'www'), path.join(src, 'www')]) {
   fs.mkdirSync(out, { recursive: true });
-  for (const f of ['style.css', 'face.js', 'renderer.js']) fs.copyFileSync(path.join(src, f), path.join(out, f));
+  for (const f of ['style.css', 'face.js', 'renderer.js', 'llm.js']) fs.copyFileSync(path.join(src, f), path.join(out, f));
   for (const f of ['web-api.js', 'phone-agent.js']) fs.copyFileSync(path.join(__dirname, f), path.join(out, f));
   fs.writeFileSync(path.join(out, 'index.html'), html);
   console.log('synced ->', out);

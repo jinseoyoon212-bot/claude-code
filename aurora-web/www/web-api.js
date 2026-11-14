@@ -4,7 +4,7 @@
 (() => {
   const KEY = 'aurora-settings';
   const MOODS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'thinking', 'sleepy', 'love', 'laugh'];
-  const defaults = { apiKey: '', model: 'claude-sonnet-5-5', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
+  const defaults = { provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5-5', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -52,20 +52,14 @@
   }
 
   async function sendDirect(s, history) {
-    if (!s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 Anthropic API 키를 넣거나 PC 서버에 연결해 주세요.' };
+    if (!s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 넣거나 PC 서버에 연결해 주세요.' };
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': s.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: s.model, max_tokens: 2048, system: SYSTEM, messages: history.map((m) => ({ role: m.role, content: m.content })) }),
-      });
-      const data = await res.json();
-      if (!res.ok) return { error: (data.error && data.error.message) || ('HTTP ' + res.status) };
-      let text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+      const r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 2048, messages: history.map((m) => ({ role: m.role, content: m.content })) });
+      let text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
       let mood = 'neutral'; const m = text.match(/^\s*\[기분:([a-z]+)\]\s*/);
       if (m) { if (MOODS.includes(m[1])) mood = m[1]; text = text.slice(m[0].length); }
       return { text, mood };
-    } catch (e) { return { error: '네트워크 오류: ' + e.message }; }
+    } catch (e) { return { error: String(e.message || e) }; }
   }
 
   window.api = {

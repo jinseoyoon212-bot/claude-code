@@ -12,9 +12,6 @@
     "bridge": "node src/server-cli.js",
     "prebridge": "node ../aurora-web/sync.js"
   },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.60.0"
-  },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"

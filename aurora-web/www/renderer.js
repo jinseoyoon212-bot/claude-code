@@ -29,6 +29,15 @@ input.addEventListener('input', () => Face.lookAt(0, 0.6));
 
 // 설정: data-k 속성이 붙은 입력칸을 자동으로 읽고 저장 (화면에 보이는 칸만)
 const dlg = $('settings');
+const prov = $('provider');
+Object.entries(LLM.PRESETS).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
+const modelEl = () => dlg.querySelector('[data-k=model]');
+function provChanged(resetModel) {
+  const p = LLM.PRESETS[prov.value] || LLM.PRESETS.anthropic, m = modelEl();
+  if (resetModel && (!m.value || Object.values(LLM.PRESETS).some((x) => x.model === m.value))) m.value = p.model;
+  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
+}
+prov.addEventListener('change', () => provChanged(true));
 const fields = () => [...dlg.querySelectorAll('[data-k]')];
 async function showRemote() {
   if (!api.remoteInfo || !$('remoteInfo')) return;
@@ -38,12 +47,13 @@ async function showRemote() {
 $('gear').onclick = async () => {
   const s = await api.getSettings();
   fields().forEach((el) => { const v = s[el.dataset.k]; if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
+  if (!prov.value) prov.value = 'anthropic'; provChanged(false);
   await showRemote(); dlg.showModal();
 };
 $('save').onclick = async () => {
   const patch = {};
   fields().filter((el) => el.offsetParent !== null).forEach((el) => { patch[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value.trim(); });
-  if (!patch.model) patch.model = 'claude-sonnet-5-5';
+  if (!patch.model) patch.model = (LLM.PRESETS[patch.provider] || LLM.PRESETS.anthropic).model;
   await api.setSettings(patch);
 };
-api.getSettings().then((s) => { if (!s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! 먼저 ⚙ 설정을 해줘 🌈'; });
+api.getSettings().then((s) => { if (!s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! 먼저 ⚙ 설정에서 AI 제공자(무료: Gemini 추천)와 API 키를 넣어줘 🌈'; });

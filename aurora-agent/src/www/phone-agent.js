@@ -42,7 +42,7 @@
   async function runPhoneAgent({ settings, history, notify }) {
     const D = dev();
     if (!D) return { error: '이 기능은 Aurora Agent APK 앱 안에서만 쓸 수 있어요.' };
-    if (!settings.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 Anthropic API 키를 입력해 주세요.' };
+    if (!settings.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 입력해 주세요.' };
     const messages = history.map((m) => ({ role: m.role, content: m.content }));
     const lastUser = String(history[history.length - 1].content).slice(0, 200);
     let uiGranted = !!settings.phoneAuto, uiUsed = false;
@@ -82,15 +82,8 @@
 
     for (let n = 0; n < 30; n++) {
       let data;
-      try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-          body: JSON.stringify({ model: settings.model, max_tokens: 4096, system: SYSTEM, tools: TOOLS, messages }),
-        });
-        data = await res.json();
-        if (!res.ok) return { error: (data.error && data.error.message) || 'HTTP ' + res.status };
-      } catch (e) { return { error: '네트워크 오류: ' + e.message }; }
+      try { data = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, system: SYSTEM, tools: TOOLS, messages }); }
+      catch (e) { return { error: String(e.message || e) }; }
       messages.push({ role: 'assistant', content: data.content });
       if (data.stop_reason !== 'tool_use') {
         let text = data.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();

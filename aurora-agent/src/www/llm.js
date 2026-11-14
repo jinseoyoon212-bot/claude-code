@@ -1,0 +1,45 @@
+// 여러 AI 제공자를 하나의 형식(Anthropic 메시지 블록)으로 다루는 어댑터. 브라우저/Node 공용.
+(function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.LLM = factory(); })(typeof self !== 'undefined' ? self : this, function () {
+  const PRESETS = {
+    anthropic: { label: 'Anthropic Claude (유료)', model: 'claude-sonnet-5-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
+    gemini: { label: 'Google Gemini (무료 사용량 있음)', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey' },
+    groq: { label: 'Groq (무료 사용량 있음)', base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', keyUrl: 'https://console.groq.com/keys' },
+    openrouter: { label: 'OpenRouter (무료 모델 있음)', base: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free', keyUrl: 'https://openrouter.ai/keys' },
+  };
+  const env = (k) => (typeof process !== 'undefined' && process.env && process.env[k]) || '';
+  const errMsg = (data, status) => { const d = Array.isArray(data) ? data[0] : data; const e = d && d.error; return (e && (e.message || (typeof e === 'string' ? e : JSON.stringify(e)))) || 'HTTP ' + status; };
+
+  async function call({ provider = 'anthropic', apiKey, model, system, tools = [], messages, maxTokens = 4096, baseUrl }) {
+    const p = PRESETS[provider] || PRESETS.anthropic;
+    model = model || p.model;
+    if (provider === 'anthropic' || !PRESETS[provider]) {
+      const base = (baseUrl || env('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com').replace(/\/+$/, '');
+      const body = { model, max_tokens: maxTokens, system, messages }; if (tools.length) body.tools = tools;
+      const res = await fetch(base + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(errMsg(data, res.status));
+      return { content: data.content, stop_reason: data.stop_reason };
+    }
+    // OpenAI 호환 (Gemini / Groq / OpenRouter)
+    const oa = [{ role: 'system', content: system }];
+    for (const m of messages) {
+      if (typeof m.content === 'string') { oa.push({ role: m.role, content: m.content }); continue; }
+      if (m.role === 'assistant') {
+        const text = m.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+        const calls = m.content.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } }));
+        const msg = { role: 'assistant', content: text || null }; if (calls.length) msg.tool_calls = calls; oa.push(msg);
+      } else for (const b of m.content) if (b.type === 'tool_result') oa.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content) });
+    }
+    const body = { model, messages: oa, max_tokens: maxTokens };
+    if (tools.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    const base = (baseUrl || p.base).replace(/\/+$/, '');
+    const res = await fetch(base + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(errMsg(data, res.status));
+    const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
+    const content = []; if (msg.content) content.push({ type: 'text', text: msg.content });
+    for (const c of msg.tool_calls || []) { let input = {}; try { input = JSON.parse(c.function.arguments || '{}'); } catch {} content.push({ type: 'tool_use', id: c.id || 'call_' + Math.random().toString(36).slice(2), name: c.function.name, input }); }
+    return { content, stop_reason: (msg.tool_calls || []).length ? 'tool_use' : 'end_turn' };
+  }
+  return { PRESETS, call };
+});

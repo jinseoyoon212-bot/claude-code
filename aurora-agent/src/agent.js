@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const LLM = require('./llm');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -48,10 +48,9 @@ async function runTool(name, input, confirm) {
 }
 
 async function runAgent({ settings, history, confirm, notify }) {
-  const client = new Anthropic({ apiKey: settings.apiKey });
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   for (let i = 0; i < 25; i++) {
-    const r = await client.messages.create({ model: settings.model, max_tokens: 4096, system: SYSTEM(), tools: TOOLS, messages });
+    const r = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, baseUrl: settings.baseUrl, system: SYSTEM(), tools: TOOLS, messages });
     messages.push({ role: 'assistant', content: r.content });
     if (r.stop_reason !== 'tool_use') {
       let text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
