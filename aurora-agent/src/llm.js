@@ -43,6 +43,7 @@
       } else for (const b of m.content) if (b.type === 'tool_result') oa.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content) });
     }
     const body = { model, messages: oa, max_tokens: maxTokens };
+    if (provider === 'gemini') body.reasoning_effort = 'low';   // 생각 시간을 줄여 응답 속도 향상
     if (tools.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
     const url = !baseUrl && p.endpoint ? p.endpoint : (baseUrl || p.base).replace(/\/+$/, '') + '/chat/completions';
     const headers = { 'content-type': 'application/json' }; if (apiKey) headers.authorization = 'Bearer ' + apiKey;

@@ -11,7 +11,8 @@
 2. 한국어로 친근하고 간결하게 답합니다. 모든 답변의 맨 첫 줄에 기분 태그: [기분:${MOODS.join('|')}]
 3. 파일: 공유 저장소는 /sdcard (다운로드 /sdcard/Download, 사진 /sdcard/DCIM, 문서 /sdcard/Documents). 권한 오류가 나면 request_all_files_access를 호출해 사용자가 허용하게 안내합니다.
 4. run_command는 안드로이드 sh(toybox)이고 앱 권한으로 실행됩니다. 루트가 아니므로 다른 앱의 내부 데이터(/data/data)와 시스템 영역은 못 만집니다. 이 한계는 솔직히 알려줍니다.
-5. 앱 조작 순서: list_apps로 패키지 확인 → launch_app → wait 1~2초 → screen_read로 화면 확인 → screen_click_text / screen_tap / screen_type / screen_swipe → 다시 screen_read로 결과 확인. 좌표는 screen_read의 x,y를 씁니다.
+5. 앱 실행은 launch_app에 name(앱 이름)만 주면 한 번에 됩니다(list_apps 불필요). 이후 screen_read로 화면 확인 → screen_click_text / screen_tap / screen_type / screen_swipe → 필요할 때만 screen_read로 결과 확인. 좌표는 screen_read의 @x,y를 씁니다.
+   속도가 중요합니다: 도구 호출 횟수를 최소화하고, 서로 독립적인 호출은 한 번에 여러 개 요청하세요.
 6. 화면 조작이 "접근성 서비스 꺼짐" 오류면 open_accessibility_settings를 호출하고 'Aurora Agent'를 켜 달라고 안내합니다.
 7. 결제·송금·삭제·메시지 전송처럼 되돌리기 어려운 동작은 실행 전에 사용자에게 한 번 더 말로 확인합니다.
 8. 작업을 마치면 무엇을 했는지 한두 문장으로 요약합니다.`;
@@ -23,8 +24,8 @@
     { name: 'write_file', description: '파일 생성/덮어쓰기(append=true면 이어쓰기). 상위 폴더 자동 생성.', input_schema: S({ path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean' } }, ['path', 'content']) },
     { name: 'list_dir', description: '폴더 목록', input_schema: S({ path: { type: 'string' } }, ['path']) },
     { name: 'device_info', description: '기기 모델/안드로이드 버전/배터리/저장공간/화면크기/권한 상태', input_schema: S({}) },
-    { name: 'list_apps', description: '설치된 실행 가능한 앱의 이름과 패키지 목록', input_schema: S({}) },
-    { name: 'launch_app', description: '패키지명으로 앱 실행', input_schema: S({ package: { type: 'string' } }, ['package']) },
+    { name: 'list_apps', description: '설치된 앱 목록(이름=패키지). query로 이름 검색 가능. 앱 실행만 할 거면 불필요.', input_schema: S({ query: { type: 'string' } }) },
+    { name: 'launch_app', description: '앱 실행. name(앱 이름, 예: 네이버) 또는 package 중 하나만 주면 됨.', input_schema: S({ name: { type: 'string' }, package: { type: 'string' } }) },
     { name: 'open_intent', description: '인텐트로 열기. 예: {uri:"https://..."}, {action:"android.intent.action.DIAL",uri:"tel:010..."}, {action:"android.settings.SETTINGS"}', input_schema: S({ action: { type: 'string' }, uri: { type: 'string' }, mimeType: { type: 'string' }, package: { type: 'string' } }) },
     { name: 'screen_read', description: '현재 화면의 글자/버튼/입력칸 목록(좌표 포함). 접근성 서비스 필요.', input_schema: S({}) },
     { name: 'screen_click_text', description: '화면에서 글자로 버튼을 찾아 클릭', input_schema: S({ text: { type: 'string' }, exact: { type: 'boolean' } }, ['text']) },
@@ -38,6 +39,8 @@
   ];
   const UI = new Set(['launch_app', 'open_intent', 'screen_click_text', 'screen_tap', 'screen_swipe', 'screen_type', 'screen_global']);
   const SHELL = new Set(['run_command', 'write_file']);
+
+  const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
   async function runPhoneAgent({ settings, history, notify }) {
     const D = dev();
@@ -62,12 +65,23 @@
         case 'run_command': { const r = await D.runCommand({ command: i.command, cwd: i.cwd }); return clip(`${r.output || '(출력 없음)'}\n[종료코드 ${r.exitCode}${r.timedOut ? ', 시간초과' : ''}]`); }
         case 'read_file': return (await D.readFile({ path: i.path })).content;
         case 'write_file': return j(await D.writeFile({ path: i.path, content: i.content, append: !!i.append }));
-        case 'list_dir': return j(await D.listDir({ path: i.path }));
+        case 'list_dir': { const r = await D.listDir({ path: i.path }); return clip(`${r.path} (총 ${r.total}개)\n` + r.entries.slice(0, 200).map((e) => e.name + (e.dir ? '/' : '')).join('\n')); }
         case 'device_info': return j(await D.deviceInfo());
-        case 'list_apps': return j((await D.listApps()).apps);
-        case 'launch_app': return j(await D.launchApp({ package: i.package }));
+        case 'list_apps': { const f = filterApps((await D.listApps()).apps, i.query); return f.slice(0, 60).map((a) => `${a.name}=${a.package}`).join('\n') + (f.length > 60 ? `\n...외 ${f.length - 60}개 (query로 검색하세요)` : '') || '(없음)'; }
+        case 'launch_app': {
+          let pkg = i.package;
+          if (!pkg) {
+            const f = filterApps((await D.listApps()).apps, i.name || ''); const q = String(i.name || '').toLowerCase();
+            const hit = f.find((a) => a.name.toLowerCase() === q) || f[0];
+            if (!hit) return `앱을 찾지 못했어요: ${i.name}`; pkg = hit.package;
+          }
+          return j(await D.launchApp({ package: pkg }));
+        }
         case 'open_intent': return j(await D.openIntent(i));
-        case 'screen_read': return j(await D.screenRead());
+        case 'screen_read': {
+          const r = await D.screenRead(); if (r.error) return r.error;
+          return clip(`앱: ${r.package} (요소 ${r.count}개)\n` + (r.nodes || []).slice(0, 120).map((n) => `${n.text || n.desc || n.id || '(이름없음)'}${n.click ? ' [클릭]' : ''}${n.edit ? ' [입력]' : ''} @${n.x},${n.y}`).join('\n'));
+        }
         case 'screen_click_text': return j(await D.screenClickText({ text: i.text, exact: !!i.exact }));
         case 'screen_tap': return j(await D.screenTap({ x: i.x, y: i.y }));
         case 'screen_swipe': return j(await D.screenSwipe(i));
