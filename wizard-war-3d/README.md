@@ -18,7 +18,16 @@
 - 기기를 자동 인식: 휴대폰·태블릿은 터치 버튼과 조이스틱, PC는 화면 아래 단축키 바만 표시
 - 터치 노트북처럼 둘 다 되는 기기는 실제로 손가락을 쓰면 터치 UI, 키보드를 누르면 단축키 바로 바뀜
 - 휴대폰을 세로로 들면 "가로로 돌려주세요" 안내와 함께 자동 일시정지
-- 웹 빌드: `godot --headless --path . --export-release "Web" build/web/index.html` (단일 스레드 빌드라 GitHub Pages에서 별도 헤더 없이 동작)
+- 웹 빌드·배포:
+  ```bash
+  godot --headless --path . --export-release "Web" build/web/index.html
+  python3 tools/package_web.py build/web build/web_deploy   # wasm을 4조각으로 분할 + wrangler 설정 생성
+  # build/web_deploy 안의 파일을 gh-pages 브랜치 루트에 올린다
+  ```
+- 엔진 파일(`index.wasm`, 약 35MB)은 Cloudflare의 파일당 25MiB 제한 때문에 4조각(`index.wasm.N.bin`)으로 나눠 올린다.
+  브라우저에서는 `export_presets.cfg`의 `head_include` 스크립트가 `index.wasm` 요청을 조각 요청으로 바꿔 이어 붙인다.
+  (`.assetsignore`가 원본 `index.wasm`을 Cloudflare 업로드에서 제외)
+- Cloudflare Workers Builds: Production branch=`gh-pages`, Build command 비움, Deploy command=`npx wrangler deploy`
 
 ## 조작
 | PC | 모바일 | 동작 |
