@@ -49,7 +49,9 @@
 - `ui_base.gd` UI 그리기 도우미 / `hud.gd` 전투 UI / `menu.gd` 모든 메뉴 화면
 - `save.gd` (자동 로드 `Save`) 저장·상점·스테이지·업적·치트 데이터
 - `audio.gd` (자동 로드 `Sfx`) 효과음·배경음악
-- `tools/gen_audio.py` 효과음 23종과 배경음악 3곡을 합성하는 스크립트 (`python3 tools/gen_audio.py`)
+- `tools/gen_audio.py` 효과음 23종(ogg)과 배경음악 3곡(wav)을 합성하는 스크립트 (`python3 tools/gen_audio.py`, 음악만: `python3 tools/gen_audio.py music`)
+  - 음악은 WAV(IMA-ADPCM)이고, 반복은 엔진 반복을 끄고 `audio.gd`가 곡 끝 직전에 같은 곡을 박자 단위로 겹쳐 시작하는 방식이다.
+    엔진 자체 반복은 되돌아가는 순간 소리가 잠깐 비고(게임이 바쁘면 0.1~0.3초), 웹에서는 `get_playback_position()`이 항상 0이라 위치를 실제 시계로 잰다.
 
 ## 에셋 출처
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)

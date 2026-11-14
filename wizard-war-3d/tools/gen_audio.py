@@ -6,6 +6,7 @@ python3 tools/gen_audio.py  ->  audio/*.ogg
 """
 import os
 import subprocess
+import sys
 import tempfile
 import wave
 
@@ -116,6 +117,39 @@ def norm(x, peak=0.9):
 
 def midi(n):
     return 440.0 * 2 ** ((n - 69) / 12)
+
+
+def stereo_pcm(x, stereo_width):
+    x = np.clip(x, -1, 1)
+    if stereo_width > 0:
+        d = int(0.012 * SR)
+        r = np.concatenate([np.zeros(d), x[:-d]])
+        st = np.stack([x, x * (1 - stereo_width) + r * stereo_width], axis=1)
+    else:
+        st = np.stack([x, x], axis=1)
+    return (st * 32767).astype(np.int16)
+
+
+def save_wav(name, x, stereo_width=0.0):
+    """음악은 WAV로 저장한다. Ogg는 반복 지점에서 디코더를 되감느라 0.2~0.3초 무음이 생기지만,
+    WAV(PCM/ADPCM)는 샘플 단위로 끊김 없이 반복된다. 압축·반복 설정은 *.wav.import 에 있다."""
+    os.makedirs(OUT, exist_ok=True)
+    dst = os.path.join(OUT, name + ".wav")
+    with wave.open(dst, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(stereo_pcm(x, stereo_width).tobytes())
+    print("wrote", dst)
+
+
+def fold_loop(out, total):
+    """끝에 남은 잔향(리버브 꼬리)을 처음에 겹쳐 더해, 반복 이음새가 자연스럽게 이어지게 한다."""
+    n = int(SR * total)
+    tail = out[n:n + SR]
+    head = out[:n].copy()
+    head[:len(tail)] += tail
+    return norm(head, 0.8)
 
 
 def save(name, x, stereo_width=0.0):
@@ -421,7 +455,7 @@ def music_title():
             v = osc(midi(m) * (1 + 0.003 * np.sin(2 * np.pi * 5.5 * t_axis(beat * 0.95))), beat * 0.95, "tri")
             place(out, v * env_adsr(n, 0.04, 0.1, 0.7, 0.2) * 0.13, t0 + k * beat)
     out = reverb(out, 0.5)
-    return norm(out[: int(SR * total)], 0.8)
+    return fold_loop(out, total)
 
 
 def music_battle(boss=False):
@@ -454,7 +488,7 @@ def music_battle(boss=False):
             if (k + bi) % 3 != 2:
                 place(out, pluck(arp[k % 4], beat / 4 * 1.5, 0.06), t0 + k * beat / 4)
     out = reverb(out, 0.25)
-    return norm(out[: int(SR * total)], 0.8)
+    return fold_loop(out, total)
 
 
 SFX = {
@@ -466,8 +500,10 @@ SFX = {
 }
 
 if __name__ == "__main__":
-    for name, fn in SFX.items():
-        save(name, fn(), 0.3)
-    save("music_title", music_title(), 0.5)
-    save("music_battle", music_battle(False), 0.5)
-    save("music_boss", music_battle(True), 0.5)
+    only_music = len(sys.argv) > 1 and sys.argv[1] == "music"   # python3 tools/gen_audio.py music
+    if not only_music:
+        for name, fn in SFX.items():
+            save(name, fn(), 0.3)
+    save_wav("music_title", music_title(), 0.5)
+    save_wav("music_battle", music_battle(False), 0.5)
+    save_wav("music_boss", music_battle(True), 0.5)
