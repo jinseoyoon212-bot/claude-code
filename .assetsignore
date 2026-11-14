@@ -1,0 +1,6 @@
+index.wasm
+wrangler.jsonc
+.assetsignore
+.nojekyll
+.git
+README.md
