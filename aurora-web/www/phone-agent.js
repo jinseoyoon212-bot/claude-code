@@ -88,6 +88,45 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     }
   }
 
+
+  // ---- 즉시 실행: 단순한 명령은 AI를 거치지 않고 바로 처리 (0초 대기) ----
+  const TOGGLES = [
+    [/와이파이|wi-?fi|와이 파이/i, 'Wi-Fi', (on) => `svc wifi ${on ? 'enable' : 'disable'}`],
+    [/블루투스|bluetooth/i, '블루투스', (on) => `svc bluetooth ${on ? 'enable' : 'disable'}`],
+    [/모바일 ?데이터|데이터 ?(통신|연결)?/, '모바일 데이터', (on) => `svc data ${on ? 'enable' : 'disable'}`],
+    [/비행기 ?모드/, '비행기 모드', (on) => `cmd connectivity airplane-mode ${on ? 'enable' : 'disable'}`],
+  ];
+  const eulReul = (w) => { const c = w.charCodeAt(w.length - 1) - 0xac00; return (c >= 0 && c <= 11171 ? c % 28 !== 0 : /[013678]$/.test(w) || /[lmnrLMNR]$/.test(w)) ? '을' : '를'; };
+  async function quickRoute(text, D, ask, notify) {
+    const t = text.trim().replace(/\s+/g, ' ');
+    if (t.length > 40 || /[?？]|있어|가능|할 수|될까|어떻게|왜|뭐|알려|설명/.test(t)) return null;   // 질문/복잡한 말은 AI에게
+    const on = /(켜|켜줘|켜라|켜봐|활성|on\b)/i.test(t) ? true : /(꺼|꺼줘|꺼라|끄|끄기|비활성|off\b)/i.test(t) ? false : null;
+    const run = async (cmd, shown) => {
+      let s; try { s = await D.shizukuStatus(); } catch { s = {}; }
+      if (!s.granted) return { text: 'Shizuku가 실행 중이어야 이 명령을 쓸 수 있어요. ⚙ 설정의 [Shizuku 상태]를 확인해 주세요.', mood: 'sad' };
+      if (!(await ask('명령 실행', cmd))) return { text: '알겠어요, 실행하지 않았어요.', mood: 'neutral' };
+      notify({ type: 'tool', name: 'adb_command', input: { command: cmd } });
+      const out = (await D.shizukuShell({ command: cmd })).output || '';
+      return /error|exception|denied|unknown/i.test(out) ? { text: `실행했는데 오류가 났어요: ${out.slice(0, 200)}`, mood: 'sad' } : { text: shown, mood: 'happy' };
+    };
+    for (const [re, label, cmd] of TOGGLES) if (re.test(t) && on !== null) return run(cmd(on), `${label}${eulReul(label)} ${on ? '켰' : '껐'}어요 ✅`);
+    if (/(볼륨|소리).*(올려|높여|키워|크게)/.test(t)) return run('input keyevent 24', '볼륨을 올렸어요 🔊');
+    if (/(볼륨|소리).*(내려|낮춰|줄여|작게)/.test(t)) return run('input keyevent 25', '볼륨을 내렸어요 🔉');
+    if (/음소거|무음/.test(t)) return run('input keyevent 164', '음소거 했어요 🔇');
+    if (/^(배터리|충전)/.test(t) || /배터리 (몇|잔량|상태)/.test(t)) { const d = await D.deviceInfo(); return { text: `배터리 ${d.batteryPercent}%예요 🔋`, mood: 'neutral' }; }
+    if (/^(저장 ?공간|용량)/.test(t)) { const d = await D.deviceInfo(); return { text: `저장공간 ${d.storageFreeGB}GB 남았어요 (전체 ${d.storageTotalGB}GB)`, mood: 'neutral' }; }
+    const m = t.match(/^(.{1,20}?)\s*(?:앱|어플|어플리케이션)?\s*(?:을|를)?\s*(?:좀\s*)?(?:열어|켜|실행|띄워|시작)/);
+    if (m) {
+      const name = m[1].replace(/(을|를)$/, '').trim(); if (!name) return null;
+      const f = filterApps((await D.listApps()).apps, name); const q = name.toLowerCase();
+      const hit = f.find((a) => a.name.toLowerCase() === q) || f[0]; if (!hit) return null;
+      if (!(await ask('앱 실행', `${hit.name} (${hit.package})`))) return { text: '알겠어요, 실행하지 않았어요.', mood: 'neutral' };
+      notify({ type: 'tool', name: 'launch_app', input: { name: hit.name } });
+      await D.launchApp({ package: hit.package }); return { text: `${hit.name}${eulReul(hit.name)} 열었어요 📱`, mood: 'happy', stay: true };
+    }
+    return null;
+  }
+
   const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
   async function runPhoneAgent({ settings, history, notify }) {
@@ -97,8 +136,10 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     const messages = history.map((m) => ({ role: m.role, content: m.content }));
     const lastUser = String(history[history.length - 1].content).slice(0, 200);
     let uiGranted = !!settings.phoneAuto, uiUsed = false;
+    const quickAsk = async (title, detail) => settings.phoneAuto ? true : window.confirm(title + '\n\n' + detail + '\n\n허용할까요?');
+    try { const q = await quickRoute(String(history[history.length - 1].content), D, quickAsk, notify); if (q) return q; } catch (e) { /* 실패하면 AI에게 맡김 */ }
 
-    const front = async () => { if (uiUsed) { await comeBack(); await sleep(700); } };
+    const front = async () => { if (uiUsed && ctrl !== 'none') { await comeBack(); await sleep(700); } };
     const ask = async (title, detail) => { if (settings.phoneAuto) return true; await front(); return window.confirm(title + '\n\n' + detail + '\n\n허용할까요?'); };
 
     const toolList = TOOLS.filter((t) => settings.screenControl || !(t.name.startsWith('screen_') || t.name === 'open_accessibility_settings'));
@@ -168,7 +209,7 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
         let text = data.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
         let mood = 'neutral'; const m = text.match(/^\s*\[기분:([a-z]+)\]\s*/);
         if (m) { if (MOODS.includes(m[1])) mood = m[1]; text = text.slice(m[0].length); }
-        if (uiUsed) await comeBack();
+        if (uiUsed && settings.screenControl) await comeBack();
         return { text, mood };
       }
       const results = [];
@@ -179,7 +220,7 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
       }
       messages.push({ role: 'user', content: results });
     }
-    if (uiUsed) await comeBack();
+    if (uiUsed && settings.screenControl) await comeBack();
     return { text: '작업이 너무 길어져서 여기서 멈췄어요. 이어서 말씀해 주세요.', mood: 'surprised' };
   }
   window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev() };
