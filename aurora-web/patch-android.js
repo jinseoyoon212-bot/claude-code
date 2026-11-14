@@ -44,6 +44,25 @@ if (!m.includes('AuroraAccessibilityService')) {
     </application>`);
 }
 fs.writeFileSync(mf, m);
+
+// Shizuku 연동: 라이브러리 + 프로바이더 + minSdk 24
+const bg = path.join(root, 'app/build.gradle'); let g = fs.readFileSync(bg, 'utf8');
+if (!g.includes('dev.rikka.shizuku')) { g = g.replace(/dependencies\s*\{/, "dependencies {\n    implementation 'dev.rikka.shizuku:api:13.1.5'\n    implementation 'dev.rikka.shizuku:provider:13.1.5'"); fs.writeFileSync(bg, g); }
+const vg = path.join(root, 'variables.gradle');
+if (fs.existsSync(vg)) fs.writeFileSync(vg, fs.readFileSync(vg, 'utf8').replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 24'));
+let m2 = fs.readFileSync(mf, 'utf8');
+if (!m2.includes('ShizukuProvider')) {
+  m2 = m2.replace('</application>', `        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${appId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>`);
+  fs.writeFileSync(mf, m2);
+}
+
 // Gradle 래퍼를 8.7로 (JDK 17/21 모두 지원)
 const gw = path.join(root, 'gradle/wrapper/gradle-wrapper.properties');
 if (fs.existsSync(gw)) fs.writeFileSync(gw, fs.readFileSync(gw, 'utf8').replace(/gradle-[\d.]+-(bin|all)\.zip/, 'gradle-8.7-bin.zip'));

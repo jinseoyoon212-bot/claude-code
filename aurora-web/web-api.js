@@ -75,6 +75,17 @@
         if (n === 'appinfo') { await D.openAppInfo(); return '앱 정보를 열었어요. 오른쪽 위 ⋮ → "제한된 설정 허용"이 있으면 누르세요.'; }
         if (n === 'files') { await D.requestAllFilesAccess(); return '파일 권한 화면을 열었어요. Aurora Agent를 허용하세요.'; }
         if (n === 'secure') { await D.enableA11yViaSecureSettings(); return '접근성을 켰어요! 진단 버튼으로 확인해 보세요.'; }
+        if (n === 'shz_status' || n === 'shz_enable') {
+          const s = await D.shizukuStatus();
+          if (!s.installed) return '① Play 스토어에서 "Shizuku" 앱을 설치하세요. 설치 후 이 버튼을 다시 누르세요.';
+          if (!s.running) return '② Shizuku 앱을 열고 "무선 디버깅으로 시작"을 따라 하세요 (개발자 옵션 → 무선 디버깅 켜기 → 페어링 코드로 기기 페어링 → 알림에 코드 입력 → Shizuku의 "시작"). 실행 중으로 바뀌면 이 버튼을 다시 누르세요.';
+          if (n === 'shz_status') return 'Shizuku 실행 중이에요. 권한: ' + (s.granted ? '허용됨 ✅' : '아직 안 줌 (아래 [Shizuku로 접근성 켜기]를 누르면 요청해요)');
+          if (!s.granted) { const r = await D.shizukuRequestPermission(); if (!r.granted) return '③ Shizuku 권한 요청이 거부됐어요. 다시 누르고 "허용"을 선택하세요.'; }
+          await D.shizukuEnableAccessibility();
+          await new Promise((res) => setTimeout(res, 1500));
+          const r = await D.a11yDiagnose();
+          return r.connected ? '✅ 접근성이 켜지고 연결됐어요! 이제 화면 조작을 쓸 수 있어요.' : '접근성 설정은 켰어요. 아직 연결 전이에요. 몇 초 뒤 [접근성 진단]을 눌러 확인하세요.';
+        }
         if (n === 'diag') {
           const r = await D.a11yDiagnose();
           const head = `시스템 인식: ${r.registered ? '예' : '아니오'} / 켜짐: ${r.enabledInSettings ? '예' : '아니오'} / 연결됨: ${r.connected ? '예' : '아니오'} (안드로이드 ${r.android}, ${r.maker})`;

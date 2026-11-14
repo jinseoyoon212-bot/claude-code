@@ -4,7 +4,7 @@ const history = [];
 let busy = false;
 
 function addLog(msg) { const d = document.createElement('div'); d.textContent = msg; log.appendChild(d); log.scrollTop = log.scrollHeight; }
-const toolLabel = { run_command: (i) => '⚙ 실행: ' + i.command, read_file: (i) => '📖 읽기: ' + i.path, write_file: (i) => '✏ 쓰기: ' + i.path, list_dir: (i) => '📂 목록: ' + i.path, system_info: () => '🖥 시스템 정보', launch_app: (i) => '📱 앱 실행: ' + (i.name || i.package), list_apps: () => '📱 앱 목록 확인', screen_read: () => '👀 화면 읽는 중', screen_click_text: (i) => '👆 누르는 중: ' + i.text, screen_tap: () => '👆 화면 탭', screen_swipe: () => '👆 스와이프', screen_type: (i) => '⌨ 입력: ' + i.text, screen_global: (i) => '🔘 ' + i.action, device_info: () => '📊 기기 정보', open_intent: () => '🔗 열기', wait: () => '⏳ 잠시 대기', request_all_files_access: () => '🔐 파일 권한 요청', open_accessibility_settings: () => '🔐 접근성 설정 열기' };
+const toolLabel = { run_command: (i) => '⚙ 실행: ' + i.command, read_file: (i) => '📖 읽기: ' + i.path, write_file: (i) => '✏ 쓰기: ' + i.path, list_dir: (i) => '📂 목록: ' + i.path, system_info: () => '🖥 시스템 정보', launch_app: (i) => '📱 앱 실행: ' + (i.name || i.package), list_apps: () => '📱 앱 목록 확인', screen_read: () => '👀 화면 읽는 중', screen_click_text: (i) => '👆 누르는 중: ' + i.text, screen_tap: () => '👆 화면 탭', screen_swipe: () => '👆 스와이프', screen_type: (i) => '⌨ 입력: ' + i.text, screen_global: (i) => '🔘 ' + i.action, device_info: () => '📊 기기 정보', open_intent: () => '🔗 열기', wait: () => '⏳ 잠시 대기', adb_command: (i) => '🛠 adb: ' + i.command, request_all_files_access: () => '🔐 파일 권한 요청', open_accessibility_settings: () => '🔐 접근성 설정 열기' };
 
 api.onEvent((ev) => {
   if (ev.type === 'wait') { bubble.textContent = `무료 서버 한도 때문에 ${ev.seconds}초 기다리는 중이에요… ⏳`; Face.setMood('sleepy'); return; }

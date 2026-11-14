@@ -28,7 +28,10 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import rikka.shizuku.Shizuku;
+
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Method;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -172,6 +175,76 @@ public class AuroraDevicePlugin extends Plugin {
         } catch (SecurityException se) {
             call.reject("권한이 없어요. PC에서 USB 디버깅으로: adb shell pm grant " + ctx().getPackageName() + " android.permission.WRITE_SECURE_SETTINGS");
         } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    // ---------- Shizuku (PC 없이 무선 디버깅 권한으로 접근성 켜기 / adb 수준 명령) ----------
+    private static final int SHIZUKU_REQ = 4242;
+    private PluginCall shizukuCall;
+    private final Shizuku.OnRequestPermissionResultListener shizukuListener = new Shizuku.OnRequestPermissionResultListener() {
+        @Override public void onRequestPermissionResult(int requestCode, int grantResult) {
+            if (requestCode != SHIZUKU_REQ) return;
+            PluginCall c = shizukuCall; shizukuCall = null;
+            if (c != null) { JSObject o = new JSObject(); o.put("granted", grantResult == PackageManager.PERMISSION_GRANTED); c.resolve(o); }
+        }
+    };
+    @Override public void load() { try { Shizuku.addRequestPermissionResultListener(shizukuListener); } catch (Throwable ignored) { } }
+
+    private boolean shizukuRunning() { try { return Shizuku.pingBinder(); } catch (Throwable t) { return false; } }
+    private boolean shizukuGranted() { try { return shizukuRunning() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED; } catch (Throwable t) { return false; } }
+
+    private String shizukuExec(String cmd) throws Exception {
+        Method m = Shizuku.class.getDeclaredMethod("newProcess", String[].class, String[].class, String.class);
+        m.setAccessible(true);
+        final Process p = (Process) m.invoke(null, new String[]{ "sh", "-c", cmd }, null, null);
+        final ByteArrayOutputStream err = new ByteArrayOutputStream();
+        Thread te = new Thread(new Runnable() { public void run() {
+            try (InputStream in = p.getErrorStream()) { byte[] b = new byte[2048]; int n; while ((n = in.read(b)) > 0) { synchronized (err) { err.write(b, 0, n); } } } catch (Exception ignored) { }
+        }});
+        te.start();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream in = p.getInputStream()) { byte[] b = new byte[4096]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n); }
+        int code = p.waitFor(); te.join(1000);
+        String o; synchronized (err) { o = new String(out.toByteArray(), "UTF-8") + new String(err.toByteArray(), "UTF-8"); }
+        return clip(o.trim(), 20000) + (code != 0 ? "\n[종료코드 " + code + "]" : "");
+    }
+
+    @PluginMethod public void shizukuStatus(final PluginCall call) {
+        JSObject o = new JSObject();
+        boolean installed = true;
+        try { ctx().getPackageManager().getPackageInfo("moe.shizuku.privileged.api", 0); } catch (Throwable t) { installed = false; }
+        o.put("installed", installed); o.put("running", shizukuRunning()); o.put("granted", shizukuGranted());
+        call.resolve(o);
+    }
+
+    @PluginMethod public void shizukuRequestPermission(final PluginCall call) {
+        try {
+            if (!shizukuRunning()) { call.reject("Shizuku가 실행 중이 아니에요. Shizuku 앱에서 먼저 시작하세요."); return; }
+            if (shizukuGranted()) { JSObject o = new JSObject(); o.put("granted", true); call.resolve(o); return; }
+            shizukuCall = call; Shizuku.requestPermission(SHIZUKU_REQ);
+        } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    @PluginMethod public void shizukuShell(final PluginCall call) {
+        async(call, new Job() { public JSObject run() throws Exception {
+            if (!shizukuGranted()) throw new Exception("Shizuku 권한이 없어요. 설정의 [Shizuku로 접근성 켜기]로 먼저 연결하세요.");
+            JSObject o = new JSObject(); o.put("output", shizukuExec(call.getString("command", ""))); return o;
+        }});
+    }
+
+    /** Shizuku(adb 권한)로 접근성 서비스를 직접 켜고, 앞으로를 위해 WRITE_SECURE_SETTINGS도 부여 */
+    @PluginMethod public void shizukuEnableAccessibility(final PluginCall call) {
+        async(call, new Job() { public JSObject run() throws Exception {
+            if (!shizukuGranted()) throw new Exception("Shizuku 권한이 없어요.");
+            String cn = ctx().getPackageName() + "/" + AuroraAccessibilityService.class.getName();
+            String cur = shizukuExec("settings get secure enabled_accessibility_services").trim();
+            if (cur.isEmpty() || cur.equals("null") || cur.contains("[종료코드")) cur = "";
+            if (!cur.contains(cn)) cur = cur.isEmpty() ? cn : cur + ":" + cn;
+            String r1 = shizukuExec("settings put secure enabled_accessibility_services '" + cur + "'");
+            String r2 = shizukuExec("settings put secure accessibility_enabled 1");
+            String r3 = shizukuExec("pm grant " + ctx().getPackageName() + " android.permission.WRITE_SECURE_SETTINGS");
+            JSObject o = new JSObject(); o.put("enabled", true); o.put("log", (r1 + " " + r2 + " " + r3).trim());
+            return o;
+        }});
     }
 
     // ---------- 셸 / 파일 ----------

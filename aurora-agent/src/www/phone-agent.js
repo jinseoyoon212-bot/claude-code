@@ -33,12 +33,13 @@
     { name: 'screen_swipe', description: '스와이프/스크롤. 아래로 스크롤하려면 y1>y2', input_schema: S({ x1: { type: 'number' }, y1: { type: 'number' }, x2: { type: 'number' }, y2: { type: 'number' }, durationMs: { type: 'number' } }, ['x1', 'y1', 'x2', 'y2']) },
     { name: 'screen_type', description: '포커스된(없으면 첫 번째) 입력칸에 글자 입력', input_schema: S({ text: { type: 'string' } }, ['text']) },
     { name: 'screen_global', description: '전역 버튼: back, home, recents, notifications, quick_settings', input_schema: S({ action: { type: 'string', enum: ['back', 'home', 'recents', 'notifications', 'quick_settings'] } }, ['action']) },
+    { name: 'adb_command', description: 'Shizuku(adb 권한)로 시스템 명령 실행. 예: input tap X Y, input swipe, input text, am start, pm list packages, settings put. Shizuku가 연결돼 있어야 함.', input_schema: S({ command: { type: 'string' } }, ['command']) },
     { name: 'wait', description: '잠시 대기(초, 최대 10)', input_schema: S({ seconds: { type: 'number' } }, ['seconds']) },
     { name: 'request_all_files_access', description: '모든 파일 접근 권한 설정 화면을 연다', input_schema: S({}) },
     { name: 'open_accessibility_settings', description: '접근성 설정 화면을 연다', input_schema: S({}) },
   ];
   const UI = new Set(['launch_app', 'open_intent', 'screen_click_text', 'screen_tap', 'screen_swipe', 'screen_type', 'screen_global']);
-  const SHELL = new Set(['run_command', 'write_file']);
+  const SHELL = new Set(['run_command', 'write_file', 'adb_command']);
 
   const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
@@ -54,7 +55,7 @@
     const ask = async (title, detail) => { if (settings.phoneAuto) return true; await front(); return window.confirm(title + '\n\n' + detail + '\n\n허용할까요?'); };
 
     async function tool(name, i) {
-      if (SHELL.has(name) && !(await ask(name === 'run_command' ? '명령 실행' : '파일 쓰기', name === 'run_command' ? i.command : i.path + '\n\n' + String(i.content).slice(0, 500)))) return '사용자가 거부했습니다.';
+      if (SHELL.has(name) && !(await ask(name === 'write_file' ? '파일 쓰기' : '명령 실행', name !== 'write_file' ? i.command : i.path + '\n\n' + String(i.content).slice(0, 500)))) return '사용자가 거부했습니다.';
       if (UI.has(name) && !uiGranted) {
         if (!(await ask('앱·화면 조작 허용', `이번 요청 동안 앱을 열고 화면을 탭/입력하는 것을 허용할까요?\n\n요청: ${lastUser}`))) return '사용자가 앱·화면 조작을 거부했습니다.';
         uiGranted = true;
@@ -87,6 +88,7 @@
         case 'screen_swipe': return j(await D.screenSwipe(i));
         case 'screen_type': return j(await D.screenType({ text: i.text }));
         case 'screen_global': return j(await D.screenGlobal({ action: i.action }));
+        case 'adb_command': return clip((await D.shizukuShell({ command: i.command })).output || '(출력 없음)');
         case 'wait': await sleep(Math.min(10, Math.max(0, i.seconds || 1)) * 1000); return '대기 완료';
         case 'request_all_files_access': return j(await D.requestAllFilesAccess());
         case 'open_accessibility_settings': return j(await D.openAccessibilitySettings());
