@@ -117,7 +117,7 @@ func _process(_d: float) -> void:
 
 func _draw() -> void:
 	clicks.clear()
-	if main == null or main.hero == null or main.state in ["intro", "title"]:
+	if main == null or main.hero == null or main.state in ["gate", "intro", "title"]:
 		return
 	_draw_world_ui()
 	if main.state != "play":

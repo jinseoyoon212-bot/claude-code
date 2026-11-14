@@ -50,6 +50,11 @@ func _active() -> bool:
 func _input(ev: InputEvent) -> void:
 	if main == null:
 		return
+	if main.state == "gate":
+		if (ev is InputEventScreenTouch and ev.pressed) or (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventKey and ev.pressed):
+			main.leave_gate()
+			get_viewport().set_input_as_handled()
+		return
 	if main.state == "intro":
 		if (ev is InputEventScreenTouch and ev.pressed) or (ev is InputEventKey and ev.pressed):
 			main.end_intro()
@@ -234,6 +239,8 @@ func _draw() -> void:
 	if main == null or main.hero == null:
 		return
 	match main.state:
+		"gate":
+			_draw_gate()
 		"intro":
 			_draw_intro()
 		"title":
@@ -295,6 +302,18 @@ func _logo(c: Vector2, scale_k: float, a: float) -> void:
 		txt(f_disp, c + Vector2(0, 2), "빛과 어둠의 마법 전쟁", fs, Color(1.0, 0.75, 0.3, a * 0.12), HORIZONTAL_ALIGNMENT_CENTER, false)
 	txt(f_disp, c, "빛과 어둠의 마법 전쟁", fs, Color(C_GOLD, a), HORIZONTAL_ALIGNMENT_CENTER)
 	txt(f_bold, c + Vector2(0, 36 * scale_k), "W I Z A R D   W A R   ·   L I G H T  &  D A R K", int(14 * scale_k), Color(C_FROST, a * 0.9), HORIZONTAL_ALIGNMENT_CENTER)
+
+
+# ---------------- 시작 대기 (웹: 소리를 켜기 위한 첫 터치) ----------------
+func _draw_gate() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.02, 0.02, 0.08, 0.55))
+	_logo(Vector2(s.x / 2, s.y * 0.34), 1.0, 1.0)
+	var pulse := 0.65 + 0.35 * sin(main.t * 3.0)
+	icon("sound", Vector2(s.x / 2, s.y * 0.62), 44, Color(C_GOLD, pulse))
+	var msg := "화면을 눌러 시작" if touch_ui else "클릭하거나 아무 키나 누르세요"
+	txt(f_disp, Vector2(s.x / 2, s.y * 0.62 + 64), msg, 30, Color(C_INK, pulse), HORIZONTAL_ALIGNMENT_CENTER)
+	txt(f_body, Vector2(s.x / 2, s.y * 0.62 + 96), "소리가 나오니 볼륨을 확인하세요", 15, C_DIM, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 # ---------------- 인트로 ----------------

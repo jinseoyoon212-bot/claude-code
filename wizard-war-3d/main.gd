@@ -231,7 +231,10 @@ func _ready() -> void:
 	menu.main = self
 	layer.add_child(menu)
 
-	if Save.next_action == "start":
+	if OS.has_feature("web") and not Save.audio_unlocked:
+		# 브라우저는 사용자가 한 번 누르기 전에는 소리를 막는다: 터치 후 인트로 시작
+		state = "gate"
+	elif Save.next_action == "start":
 		Save.next_action = ""
 		begin_battle()
 	elif Save.next_action != "":
@@ -245,6 +248,41 @@ func _ready() -> void:
 		state = "title"
 		Sfx.music("music_title")
 	_update_camera(1.0, true)
+	_warmup()
+
+
+func leave_gate() -> void:
+	## 첫 터치/클릭/키 입력: 오디오가 켜졌으니 인트로(또는 타이틀)를 시작한다
+	if state != "gate":
+		return
+	Save.audio_unlocked = true
+	if Save.next_action == "start":
+		Save.next_action = ""
+		begin_battle()
+	elif Save.next_action != "":
+		state = "title"
+		menu.open_page(Save.next_action)
+		Save.next_action = ""
+		Sfx.music("music_title")
+	elif not Save.intro_seen:
+		begin_intro()
+	else:
+		state = "title"
+		Sfx.music("music_title")
+
+
+func _warmup() -> void:
+	## 처음 쓰는 이펙트는 셰이더 컴파일 때문에 순간적으로 멈춰서 소리가 끊긴다.
+	## 대기 화면에서 미리 한 번씩 그려 둔다.
+	if Save.warmed:
+		return
+	Save.warmed = true
+	var p := Vector3(-17, 1.5, 4)
+	sparks(p, Color.WHITE, 3, 1.0, 0.4)
+	ring_effect(p, Color.WHITE, 0.3, 0.5, 0.4)
+	burst_effect(p, Color.WHITE)
+	beam_effect(p, p + Vector3(0, 0.6, 0), Color.WHITE)
+	spawn_meteor(p + Vector3(0, 0, 0), 0.0, 0.0)
 
 
 func _overlay(c: Color) -> StandardMaterial3D:
@@ -1002,7 +1040,7 @@ func _process(delta: float) -> void:
 	elif state == "win" or state == "lose":
 		end_t += delta
 		hero.loop_anim("Idle")
-	elif state == "title":
+	elif state == "title" or state == "gate":
 		hero.loop_anim("Idle")
 	for u in units:
 		u.tick(delta, active)
@@ -1511,7 +1549,7 @@ func _update_camera(delta: float, snap := false) -> void:
 		pos = r[0]
 		look = r[1]
 		snap = true
-	elif state == "title":
+	elif state == "title" or state == "gate":
 		var a := sin(t * 0.12) * 0.55
 		look = Vector3(-17, 1.6, 0)
 		pos = look + Vector3(sin(a) * 15.0, 6.5, cos(a) * 15.0)
@@ -1536,6 +1574,9 @@ func _update_camera(delta: float, snap := false) -> void:
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventKey and ev.pressed and not ev.echo:
+		if state == "gate":
+			leave_gate()
+			return
 		if state == "intro":
 			end_intro()
 			return

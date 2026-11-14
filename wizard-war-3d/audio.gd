@@ -8,6 +8,8 @@ var streams := {}
 var pool: Array = []
 var pool_i := 0
 var last_play := {}
+var recent: Array = []
+const BIG := ["win", "lose", "boss", "impact", "wave", "nova", "explode", "meteor", "summon", "levelup"]
 var music_a: AudioStreamPlayer
 var music_b: AudioStreamPlayer
 var cur_music := ""
@@ -22,7 +24,7 @@ func _ready() -> void:
 		var s: AudioStreamOggVorbis = load("res://audio/%s.ogg" % n)
 		s.loop = true
 		streams[n] = s
-	for i in 14:
+	for i in 10:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		pool.append(p)
@@ -42,6 +44,11 @@ func play(n: String, vol := 1.0, pitch_var := 0.08) -> void:
 	var now := Time.get_ticks_msec()
 	if now - int(last_play.get(n, -1000)) < 45:
 		return
+	# 0.12초 안에 너무 많은 소리가 겹치면 작은 효과음은 건너뛴다 (웹은 소리 처리가 메인 스레드라 부담이 큼)
+	recent = recent.filter(func(tm): return now - tm < 120)
+	if recent.size() >= 4 and not BIG.has(n):
+		return
+	recent.append(now)
 	last_play[n] = now
 	var p: AudioStreamPlayer = pool[pool_i]
 	pool_i = (pool_i + 1) % pool.size()

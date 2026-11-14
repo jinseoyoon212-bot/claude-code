@@ -81,6 +81,8 @@ var current_stage := "s1"
 # 실행 중에만 유지되는 값
 var next_action := ""
 var intro_seen := false
+var audio_unlocked := false   # 웹: 첫 터치/클릭 뒤에야 소리를 낼 수 있음
+var warmed := false           # 이펙트 셰이더 미리 컴파일 여부
 var cheats := {"god": false, "one_hit": false, "no_cd": false, "speed": 1}
 var touch_ui := false        # true면 터치 버튼·조이스틱, false면 키보드·마우스용 단축키 바
 var touch_device := false    # 기기가 터치 위주(휴대폰·태블릿)인지
