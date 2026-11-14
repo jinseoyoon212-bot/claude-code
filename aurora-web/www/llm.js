@@ -38,7 +38,7 @@
       if (typeof m.content === 'string') { oa.push({ role: m.role, content: m.content }); continue; }
       if (m.role === 'assistant') {
         const text = m.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
-        const calls = m.content.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } }));
+        const calls = m.content.filter((b) => b.type === 'tool_use').map((b) => { const c = { id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } }; if (b.extra_content) c.extra_content = b.extra_content; return c; });
         const msg = { role: 'assistant', content: text || null }; if (calls.length) msg.tool_calls = calls; oa.push(msg);
       } else for (const b of m.content) if (b.type === 'tool_result') oa.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content) });
     }
@@ -51,7 +51,7 @@
     if (!res.ok) throw new Error(errMsg(data, res.status));
     const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
     const content = []; if (msg.content) content.push({ type: 'text', text: msg.content });
-    for (const c of msg.tool_calls || []) { let input = {}; try { input = JSON.parse(c.function.arguments || '{}'); } catch {} content.push({ type: 'tool_use', id: c.id || 'call_' + Math.random().toString(36).slice(2), name: c.function.name, input }); }
+    for (const c of msg.tool_calls || []) { let input = {}; try { input = JSON.parse(c.function.arguments || '{}'); } catch {} const tu = { type: 'tool_use', id: c.id || 'call_' + Math.random().toString(36).slice(2), name: c.function.name, input }; if (c.extra_content) tu.extra_content = c.extra_content; content.push(tu); }
     return { content, stop_reason: (msg.tool_calls || []).length ? 'tool_use' : 'end_turn' };
   }
   const needsKey = (provider) => !((PRESETS[provider] || {}).noKey);
