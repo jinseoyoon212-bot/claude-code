@@ -184,6 +184,8 @@ func _show_password() -> void:
 	if pw_edit == null:
 		pw_edit = LineEdit.new()
 		pw_edit.secret = true
+		pw_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		pw_edit.max_length = 12
 		pw_edit.placeholder_text = "비밀번호"
 		pw_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		pw_edit.add_theme_font_override("font", f_bold)

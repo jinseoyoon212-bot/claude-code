@@ -6,7 +6,7 @@ const MAX_UP := 5
 const MAX_SKILL := 5
 const MAX_ITEM := 9
 const MAX_EQUIP := 4
-const DEV_PASSWORD := "devmaster"
+const DEV_PASSWORD := "123230"
 
 const UPGRADES := [
 	{"id": "power", "name": "마력 강화", "icon": "up_power", "base": 40},
