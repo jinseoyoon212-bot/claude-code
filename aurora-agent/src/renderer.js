@@ -58,3 +58,8 @@ $('save').onclick = async () => {
   await api.setSettings(patch);
 };
 api.getSettings().then((s) => { if (LLM.needsKey(s.provider) && !s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! ⚙ 설정에서 API 키를 넣거나, 키 없이 쓰려면 제공자를 Pollinations로 바꿔줘 🌈'; });
+
+document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async (e) => {
+  e.preventDefault(); const out = $('actResult'); if (!api.action) return;
+  out.textContent = '…'; out.textContent = await api.action(b.dataset.act);
+}));

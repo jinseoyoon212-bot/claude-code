@@ -1,6 +1,8 @@
 package com.aurora.agent;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -13,6 +15,7 @@ import android.os.Environment;
 import android.os.StatFs;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.accessibility.AccessibilityManager;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -50,7 +53,7 @@ public class AuroraDevicePlugin extends Plugin {
     }
 
     private Context ctx() { return getContext(); }
-    private static final String A11Y_OFF = "접근성 서비스가 꺼져 있어요. open_accessibility_settings 도구로 설정을 열고, 사용자에게 'Aurora Agent'를 켜 달라고 안내하세요.";
+    private static final String A11Y_OFF = "접근성 서비스가 꺼져 있어요. open_accessibility_settings 도구로 설정을 열고, 사용자에게 'Aurora Agent'를 켜 달라고 안내하세요. 목록에 없으면 설정 화면의 '접근성 진단' 버튼을 안내하세요.";
 
     private File resolve(String p) {
         if (p == null || p.isEmpty()) return Environment.getExternalStorageDirectory();
@@ -114,6 +117,47 @@ public class AuroraDevicePlugin extends Plugin {
             Intent i = ctx().getPackageManager().getLaunchIntentForPackage(ctx().getPackageName());
             if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP); startAny(i); }
             JSObject o = new JSObject(); o.put("ok", i != null); call.resolve(o);
+        } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    @PluginMethod public void openAppInfo(final PluginCall call) {
+        try {
+            startAny(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx().getPackageName())));
+            JSObject o = new JSObject(); o.put("opened", true); call.resolve(o);
+        } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    /** 시스템이 우리 접근성 서비스를 인식하는지/켜졌는지/연결됐는지 진단 */
+    @PluginMethod public void a11yDiagnose(final PluginCall call) {
+        try {
+            AccessibilityManager am = (AccessibilityManager) ctx().getSystemService(Context.ACCESSIBILITY_SERVICE);
+            boolean registered = false;
+            for (AccessibilityServiceInfo i : am.getInstalledAccessibilityServiceList()) {
+                if (i.getResolveInfo().serviceInfo.packageName.equals(ctx().getPackageName())) registered = true;
+            }
+            String en = Settings.Secure.getString(ctx().getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            JSObject o = new JSObject();
+            o.put("registered", registered);
+            o.put("enabledInSettings", en != null && en.contains(ctx().getPackageName()));
+            o.put("connected", AuroraAccessibilityService.instance != null);
+            o.put("android", Build.VERSION.SDK_INT); o.put("maker", Build.MANUFACTURER);
+            call.resolve(o);
+        } catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    /** 설정 목록 없이 접근성을 직접 켠다. adb로 WRITE_SECURE_SETTINGS를 1회 허용해 둬야 동작 */
+    @PluginMethod public void enableA11yViaSecureSettings(final PluginCall call) {
+        try {
+            ContentResolver cr = ctx().getContentResolver();
+            String cn = ctx().getPackageName() + "/" + AuroraAccessibilityService.class.getName();
+            String cur = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (cur == null) cur = "";
+            if (!cur.contains(cn)) cur = cur.isEmpty() ? cn : cur + ":" + cn;
+            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, cur);
+            Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+            JSObject o = new JSObject(); o.put("enabled", true); call.resolve(o);
+        } catch (SecurityException se) {
+            call.reject("권한이 없어요. PC에서 USB 디버깅으로: adb shell pm grant " + ctx().getPackageName() + " android.permission.WRITE_SECURE_SETTINGS");
         } catch (Throwable t) { call.reject(String.valueOf(t)); }
     }
 

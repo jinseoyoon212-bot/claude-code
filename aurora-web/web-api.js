@@ -66,6 +66,25 @@
     getSettings: async () => load(),
     setSettings: async (p) => { const s = { ...load(), ...p }; save(s); sameOriginBridge = null; return s; },
     onEvent: (cb) => listeners.push(cb),
+    action: async (n) => {
+      const D = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AuroraDevice;
+      if (!D) return 'APK 앱 안에서만 쓸 수 있어요.';
+      try {
+        if (n === 'a11y') { await D.openAccessibilitySettings(); return '접근성 설정을 열었어요. 목록에서 "설치된 앱/다운로드한 앱"을 찾아 Aurora Agent를 켜세요.'; }
+        if (n === 'appinfo') { await D.openAppInfo(); return '앱 정보를 열었어요. 오른쪽 위 ⋮ → "제한된 설정 허용"이 있으면 누르세요.'; }
+        if (n === 'files') { await D.requestAllFilesAccess(); return '파일 권한 화면을 열었어요. Aurora Agent를 허용하세요.'; }
+        if (n === 'secure') { await D.enableA11yViaSecureSettings(); return '접근성을 켰어요! 진단 버튼으로 확인해 보세요.'; }
+        if (n === 'diag') {
+          const r = await D.a11yDiagnose();
+          const head = `시스템 인식: ${r.registered ? '예' : '아니오'} / 켜짐: ${r.enabledInSettings ? '예' : '아니오'} / 연결됨: ${r.connected ? '예' : '아니오'} (안드로이드 ${r.android}, ${r.maker})`;
+          const tip = !r.registered ? '→ 시스템이 서비스를 못 찾았어요. 앱을 지우고 APK를 다시 설치하세요.'
+            : !r.enabledInSettings ? '→ 인식은 됐어요. 접근성 설정의 "설치된 앱/다운로드한 앱"에서 찾거나, [앱 정보]에서 제한된 설정을 허용한 뒤 켜세요.'
+            : !r.connected ? '→ 켜져 있지만 연결 전이에요. 접근성 서비스를 껐다 다시 켜세요.' : '→ 정상이에요! 화면 조작을 쓸 수 있어요.';
+          return head + '\n' + tip;
+        }
+      } catch (e) { return '실패: ' + (e && e.message ? e.message : e); }
+      return '';
+    },
     send: async (history) => {
       const s = load(), phone = window.PhoneAgent && window.PhoneAgent.available();
       const notify = (ev) => listeners.forEach((cb) => cb(ev));

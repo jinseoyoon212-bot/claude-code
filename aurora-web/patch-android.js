@@ -25,10 +25,12 @@ fs.copyFileSync(path.join(native, 'aurora_accessibility.xml'), path.join(res, 'x
 fs.copyFileSync(path.join(native, 'aurora_strings.xml'), path.join(res, 'values/aurora_strings.xml'));
 
 const mf = path.join(root, 'app/src/main/AndroidManifest.xml'); let m = fs.readFileSync(mf, 'utf8');
+// 권한: 이미 있는 건 건너뛰고 빠진 것만 추가
+const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES', 'WRITE_SECURE_SETTINGS']
+  .filter((p) => !m.includes(`android.permission.${p}`)).map((p) => `    <uses-permission android:name="android.permission.${p}" />\n`).join('');
+if (perms) m = m.replace('<application', perms + '    <application');
+if (!m.includes('requestLegacyExternalStorage')) m = m.replace('<application', '<application android:requestLegacyExternalStorage="true"');
 if (!m.includes('AuroraAccessibilityService')) {
-  const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES']
-    .filter((p) => !m.includes(`android.permission.${p}`)).map((p) => `    <uses-permission android:name="android.permission.${p}" />\n`).join('');
-  m = m.replace('<application', perms + '    <application android:requestLegacyExternalStorage="true"');
   m = m.replace('</application>', `        <service
             android:name="${appId}.AuroraAccessibilityService"
             android:exported="true"
@@ -40,8 +42,8 @@ if (!m.includes('AuroraAccessibilityService')) {
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/aurora_accessibility" />
         </service>
     </application>`);
-  fs.writeFileSync(mf, m);
 }
+fs.writeFileSync(mf, m);
 // Gradle 래퍼를 8.7로 (JDK 17/21 모두 지원)
 const gw = path.join(root, 'gradle/wrapper/gradle-wrapper.properties');
 if (fs.existsSync(gw)) fs.writeFileSync(gw, fs.readFileSync(gw, 'utf8').replace(/gradle-[\d.]+-(bin|all)\.zip/, 'gradle-8.7-bin.zip'));
