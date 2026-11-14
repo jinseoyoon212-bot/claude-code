@@ -1,6 +1,7 @@
 // Aurora 브리지 서버: 웹/APK가 PC의 에이전트(명령·파일 도구)를 원격으로 쓰게 해준다.
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { runAgent } = require('./agent');
+const LLM = require('./llm');
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type,x-aurora-token', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
@@ -34,7 +35,7 @@ function createBridge({ getSettings, wwwDir, token }) {
         const { history } = await readBody(req);
         const settings = getSettings();
         if (!Array.isArray(history) || !history.length) return json(res, 400, { error: '대화 내용이 비었어요.' });
-        if (!settings.apiKey) return json(res, 200, { type: 'done', error: 'PC의 Aurora Agent 설정에 API 키가 없어요. PC 앱의 ⚙ 설정에서 입력해 주세요.' });
+        if (LLM.needsKey(settings.provider) && !settings.apiKey) return json(res, 200, { type: 'done', error: 'PC의 Aurora Agent 설정에 API 키가 없어요. PC 앱의 ⚙ 설정에서 입력해 주세요.' });
         res.writeHead(200, { ...CORS, 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
         const mine = new Set(); let closed = false;
         res.on('close', () => { closed = true; for (const id of mine) { const r = pending.get(id); pending.delete(id); if (r) r(false); } });

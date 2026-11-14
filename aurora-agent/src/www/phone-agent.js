@@ -42,7 +42,7 @@
   async function runPhoneAgent({ settings, history, notify }) {
     const D = dev();
     if (!D) return { error: '이 기능은 Aurora Agent APK 앱 안에서만 쓸 수 있어요.' };
-    if (!settings.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 입력해 주세요.' };
+    if (LLM.needsKey(settings.provider) && !settings.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 입력해 주세요.' };
     const messages = history.map((m) => ({ role: m.role, content: m.content }));
     const lastUser = String(history[history.length - 1].content).slice(0, 200);
     let uiGranted = !!settings.phoneAuto, uiUsed = false;
@@ -82,7 +82,7 @@
 
     for (let n = 0; n < 30; n++) {
       let data;
-      try { data = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, system: SYSTEM, tools: TOOLS, messages }); }
+      try { data = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, system: SYSTEM, tools: TOOLS, messages, onWait: (s) => notify({ type: 'wait', seconds: s }) }); }
       catch (e) { return { error: String(e.message || e) }; }
       messages.push({ role: 'assistant', content: data.content });
       if (data.stop_reason !== 'tool_use') {

@@ -4,7 +4,7 @@
 (() => {
   const KEY = 'aurora-settings';
   const MOODS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'thinking', 'sleepy', 'love', 'laugh'];
-  const defaults = { provider: 'anthropic', apiKey: '', model: 'claude-sonnet-5-5', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
+  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', serverUrl: '', token: '', mode: 'auto', phoneAuto: false };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -37,7 +37,7 @@
     if (!res.body) return { error: '서버 응답이 올바르지 않아요.' };
     const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '', result = null;
     const handle = async (ev) => {
-      if (ev.type === 'tool') listeners.forEach((cb) => cb(ev));
+      if (ev.type === 'tool' || ev.type === 'wait') listeners.forEach((cb) => cb(ev));
       else if (ev.type === 'confirm') {
         const ok = window.confirm(ev.title + '\n\n' + ev.detail + '\n\n허용할까요?');
         fetch(base + '/api/confirm', { method: 'POST', headers, body: JSON.stringify({ id: ev.id, ok }) }).catch(() => {});
@@ -52,9 +52,9 @@
   }
 
   async function sendDirect(s, history) {
-    if (!s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 넣거나 PC 서버에 연결해 주세요.' };
+    if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 넣거나 PC 서버에 연결해 주세요.' };
     try {
-      const r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 2048, messages: history.map((m) => ({ role: m.role, content: m.content })) });
+      const r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 2048, onWait: (sec) => listeners.forEach((cb) => cb({ type: 'wait', seconds: sec })), messages: history.map((m) => ({ role: m.role, content: m.content })) });
       let text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
       let mood = 'neutral'; const m = text.match(/^\s*\[기분:([a-z]+)\]\s*/);
       if (m) { if (MOODS.includes(m[1])) mood = m[1]; text = text.slice(m[0].length); }

@@ -7,6 +7,7 @@ function addLog(msg) { const d = document.createElement('div'); d.textContent = 
 const toolLabel = { run_command: (i) => '⚙ 실행: ' + i.command, read_file: (i) => '📖 읽기: ' + i.path, write_file: (i) => '✏ 쓰기: ' + i.path, list_dir: (i) => '📂 목록: ' + i.path, system_info: () => '🖥 시스템 정보' };
 
 api.onEvent((ev) => {
+  if (ev.type === 'wait') { bubble.textContent = `무료 서버 한도 때문에 ${ev.seconds}초 기다리는 중이에요… ⏳`; Face.setMood('sleepy'); return; }
   if (ev.type === 'tool') { Face.setMood('thinking'); Face.doMotion('nod'); addLog((toolLabel[ev.name] || (() => ev.name))(ev.input)); }
 });
 
@@ -33,9 +34,9 @@ const prov = $('provider');
 Object.entries(LLM.PRESETS).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
 const modelEl = () => dlg.querySelector('[data-k=model]');
 function provChanged(resetModel) {
-  const p = LLM.PRESETS[prov.value] || LLM.PRESETS.anthropic, m = modelEl();
+  const p = LLM.PRESETS[prov.value] || LLM.PRESETS.pollinations, m = modelEl();
   if (resetModel && (!m.value || Object.values(LLM.PRESETS).some((x) => x.model === m.value))) m.value = p.model;
-  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
+  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'pollinations' ? '  (API 키 칸은 비워 두세요)' : prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
 }
 prov.addEventListener('change', () => provChanged(true));
 const fields = () => [...dlg.querySelectorAll('[data-k]')];
@@ -47,13 +48,13 @@ async function showRemote() {
 $('gear').onclick = async () => {
   const s = await api.getSettings();
   fields().forEach((el) => { const v = s[el.dataset.k]; if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
-  if (!prov.value) prov.value = 'anthropic'; provChanged(false);
+  if (!prov.value) prov.value = 'pollinations'; provChanged(false);
   await showRemote(); dlg.showModal();
 };
 $('save').onclick = async () => {
   const patch = {};
   fields().filter((el) => el.offsetParent !== null).forEach((el) => { patch[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value.trim(); });
-  if (!patch.model) patch.model = (LLM.PRESETS[patch.provider] || LLM.PRESETS.anthropic).model;
+  if (!patch.model) patch.model = (LLM.PRESETS[patch.provider] || LLM.PRESETS.pollinations).model;
   await api.setSettings(patch);
 };
-api.getSettings().then((s) => { if (!s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! 먼저 ⚙ 설정에서 AI 제공자(무료: Gemini 추천)와 API 키를 넣어줘 🌈'; });
+api.getSettings().then((s) => { if (LLM.needsKey(s.provider) && !s.apiKey && !s.token && !s.serverUrl) bubble.textContent = '안녕! ⚙ 설정에서 API 키를 넣거나, 키 없이 쓰려면 제공자를 Pollinations로 바꿔줘 🌈'; });

@@ -50,7 +50,7 @@ async function runTool(name, input, confirm) {
 async function runAgent({ settings, history, confirm, notify }) {
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   for (let i = 0; i < 25; i++) {
-    const r = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, baseUrl: settings.baseUrl, system: SYSTEM(), tools: TOOLS, messages });
+    const r = await LLM.call({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, baseUrl: settings.baseUrl, system: SYSTEM(), tools: TOOLS, messages, onWait: (s) => notify({ type: 'wait', seconds: s }) });
     messages.push({ role: 'assistant', content: r.content });
     if (r.stop_reason !== 'tool_use') {
       let text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
