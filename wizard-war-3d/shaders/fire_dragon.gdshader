@@ -3,6 +3,7 @@ shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_disabled, unshaded;
 
 uniform float dissolve : hint_range(0.0, 1.0) = 1.0;   // 0: 보이지 않음 → 1: 완전한 모습
+uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;   // 용의 비늘·뿔 무늬 (어두운 곳은 식은 껍질, 밝은 곳은 이글거리는 불)
 uniform float intensity = 1.35;
 uniform float flicker = 0.55;                           // 표면이 일렁이는 정도
 uniform float ash : hint_range(0.0, 1.0) = 0.0;        // 0: 활활 타는 불 → 1: 식어서 재가 되어 흩어진다
@@ -50,7 +51,8 @@ void fragment() {
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 1.5);
 	// 불빛 방향의 명암을 조금 섞어서 용의 입체적인 모양(머리·날개·몸통)이 읽히게 한다
 	float ndl = clamp(dot(normalize(NORMAL), normalize(vec3(0.4, 0.7, 0.6))), 0.0, 1.0);
-	float heat = clamp(n * 0.78 + fres * 0.3 + ndl * 0.22, 0.0, 1.0);
+	float tl = dot(texture(tex, UV).rgb, vec3(0.333));
+	float heat = clamp((n * 0.78 + fres * 0.3 + ndl * 0.22) * (0.55 + 1.1 * tl) + 0.08, 0.0, 1.0);
 	vec3 c = mix(edge_col.rgb, mid_col.rgb, smoothstep(0.22, 0.6, heat));
 	c = mix(c, core_col.rgb, smoothstep(0.78, 1.0, heat));
 	// 불꽃이 모여 형태가 만들어지는 효과: 노이즈가 문턱보다 낮은 곳은 아직 없다

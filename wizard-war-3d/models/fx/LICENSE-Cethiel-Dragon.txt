@@ -1,0 +1,4 @@
+Dragon 3D model (cethiel_dragon.obj / .png)
+Source: https://opengameart.org/content/cethiels-dragon-3d
+Author: Drummyfish, based on the 2D dragon by Cethiel
+License: CC0 (public domain). Credit is optional; credited here anyway.

@@ -22,13 +22,10 @@ const SWEEP_X0 := -34.0
 const SWEEP_SPEED := 29.6
 const BREATH_REACH := 7.0
 const IGNITE_TO_DEATH := 0.3
-const DRAGON_SCALE := 4.2         # 드래곤 메시는 약 3.9 단위(FBX 루트의 0.01 배율은 우리가 덮어쓴다) → 약 16m
+const DRAGON_SCALE := 12.0        # Cethiel 용 메시는 길이 약 1.14 단위, 머리 높이 약 0.43 → 약 14m
 const RIB_N := 44                 # 불줄기 튜브의 마디 수
 const RIB_SIDES := 8
-const REAR := 9.5                 # 용 중심에서 꼬리 끝까지(스케일 4.2 기준)
-const ANIM_FLY := "DragonArmature|Dragon_Flying"
-const ANIM_ROAR := "DragonArmature|Dragon_Attack2"
-const ANIM_BITE := "DragonArmature|Dragon_Attack"
+const REAR := 8.4                 # 용 중심에서 꼬리 끝까지(DRAGON_SCALE 기준)
 const DAMAGE := 9999.0
 
 var main
@@ -46,7 +43,7 @@ var stream: CPUParticles3D
 var embers: CPUParticles3D
 var dragon: Node3D
 var dragon_mat: ShaderMaterial
-var dragon_anim: AnimationPlayer
+var dragon_tex: Texture2D
 var dragon_light: OmniLight3D
 var breath: CPUParticles3D
 var trail: CPUParticles3D
@@ -73,7 +70,6 @@ var fire_mesh: QuadMesh
 var fire_ramp: Gradient
 var fire_curve: Curve
 var smoke_ramp: Gradient
-var bite_t := 0.0
 var sun_e0 := 1.0
 var amb0 := 0.6
 var bg0 := 1.0
@@ -94,10 +90,10 @@ static func prewarm(m) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/fire_dragon.gdshader")
 	mat.set_shader_parameter("dissolve", 1.0)
-	var d: Node3D = (load("res://models/fx/Dragon.fbx") as PackedScene).instantiate()
+	var d := MeshInstance3D.new()
+	d.mesh = load("res://models/fx/cethiel_dragon.obj")
 	d.scale = Vector3.ONE * 0.004
-	for mi in d.find_children("*", "MeshInstance3D", true, false):
-		mi.material_override = mat
+	d.material_override = mat
 	holder.add_child(d)
 	var q := MeshInstance3D.new()
 	var qm := QuadMesh.new()
@@ -278,19 +274,19 @@ func _bezier(a: Vector3, b: Vector3, c: Vector3, d: Vector3, k: float) -> Vector
 func dragon_pos(tt: float) -> Vector3:
 	if tt < T_ARC:   # 주인공 머리 위에 떠 있다 (불이 모이는 동안 조금 솟아오른다)
 		var rise := smoothstep(T_FORM, T_FORM + 1.2, tt)
-		return hp + Vector3(8.0, 1.2 + 1.6 * rise + 0.25 * sin(tt * 3.0), 0.0)
+		return hp + Vector3(7.5, 6.8 + 1.6 * rise + 0.25 * sin(tt * 3.0), 0.0)
 	if tt < T_SWEEP:   # 크게 돌아 왼쪽 끝으로 간다
 		var k := smoothstep(0.0, 1.0, (tt - T_ARC) / (T_SWEEP - T_ARC))
-		var p0 := hp + Vector3(8.0, 2.8, 0.0)
-		var p3 := Vector3(SWEEP_X0, 3.6, 0.0)
+		var p0 := hp + Vector3(7.5, 8.4, 0.0)
+		var p3 := Vector3(SWEEP_X0, 4.6, 0.0)
 		return _bezier(p0, p0 + Vector3(-8.0, 10.0, 10.0), p3 + Vector3(-6.0, 9.0, 9.0), p3, k)
 	if tt < T_EXIT:   # 왼쪽 끝에서 오른쪽 끝까지 낮게 가로지른다
 		var s := tt - T_SWEEP
-		return Vector3(SWEEP_X0 + SWEEP_SPEED * s, 3.5 + 0.35 * sin(s * 5.0), 1.6 * sin(s * 2.2))
+		return Vector3(SWEEP_X0 + SWEEP_SPEED * s, 4.6 + 0.4 * sin(s * 5.0), 1.6 * sin(s * 2.2))
 	var e := tt - T_EXIT   # 하늘로 솟구친다
 	var ex := SWEEP_X0 + SWEEP_SPEED * (T_EXIT - T_SWEEP)
 	var ek := e / (T_END - T_EXIT)
-	return Vector3(ex + 16.0 * ek, 3.5 + 26.0 * ek * ek, 2.0 * ek)
+	return Vector3(ex + 16.0 * ek, 4.6 + 26.0 * ek * ek, 2.0 * ek)
 
 
 func update(delta: float) -> void:
@@ -340,12 +336,6 @@ func _events() -> void:
 		var dp := dragon_pos(T_FORM)
 		main.ring_effect(Vector3(dp.x, 0.0, dp.z), Color(1.0, 0.5, 0.12), 0.5, 15.0, 1.0)
 		main.sparks(dp, Color(1.0, 0.7, 0.25), 90, 14.0, 1.1)
-		if dragon_anim and dragon_anim.has_animation(ANIM_ROAR):
-			dragon_anim.play(ANIM_ROAR, 0.1)
-	if t >= T_FORM + 1.9 and not f.has("fly"):
-		f["fly"] = true
-		if dragon_anim and dragon_anim.has_animation(ANIM_FLY):
-			dragon_anim.play(ANIM_FLY, 0.25)
 	if t >= T_ARC and not f.has("arc"):
 		f["arc"] = true
 		_snapshot_victims()
@@ -432,22 +422,17 @@ func _update_fx() -> void:
 
 
 func _spawn_dragon() -> void:
-	var ps: PackedScene = load("res://models/fx/Dragon.fbx")
-	dragon = ps.instantiate()
+	dragon = Node3D.new()
 	root.add_child(dragon)
+	var body := MeshInstance3D.new()
+	body.mesh = load("res://models/fx/cethiel_dragon.obj")
 	dragon_mat = ShaderMaterial.new()
 	dragon_mat.shader = load("res://shaders/fire_dragon.gdshader")
 	dragon_mat.set_shader_parameter("dissolve", 0.0)
-	for mi in dragon.find_children("*", "MeshInstance3D", true, false):
-		mi.material_override = dragon_mat
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	dragon_anim = dragon.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	if dragon_anim:
-		for a in [ANIM_FLY, ANIM_BITE]:
-			if dragon_anim.has_animation(a):
-				dragon_anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
-		if dragon_anim.has_animation(ANIM_FLY):
-			dragon_anim.play(ANIM_FLY)
+	dragon_mat.set_shader_parameter("tex", load("res://models/fx/cethiel_dragon.png"))
+	body.material_override = dragon_mat
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dragon.add_child(body)
 	dragon_light = OmniLight3D.new()
 	dragon_light.light_color = Color(1.0, 0.5, 0.15)
 	dragon_light.light_energy = 0.0
@@ -484,9 +469,14 @@ func _update_dragon(delta: float) -> void:
 	dragon_mat.set_shader_parameter("intensity", (1.9 + 0.7 * sin(t * 9.0)) * (1.0 - 0.5 * ash_k))
 	ash_k = smoothstep(0.05, 0.85, clampf((t - T_EXIT) / (T_END - T_EXIT), 0.0, 1.0))
 	dragon_mat.set_shader_parameter("ash", ash_k)
-	var b := Basis.looking_at(-dir, Vector3.UP).scaled(Vector3.ONE * sc)
+	# 목과 몸이 살짝 굽이치고, 포효할 때는 머리가 부풀어 오른다
+	var roar := smoothstep(T_FORM - 0.1, T_FORM + 0.3, t) * (1.0 - smoothstep(T_FORM + 0.9, T_FORM + 1.6, t))
+	sc *= 1.0 + 0.07 * roar * sin(t * 22.0)
+	var b := Basis.looking_at(-dir, Vector3.UP)
+	b = b * Basis(Vector3(1, 0, 0), 0.05 * sin(t * 2.3) - 0.25 * roar) * Basis(Vector3(0, 0, 1), 0.07 * sin(t * 1.7))
+	b = b.scaled(Vector3.ONE * sc)
 	dragon.global_transform = Transform3D(b, pos)
-	hist.append(pos - dir * REAR * (sc / DRAGON_SCALE) + Vector3(0.0, 3.0, 0.0))
+	hist.append(pos - dir * REAR * (sc / DRAGON_SCALE) + Vector3(0.0, -0.8, 0.0))
 	if hist.size() > 700:
 		hist = hist.slice(hist.size() - 600)
 	if ash_fall:
@@ -497,16 +487,10 @@ func _update_dragon(delta: float) -> void:
 	dragon_light.light_energy = (11.0 + 2.5 * sin(t * 14.0)) * (1.0 - ash_k)
 	trail.position = pos
 	smoke.position = pos
-	var head := pos + dir * 5.2 + Vector3(0, 0.6, 0)
+	var head := pos + dir * 0.45 * sc + Vector3(0, 0.28 * sc, 0)
 	breath.position = head
-	breath.basis = Basis.looking_at(-dir, Vector3.UP)
+	breath.basis = Basis.looking_at(-(dir + Vector3(0, -0.35, 0)).normalized(), Vector3.UP)
 	wave.position = Vector3(pos.x + 3.0, 0.3, 0.0)
-	# 입으로 무는 동작을 반복하며 불을 뿜는다
-	if t >= T_SWEEP - 0.2 and t < T_EXIT and dragon_anim and dragon_anim.has_animation(ANIM_BITE):
-		bite_t -= delta
-		if bite_t <= 0.0:
-			bite_t = 0.95
-			dragon_anim.play(ANIM_BITE, 0.08)
 	if t >= T_SWEEP and t < T_EXIT:
 		main.shake = maxf(main.shake, 0.4)
 
@@ -562,7 +546,7 @@ func _update_ribbons() -> void:
 	if stream_mi.visible:
 		var tip := staff_tip()
 		var dp := dragon_pos(maxf(t, T_FORM))
-		var rear := dp - Vector3(1.0, 0.0, 0.0) * REAR * 0.55 + Vector3(0.0, 3.0, 0.0)
+		var rear := dp - Vector3(1.0, 0.0, 0.0) * REAR * 0.35 + Vector3(0.0, 0.4, 0.0)
 		var p := 1.0 - pow(1.0 - clampf((t - T_RAISE) / (T_FORM - T_RAISE), 0.0, 1.0), 2.2)
 		var ak := smoothstep(T_FORM + 0.25, T_ARC, t)
 		var pts := PackedVector3Array()
@@ -722,18 +706,18 @@ func camera() -> Array:
 	if t < T_ARC:   # 용이 모습을 갖추는 걸 올려다보며 천천히 돈다
 		var k3 := smoothstep(0.0, 1.0, (t - T_FORM) / (T_ARC - T_FORM))
 		var pos3 := hp + Vector3(8.0, 5.0, 24.0).lerp(Vector3(12.0, 6.5, 28.0), k3)
-		return [pos3, dp + Vector3(-4.0, 6.0, 0.0)]
+		return [pos3, dp + Vector3(-1.0, 1.0, 0.0)]
 	if t < T_SWEEP:   # 용을 따라 왼쪽 끝으로
 		var k4 := smoothstep(0.0, 1.0, (t - T_ARC) / (T_SWEEP - T_ARC))
 		var from_pos := hp + Vector3(12.0, 6.5, 28.0)
 		var to_pos := Vector3(-24.0, 11.0, 36.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
-		return [from_pos.lerp(to_pos, k4), dp + Vector3(-4.0, 6.0, 0.0)]
+		return [from_pos.lerp(to_pos, k4), dp + Vector3(-1.0, 1.0, 0.0)]
 	if t < T_EXIT:   # 전장을 가로지르는 용을 옆에서 따라간다
 		return [Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0), Vector3(dp.x - 1.0, 8.0, 0.0)]
 	# 용이 재가 되어 하늘로 솟는 걸 따라가다가, 낮은 각도에서 올려다보며 재가 하늘로 흩어지는 모습을 본다
 	var k5 := smoothstep(0.0, 1.0, (t - T_EXIT) / (DUR - T_EXIT))
 	var p5 := Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0).lerp(Vector3(24.0, 3.0, 30.0), k5)
-	var dc := dp + Vector3(-4.0, 6.0, 0.0)
+	var dc := dp + Vector3(-1.0, 1.0, 0.0)
 	var l5 := dc.lerp(Vector3(dc.x - 6.0, 26.0, 0.0), smoothstep(T_END - 0.6, DUR, t))
 	return [p5, l5]
 
