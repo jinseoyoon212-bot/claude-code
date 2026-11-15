@@ -196,7 +196,7 @@ func _make_assets() -> void:
 	smoke_ramp.colors = PackedColorArray([Color(0.12, 0.1, 0.1, 0.0), Color(0.16, 0.13, 0.13, 0.5), Color(0.08, 0.07, 0.07, 0.0)])
 	ash_ramp = Gradient.new()
 	ash_ramp.offsets = PackedFloat32Array([0.0, 0.12, 0.7, 1.0])
-	ash_ramp.colors = PackedColorArray([Color(0.4, 0.34, 0.3, 0.0), Color(0.3, 0.27, 0.25, 0.95), Color(0.17, 0.15, 0.14, 0.75), Color(0.1, 0.09, 0.09, 0.0)])
+	ash_ramp.colors = PackedColorArray([Color(0.6, 0.52, 0.46, 0.0), Color(0.58, 0.52, 0.48, 0.95), Color(0.4, 0.35, 0.32, 0.8), Color(0.25, 0.22, 0.2, 0.0)])
 	# 연기: 밝게 더해지는 불꽃과 달리 어둡게 덮이는 일반 알파 혼합
 	fire_mesh = QuadMesh.new()   # 1m 쿼드 (main.spark_mesh는 0.25m라 불기둥에는 너무 작다)
 	fire_mesh.size = Vector2(1.0, 1.0)
