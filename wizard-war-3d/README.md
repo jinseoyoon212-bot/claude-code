@@ -38,7 +38,7 @@
 - 컷씬: 주인공이 지팡이를 들고(마법진) → 1초 뒤 지팡이에서 **소용돌이치는 불줄기**(`shaders/fire_ribbon.gdshader`, 튜브 메시)가 솟아 → 줄기 끝에서 **불의 용**이 모습을 갖추고 포효(줄기는 용의 불꽃 몸통이 됨) → 전장을 가로지르며 불을 뿜어 모든 적에게 **9999** 피해 → 용이 하늘로 솟으며 식어서 **검은 재**가 되어 흩어지고, 적도 재가 되어 날아오른다.
 - 대기시간 30초. 컷씬 중에는 입력이 막히고(무적), 아무 키/터치로 건너뛸 수 있다 (피해는 그대로 들어간다).
 - 구현: `festis.gd` (연출·타임라인), `shaders/fire_dragon.gdshader`(불꽃 용), `shaders/magic_circle.gdshader`(마법진), 효과음은 `tools/gen_audio.py festis`.
-- 용 모델: Quaternius Animated Monster Pack (CC0) — `models/fx/`
+- 용 모델: Cethiel/Drummyfish 의 용 (CC0, https://opengameart.org/content/cethiels-dragon-3d) — `models/fx/cethiel_dragon.*`. 비늘 질감이 불꽃 밝기를 조절하는 `shaders/fire_dragon.gdshader` 로 불의 용을 만든다.
 
 ## 조작
 | PC | 모바일 | 동작 |
@@ -62,7 +62,7 @@
 
 ## 에셋 출처
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)
-- 컷씬 용 모델: Quaternius Animated Monster Pack (CC0, OpenGameArt) — `models/fx/LICENSE-Quaternius-Monsters.txt`
+- 컷씬 용 모델: Cethiel/Drummyfish 용 (CC0, OpenGameArt) — `models/fx/LICENSE-Cethiel-Dragon.txt`
 - 배경·건물·나무·수정 등 모든 환경 모델: KayKit Medieval Hexagon / Halloween Bits / Dungeon Remastered, OpenGameArt LowPoly Crystals — 모두 CC0 (`models/env/SOURCES.md`)
 - 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)
