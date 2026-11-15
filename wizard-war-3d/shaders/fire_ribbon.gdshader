@@ -56,7 +56,7 @@ void fragment() {
 	float head = smoothstep(0.6, 1.0, along);
 	float heat = clamp(body * 0.85 + n * 0.85 - 0.3 + head * 0.2, 0.0, 1.0);
 	vec3 c = mix(edge_col.rgb, mid_col.rgb, smoothstep(0.18, 0.55, heat));
-	c = mix(c, core_col.rgb, smoothstep(0.68, 1.0, heat));
+	c = mix(c, core_col.rgb, smoothstep(0.88, 1.2, heat));
 	ALBEDO = c * intensity * fade;
 	ALPHA = clamp(body * (0.3 + n * 1.0), 0.0, 1.0) * tail * fade;
 }

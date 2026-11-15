@@ -557,7 +557,7 @@ func _build_ribbon(mesh: ArrayMesh, pts: PackedVector3Array, rad: PackedFloat32A
 
 func _update_ribbons() -> void:
 	rib_mat.set_shader_parameter("fade", 1.0 - ash_k)
-	rib_mat.set_shader_parameter("intensity", 1.1 + 0.25 * sin(t * 13.0))
+	rib_mat.set_shader_parameter("intensity", 0.85 + 0.2 * sin(t * 13.0))
 	# 1) 지팡이 → 용: 소용돌이치며 솟는 불줄기. 용이 모습을 갖추면 줄기의 꼬리가 용에게 빨려 들어간다
 	if stream_mi.visible:
 		var tip := staff_tip()
@@ -630,13 +630,13 @@ func _update_ribbons() -> void:
 func _start_ash() -> void:
 	## 용이 식어서 검은 재가 된다: 몸에서 재와 불씨가 피어올라 하늘로 흩어지고, 전장 위에도 재가 떠오른다
 	var dp := dragon.position
-	ash_fall = _fire(root, dp, 260, 2.3, 0.6, 3.0, 0.25, 0.75, Vector3(0, 1, 0), 180.0, Vector3(0, 1.4, 0), false, false, true)
+	ash_fall = _fire(root, dp, 300, 2.3, 0.6, 3.0, 0.5, 1.3, Vector3(0, 1, 0), 180.0, Vector3(0, 1.4, 0), false, false, true)
 	ash_fall.emission_sphere_radius = 5.0
 	ash_fall.emitting = true
 	ash_embers = _fire(root, dp, 130, 2.0, 2.0, 8.0, 0.1, 0.3, Vector3(0, 1, 0), 120.0, Vector3(0, 3.5, 0))
 	ash_embers.emission_sphere_radius = 5.0
 	ash_embers.emitting = true
-	ash_field = _fire(root, Vector3(4.0, 0.8, 0.0), 320, 2.6, 0.8, 3.4, 0.2, 0.6, Vector3(0, 1, 0), 35.0, Vector3(0, 1.0, 0), false, false, true)
+	ash_field = _fire(root, Vector3(4.0, 0.8, 0.0), 420, 2.6, 0.8, 3.4, 0.4, 1.0, Vector3(0, 1, 0), 35.0, Vector3(0, 1.0, 0), false, false, true)
 	ash_field.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	ash_field.emission_box_extents = Vector3(38.0, 0.5, 8.0)
 	ash_field.emitting = true
