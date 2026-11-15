@@ -57,7 +57,8 @@ var shafts: Array = []               # 하늘에서 비스듬히 새어 내리�
 var shaft_mat: ShaderMaterial
 var meteors: Array = []
 var bolts: Array = []                # {mi, t0, life}
-var comet_mat: ShaderMaterial
+var themes: Array = []              # 유성 색 테마: 금빛·청록·보랏빛·분홍·에메랄드 (꼬리·후광·충돌 효과가 같은 색)
+var rings: Array = []               # 충돌 자리에 퍼지는 룬 마법진
 var bolt_mat: ShaderMaterial
 var killed := 0
 var f := {}
@@ -83,7 +84,7 @@ static func prewarm(m) -> void:
 	var holder := Node3D.new()
 	holder.position = m.hero.position + Vector3(0, 2.0, 0)
 	m.add_child(holder)
-	for sh in ["res://shaders/fire_ribbon.gdshader", "res://shaders/star_beam.gdshader", "res://shaders/magic_circle.gdshader"]:
+	for sh in ["res://shaders/fire_ribbon.gdshader", "res://shaders/star_beam.gdshader", "res://shaders/magic_circle.gdshader", "res://shaders/star_flare.gdshader"]:
 		var q := MeshInstance3D.new()
 		var qm := QuadMesh.new()
 		qm.size = Vector2(0.02, 0.02)
@@ -227,14 +228,26 @@ func _make_assets() -> void:
 	fire_mesh = QuadMesh.new()
 	fire_mesh.size = Vector2(1.0, 1.0)
 	fire_mesh.material = main.spark_mesh.material
-	# 유성의 꼬리(혜성)와 번개
-	comet_mat = ShaderMaterial.new()
-	comet_mat.shader = load("res://shaders/fire_ribbon.gdshader")
-	comet_mat.set_shader_parameter("core_col", Vector3(1.0, 0.97, 0.85))
-	comet_mat.set_shader_parameter("mid_col", Vector3(0.5, 0.68, 1.0))
-	comet_mat.set_shader_parameter("edge_col", Vector3(0.22, 0.18, 0.8))
-	comet_mat.set_shader_parameter("intensity", 1.5)
-	comet_mat.set_shader_parameter("lick", 0.5)
+	# 유성 색 테마: [핵, 중간, 가장자리] 색과 입자 색띠
+	var defs := [
+		[Color(1.0, 0.97, 0.8), Color(1.0, 0.75, 0.3), Color(0.85, 0.35, 0.1)],
+		[Color(0.9, 1.0, 1.0), Color(0.3, 0.9, 1.0), Color(0.1, 0.3, 0.9)],
+		[Color(1.0, 0.9, 1.0), Color(0.8, 0.45, 1.0), Color(0.35, 0.15, 0.8)],
+		[Color(1.0, 0.92, 0.96), Color(1.0, 0.45, 0.75), Color(0.7, 0.1, 0.45)],
+		[Color(0.92, 1.0, 0.95), Color(0.35, 1.0, 0.6), Color(0.05, 0.5, 0.35)],
+	]
+	for d in defs:
+		var cm := ShaderMaterial.new()
+		cm.shader = load("res://shaders/fire_ribbon.gdshader")
+		cm.set_shader_parameter("core_col", Vector3(d[0].r, d[0].g, d[0].b))
+		cm.set_shader_parameter("mid_col", Vector3(d[1].r, d[1].g, d[1].b))
+		cm.set_shader_parameter("edge_col", Vector3(d[2].r, d[2].g, d[2].b))
+		cm.set_shader_parameter("intensity", 1.6)
+		cm.set_shader_parameter("lick", 0.5)
+		var ramp := Gradient.new()
+		ramp.offsets = PackedFloat32Array([0.0, 0.1, 0.5, 1.0])
+		ramp.colors = PackedColorArray([Color(1, 1, 1, 0.0), Color(d[0].r, d[0].g, d[0].b, 0.85), Color(d[1].r, d[1].g, d[1].b, 0.55), Color(d[2].r, d[2].g, d[2].b, 0.0)])
+		themes.append({"mat": cm, "ramp": ramp, "core": d[0], "mid": d[1], "edge": d[2]})
 	bolt_mat = ShaderMaterial.new()
 	bolt_mat.shader = load("res://shaders/fire_ribbon.gdshader")
 	bolt_mat.set_shader_parameter("core_col", Vector3(1.0, 1.0, 1.0))
@@ -528,39 +541,66 @@ func _plan_meteors() -> void:
 		var t_hit := T_RAIN + METEOR_FALL + (T_RAIN_END - T_RAIN - METEOR_FALL) * pow(k, 0.85)
 		var tg: Vector3 = targets[i]
 		meteors.append({"to": tg, "from": tg + Vector3(rng.randf_range(-20.0, -12.0), SKY_Y, rng.randf_range(-3.0, 3.0)),
-			"t_hit": t_hit, "t0": t_hit - METEOR_FALL, "st": 0})
+			"t_hit": t_hit, "t0": t_hit - METEOR_FALL, "st": 0, "theme": i % themes.size()})
+
+
+func _ribbon_mi(mat: ShaderMaterial) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = ArrayMesh.new()
+	mi.material_override = mat
+	mi.extra_cull_margin = 200.0
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
+	return mi
 
 
 func _spawn_meteor(m: Dictionary) -> void:
+	var th: Dictionary = themes[m.theme]
 	var n := Node3D.new()
 	root.add_child(n)
-	var head := MeshInstance3D.new()
+	# 하얗게 타는 핵 + 반짝이는 십자 별빛 + 후광
+	var core := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 0.8
-	sm.height = 1.6
-	head.mesh = sm
+	sm.radius = 0.6
+	sm.height = 1.2
+	core.mesh = sm
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.97, 0.88)
+	mat.albedo_color = Color(1.0, 0.98, 0.92)
 	mat.fog_enabled = false
-	head.material_override = mat
-	head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	n.add_child(head)
-	var glow := _puff(n, Vector3.ZERO, 22, 0.5, 0.2, 1.0, 2.2, 3.8, Vector3(0, 1, 0), 180.0, Vector3.ZERO, star_ramp)
+	core.material_override = mat
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(core)
+	var flare := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(1, 1)
+	flare.mesh = fq
+	var fm := ShaderMaterial.new()
+	fm.shader = load("res://shaders/star_flare.gdshader")
+	var mc: Color = th.mid
+	fm.set_shader_parameter("col", Vector3(mc.r, mc.g, mc.b))
+	flare.material_override = fm
+	flare.scale = Vector3.ONE * 8.0
+	flare.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(flare)
+	var glow := _puff(n, Vector3.ZERO, 20, 0.5, 0.2, 1.0, 2.0, 3.6, Vector3(0, 1, 0), 180.0, Vector3.ZERO, th.ramp)
 	glow.emitting = true
-	var tail := MeshInstance3D.new()
-	tail.mesh = ArrayMesh.new()
-	tail.material_override = comet_mat
-	tail.extra_cull_margin = 200.0
-	tail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	root.add_child(tail)
+	# 지나간 자리에 흩뿌려지는 별가루
+	var dust := _puff(root, Vector3.ZERO, 90, 1.5, 0.4, 2.4, 0.25, 0.6, Vector3(0, 1, 0), 180.0, Vector3(0, -1.2, 0), th.ramp)
+	dust.emitting = true
 	var light := OmniLight3D.new()
-	light.light_color = Color(0.8, 0.88, 1.0)
-	light.omni_range = 18.0
+	light.light_color = th.mid
+	light.omni_range = 20.0
 	light.light_energy = 5.0
 	n.add_child(light)
 	m["node"] = n
-	m["tail"] = tail
+	m["core"] = core
+	m["flare"] = flare
+	m["flare_mat"] = fm
+	m["dust"] = dust
+	m["tail"] = _ribbon_mi(th.mat)
+	m["helix1"] = _ribbon_mi(th.mat)
+	m["helix2"] = _ribbon_mi(th.mat)
 	m["light"] = light
 	m["glow"] = glow
 	m["st"] = 1
@@ -578,49 +618,101 @@ func _update_meteors() -> void:
 			var to: Vector3 = m.to
 			var p := from.lerp(to, kk)
 			(m.node as Node3D).position = p
-			# 꼬리: 지나온 길을 따라 길게 늘어진다
+			(m.dust as CPUParticles3D).position = p
+			var fs := 8.0 * (1.0 + 0.15 * sin(t * 30.0 + float(m.to.x)))
+			(m.flare as MeshInstance3D).scale = Vector3.ONE * fs
+			# 꼬리: 지나온 길을 따라 길게 늘어진다 + 그 둘레를 두 가닥의 빛줄기가 나선으로 휘감는다
+			var back := from.lerp(to, pow(maxf(k - 0.34, 0.0), 1.5))
+			var dirv := (to - from).normalized()
+			var n1 := dirv.cross(Vector3.UP).normalized()
+			var n2 := dirv.cross(n1)
 			var pts := PackedVector3Array()
 			var rad := PackedFloat32Array()
+			var h1 := PackedVector3Array()
+			var h2 := PackedVector3Array()
+			var hr := PackedFloat32Array()
 			pts.resize(RIB_N)
 			rad.resize(RIB_N)
-			var back := from.lerp(to, pow(maxf(k - 0.3, 0.0), 1.5))
+			h1.resize(RIB_N)
+			h2.resize(RIB_N)
+			hr.resize(RIB_N)
 			for i in RIB_N:
 				var s := float(i) / float(RIB_N - 1)   # 0 꼬리 → 1 머리
-				pts[i] = back.lerp(p, s)
-				rad[i] = 0.95 * smoothstep(0.0, 0.6, s) * (0.3 + 0.7 * s)
+				var c := back.lerp(p, s)
+				pts[i] = c
+				rad[i] = 1.0 * smoothstep(0.0, 0.6, s) * (0.3 + 0.7 * s)
+				var ang := s * 16.0 - t * 16.0
+				var amp := 0.3 + 2.2 * (1.0 - s) * smoothstep(0.0, 0.25, s * 2.0)
+				h1[i] = c + (n1 * cos(ang) + n2 * sin(ang)) * amp
+				h2[i] = c + (n1 * cos(ang + PI) + n2 * sin(ang + PI)) * amp
+				hr[i] = 0.2 * smoothstep(0.0, 0.5, s)
 			_build_ribbon((m.tail as MeshInstance3D).mesh as ArrayMesh, pts, rad)
+			_build_ribbon((m.helix1 as MeshInstance3D).mesh as ArrayMesh, h1, hr)
+			_build_ribbon((m.helix2 as MeshInstance3D).mesh as ArrayMesh, h2, hr)
 			if k >= 1.0:
 				m.st = 2
-				m["t_dead"] = t + 0.3
+				m["t_dead"] = t + 0.35
 				_impact(m)
 		elif m.st == 2:
-			var gone: bool = t >= float(m.t_dead)
+			var age := 1.0 - (float(m.t_dead) - t) / 0.35
+			if m.has("flare_mat") and m.flare_mat != null:
+				(m.flare as MeshInstance3D).scale = Vector3.ONE * lerpf(8.0, 26.0, clampf(age * 3.0, 0.0, 1.0))
+				(m.flare_mat as ShaderMaterial).set_shader_parameter("fade", clampf(1.0 - age, 0.0, 1.0))
 			if m.has("light") and is_instance_valid(m.light):
-				(m.light as OmniLight3D).light_energy = maxf(0.0, 14.0 * (1.0 - (t - (float(m.t_dead) - 0.3)) / 0.3))
-			if gone:
+				(m.light as OmniLight3D).light_energy = maxf(0.0, 16.0 * (1.0 - age))
+			if t >= float(m.t_dead):
 				m.st = 3
-				for key in ["node", "tail"]:
+				for key in ["node", "tail", "helix1", "helix2", "dust"]:
 					if m.has(key) and is_instance_valid(m[key]):
 						(m[key] as Node).queue_free()
+	# 충돌 자리에 퍼지는 룬 마법진
+	for r in rings.duplicate():
+		var ag: float = (t - float(r.t0)) / 1.0
+		if ag >= 1.0:
+			(r.mi as Node).queue_free()
+			rings.erase(r)
+			continue
+		var e := 1.0 - pow(1.0 - ag, 3.0)
+		(r.mi as MeshInstance3D).scale = Vector3.ONE * lerpf(0.35, 1.5, e)
+		(r.mat as ShaderMaterial).set_shader_parameter("power", 1.7 * (1.0 - ag) * (1.0 - ag))
+		(r.mi as MeshInstance3D).rotation.y = ag * 1.6
 
 
 func _impact(m: Dictionary) -> void:
 	var to: Vector3 = m.to
-	(m.node as Node3D).get_child(0).visible = false
+	var th: Dictionary = themes[m.theme]
+	var cmid: Color = th.mid
+	var ccore: Color = th.core
+	(m.core as MeshInstance3D).visible = false
 	(m.glow as CPUParticles3D).emitting = false
+	(m.dust as CPUParticles3D).emitting = false
 	(m.tail as MeshInstance3D).visible = false
-	main.ring_effect(to, Color(0.7, 0.85, 1.0), 0.5, 12.0, 0.8)
-	main.ring_effect(to, Color(1.0, 0.92, 0.6), 0.3, 7.5, 0.55)
-	main.sparks(to + Vector3(0, 0.5, 0), Color(1.0, 0.93, 0.65), 46, 11.0, 0.9)
-	main.burst_effect(to + Vector3(0, 1.0, 0), Color(0.8, 0.9, 1.0))
-	var fl := _puff(root, to + Vector3(0, 0.8, 0), 16, 0.8, 2.0, 8.0, 2.6, 5.2, Vector3(0, 1, 0), 75.0, Vector3(0, 1.0, 0), star_ramp)
+	(m.helix1 as MeshInstance3D).visible = false
+	(m.helix2 as MeshInstance3D).visible = false
+	(m.node as Node3D).position = to + Vector3(0, 1.2, 0)
+	main.ring_effect(to, cmid.lightened(0.3), 0.5, 13.0, 0.8)
+	main.ring_effect(to, ccore, 0.3, 8.0, 0.55)
+	main.sparks(to + Vector3(0, 0.5, 0), ccore, 50, 12.0, 1.0)
+	main.sparks(to + Vector3(0, 0.5, 0), cmid, 40, 8.0, 1.2)
+	main.burst_effect(to + Vector3(0, 1.0, 0), cmid.lightened(0.4))
+	var fl := _puff(root, to + Vector3(0, 0.8, 0), 18, 0.8, 2.0, 8.0, 2.6, 5.4, Vector3(0, 1, 0), 75.0, Vector3(0, 1.0, 0), th.ramp)
 	fl.one_shot = true
 	fl.explosiveness = 0.9
 	fl.emitting = true
-	var col := _puff(root, to + Vector3(0, 0.2, 0), 26, 0.9, 6.0, 18.0, 0.7, 1.4, Vector3(0, 1, 0), 14.0, Vector3(0, -2.0, 0), gold_ramp)   # 솟는 빛의 기둥
+	var col := _puff(root, to + Vector3(0, 0.2, 0), 28, 0.9, 6.0, 20.0, 0.8, 1.5, Vector3(0, 1, 0), 14.0, Vector3(0, -2.0, 0), th.ramp)   # 솟는 빛의 기둥
 	col.one_shot = true
 	col.explosiveness = 0.8
 	col.emitting = true
+	var pet := _puff(root, to + Vector3(0, 0.4, 0), 34, 1.8, 3.0, 9.0, 0.35, 0.8, Vector3(0, 1, 0), 55.0, Vector3(0, -1.4, 0), th.ramp)   # 꽃잎처럼 흩날리는 빛
+	pet.one_shot = true
+	pet.explosiveness = 0.85
+	pet.emitting = true
+	# 땅 위로 번지는 룬 마법진
+	var rq := _circle_quad(Vector2(16.0, 16.0), cmid, ccore)
+	rq.rotation_degrees.x = -90.0
+	rq.position = to + Vector3(0, 0.1, 0)
+	root.add_child(rq)
+	rings.append({"mi": rq, "mat": rq.material_override, "t0": t})
 	main.shake = maxf(main.shake, 0.55)
 	main.white_flash = maxf(main.white_flash, 0.1)
 	Sfx.play("star_hit", 0.8, 0.15)
