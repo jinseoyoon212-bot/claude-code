@@ -636,9 +636,9 @@ func _start_ash() -> void:
 	ash_embers = _fire(root, dp, 130, 2.0, 2.0, 8.0, 0.1, 0.3, Vector3(0, 1, 0), 120.0, Vector3(0, 3.5, 0))
 	ash_embers.emission_sphere_radius = 5.0
 	ash_embers.emitting = true
-	ash_field = _fire(root, Vector3(4.0, 0.8, 0.0), 420, 2.6, 0.8, 3.4, 0.4, 1.0, Vector3(0, 1, 0), 35.0, Vector3(0, 1.0, 0), false, false, true)
+	ash_field = _fire(root, Vector3(4.0, 7.0, 0.0), 700, 2.6, 0.4, 2.0, 0.5, 1.3, Vector3(0, 1, 0), 35.0, Vector3(0, 1.0, 0), false, false, true)
 	ash_field.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	ash_field.emission_box_extents = Vector3(38.0, 0.5, 8.0)
+	ash_field.emission_box_extents = Vector3(38.0, 7.0, 8.0)
 	ash_field.emitting = true
 
 
@@ -732,8 +732,9 @@ func camera() -> Array:
 		return [Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0), Vector3(dp.x - 1.0, 8.0, 0.0)]
 	# 용이 재가 되어 하늘로 솟는 걸 따라가다가, 낮은 각도에서 올려다보며 재가 하늘로 흩어지는 모습을 본다
 	var k5 := smoothstep(0.0, 1.0, (t - T_EXIT) / (DUR - T_EXIT))
-	var p5 := Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0).lerp(hp + Vector3(6.0, 2.6, 17.0), k5)
-	var l5 := Vector3(dp.x - 1.0, 8.0, 0.0).lerp(hp + Vector3(8.0, 15.0, 0.0), smoothstep(0.0, 1.0, (t - T_EXIT - 0.6) / (DUR - T_EXIT - 0.6)))
+	var p5 := Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0).lerp(Vector3(24.0, 3.0, 30.0), k5)
+	var dc := dp + Vector3(-4.0, 6.0, 0.0)
+	var l5 := dc.lerp(Vector3(dc.x - 6.0, 26.0, 0.0), smoothstep(T_END - 0.6, DUR, t))
 	return [p5, l5]
 
 
