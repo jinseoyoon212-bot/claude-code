@@ -208,18 +208,22 @@ public class AuroraDevicePlugin extends Plugin {
 
     /** 기기의 실제 음성인식 서비스(우리 프록시 제외)를 찾는다. 구글 서비스를 우선 */
     public static ComponentName pickRealRecognizer(Context c) {
+        try {   // 1) 시스템 기본 음성인식기 (Aurora 프록시가 아닌 경우)
+            String def = Settings.Secure.getString(c.getContentResolver(), "voice_recognition_service");
+            if (def != null) { ComponentName d = ComponentName.unflattenFromString(def); if (d != null && !d.getPackageName().equals(c.getPackageName())) return d; }
+        } catch (Throwable ignored) { }
         List<ResolveInfo> l = c.getPackageManager().queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
-        ComponentName best = null;
-        for (ResolveInfo r : l) {
+        ComponentName google = null, other = null;
+        for (ResolveInfo r : l) {   // 2) 구글 앱 우선, 3) 그 외
             if (r.serviceInfo == null || r.serviceInfo.packageName.equals(c.getPackageName())) continue;
             ComponentName cn = new ComponentName(r.serviceInfo.packageName, r.serviceInfo.name);
-            if (r.serviceInfo.packageName.contains("google")) return cn;
-            if (best == null) best = cn;
+            if (r.serviceInfo.packageName.equals("com.google.android.googlequicksearchbox")) return cn;
+            if (r.serviceInfo.packageName.contains("google") && google == null) google = cn;
+            else if (other == null) other = cn;
         }
-        return best;
+        return google != null ? google : other;
     }
 
-    /** 웹이 오버레이 화면을 그릴 준비가 끝났음을 알림 → 숨겨 둔 웹뷰를 보여준다 */
     @PluginMethod public void assistReady(final PluginCall call) {
         try { if (getActivity() instanceof AssistActivity) ((AssistActivity) getActivity()).showWeb(); } catch (Throwable ignored) { }
         call.resolve();
@@ -299,54 +303,78 @@ public class AuroraDevicePlugin extends Plugin {
         if (getPermissionState("mic") == PermissionState.GRANTED) startListening(call); else call.reject("마이크 권한이 필요해요.");
     }
 
+    private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
     private void startListening(final PluginCall call) {
         final ArrayList<String> biasing = new ArrayList<String>();
-        try { com.getcapacitor.JSArray ba = call.getArray("biasing"); if (ba != null) for (int k = 0; k < ba.length() && k < 300; k++) { String s = ba.optString(k, ""); if (!s.isEmpty()) biasing.add(s); } } catch (Throwable ignored) { }
-        getActivity().runOnUiThread(new Runnable() { public void run() {
-            try {
-                if (recognizer != null) { recognizer.destroy(); recognizer = null; }
-                ComponentName real = pickRealRecognizer(ctx());
-                if (real == null && !SpeechRecognizer.isRecognitionAvailable(ctx())) { call.reject("이 기기에는 음성 인식 서비스가 없어요. (구글 앱/음성 서비스 필요)"); return; }
-                recognizer = real != null ? SpeechRecognizer.createSpeechRecognizer(ctx(), real) : SpeechRecognizer.createSpeechRecognizer(ctx());
-                Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR");
-                i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx().getPackageName());
-                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);                                   // 후보 5개 (JS가 명령어/앱 이름과 맞는 걸 고름)
-                i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false);                            // 온라인 인식이 더 정확
+        try { com.getcapacitor.JSArray ba = call.getArray("biasing"); if (ba != null) for (int k = 0; k < ba.length() && k < 60; k++) { String s = ba.optString(k, ""); if (!s.isEmpty() && s.length() <= 24) biasing.add(s); } } catch (Throwable ignored) { }
+        getActivity().runOnUiThread(new Runnable() { public void run() { listenAttempt(call, 0, biasing); } });
+    }
+
+    private static String speechErrorName(int e) {
+        switch (e) {
+            case 1: return "네트워크 시간 초과"; case 2: return "네트워크 오류"; case 3: return "오디오(마이크) 오류"; case 4: return "음성 서버 오류";
+            case 5: return "음성 인식 클라이언트 오류"; case 6: return "말소리가 들리지 않음"; case 7: return "인식된 말 없음"; case 8: return "음성 인식기가 사용 중";
+            case 9: return "마이크 권한 없음"; case 10: return "요청이 너무 많음"; case 11: return "음성 서버 연결 끊김"; case 12: return "한국어 미지원";
+            case 13: return "한국어 음성 팩 없음"; case 14: return "언어 지원 확인 불가"; default: return "알 수 없는 오류";
+        }
+    }
+
+    /**
+     * 시도 0: 전체 옵션(후보 5개·앱 이름 힌트) / 시도 1: 최소 옵션 / 시도 2: 시스템 기본 인식기 + 최소 옵션.
+     * 옵션이 원인인 오류(클라이언트/서버/언어/사용 중)면 다음 시도로 자동 재시도한다.
+     */
+    private void listenAttempt(final PluginCall call, final int attempt, final ArrayList<String> biasing) {
+        try {
+            if (recognizer != null) { recognizer.destroy(); recognizer = null; }
+            ComponentName real = attempt < 2 ? pickRealRecognizer(ctx()) : null;
+            if (real == null && !SpeechRecognizer.isRecognitionAvailable(ctx())) { call.reject("이 기기에는 음성 인식 서비스가 없어요. (구글 앱/음성 서비스 필요)"); return; }
+            recognizer = real != null ? SpeechRecognizer.createSpeechRecognizer(ctx(), real) : SpeechRecognizer.createSpeechRecognizer(ctx());
+            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR");
+            i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx().getPackageName());
+            if (attempt == 0) {
+                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
                 i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR");
-                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L);   // 말 사이 쉼에 끊기지 않게
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L);
                 i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1300L);
-                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L);
-                if (biasing != null && !biasing.isEmpty()) i.putStringArrayListExtra("android.speech.extra.BIASING_STRINGS", biasing);   // 앱 이름·명령어를 우선 인식 (안드로이드 13+)
-                recognizer.setRecognitionListener(new RecognitionListener() {
-                    public void onReadyForSpeech(Bundle p) { notifyListeners("speechReady", new JSObject()); }
-                    public void onBeginningOfSpeech() { }
-                    public void onRmsChanged(float v) { JSObject o = new JSObject(); o.put("rms", v); notifyListeners("speechRms", o); }
-                    public void onBufferReceived(byte[] b) { }
-                    public void onEndOfSpeech() { }
-                    public void onEvent(int t, Bundle p) { }
-                    public void onError(int e) {
-                        String m = e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ? "말소리가 들리지 않았어요." : e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ? "마이크 권한이 없어요." : e == SpeechRecognizer.ERROR_NETWORK || e == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ? "음성 인식 네트워크 오류예요." : "음성 인식 오류 (" + e + ")";
-                        call.reject(m);
-                    }
-                    public void onResults(Bundle r) {
-                        ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                        if (l == null || l.isEmpty()) { call.reject("말소리가 들리지 않았어요."); return; }
-                        float[] sc = r.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
-                        JSArray texts = new JSArray(), scores = new JSArray();
-                        for (int k = 0; k < l.size(); k++) { texts.put(l.get(k)); try { scores.put(sc != null && k < sc.length ? (double) sc[k] : 0.0); } catch (Exception ignored) { } }
-                        JSObject o = new JSObject(); o.put("text", l.get(0)); o.put("texts", texts); o.put("scores", scores); call.resolve(o);
-                    }
-                    public void onPartialResults(Bundle r) {
-                        ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                        if (l != null && !l.isEmpty()) { JSObject o = new JSObject(); o.put("text", l.get(0)); notifyListeners("speechPartial", o); }
-                    }
-                });
-                recognizer.startListening(i);
-            } catch (Throwable t) { call.reject(String.valueOf(t)); }
-        }});
+                if (!biasing.isEmpty()) i.putStringArrayListExtra("android.speech.extra.BIASING_STRINGS", biasing);
+            } else {
+                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            }
+            final int at = attempt;
+            recognizer.setRecognitionListener(new RecognitionListener() {
+                public void onReadyForSpeech(Bundle p) { notifyListeners("speechReady", new JSObject()); }
+                public void onBeginningOfSpeech() { }
+                public void onRmsChanged(float v) { JSObject o = new JSObject(); o.put("rms", v); notifyListeners("speechRms", o); }
+                public void onBufferReceived(byte[] b) { }
+                public void onEndOfSpeech() { }
+                public void onEvent(int t, Bundle p) { }
+                public void onError(int e) {
+                    boolean retry = (e == 3 || e == 4 || e == 5 || e == 8 || e == 11 || e == 12 || e == 13 || e == 14) && at < 2;
+                    if (retry) { final int delay = e == 8 ? 700 : 250; uiHandler.postDelayed(new Runnable() { public void run() { listenAttempt(call, at + 1, biasing); } }, delay); return; }
+                    String m = e == 6 || e == 7 ? "말소리가 들리지 않았어요." : e == 9 ? "마이크 권한이 없어요. 설정 → 앱 → Aurora Agent → 권한에서 마이크를 허용하세요." : "음성 인식 오류: " + speechErrorName(e) + " (코드 " + e + ", 시도 " + (at + 1) + "회)";
+                    call.reject(m);
+                }
+                public void onResults(Bundle r) {
+                    ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (l == null || l.isEmpty()) { call.reject("말소리가 들리지 않았어요."); return; }
+                    float[] sc = r.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+                    JSArray texts = new JSArray(), scores = new JSArray();
+                    for (int k = 0; k < l.size(); k++) { texts.put(l.get(k)); try { scores.put(sc != null && k < sc.length ? (double) sc[k] : 0.0); } catch (Exception ignored) { } }
+                    JSObject o = new JSObject(); o.put("text", l.get(0)); o.put("texts", texts); o.put("scores", scores); call.resolve(o);
+                }
+                public void onPartialResults(Bundle r) {
+                    ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (l != null && !l.isEmpty()) { JSObject o = new JSObject(); o.put("text", l.get(0)); notifyListeners("speechPartial", o); }
+                }
+            });
+            recognizer.startListening(i);
+        } catch (Throwable t) {
+            if (attempt < 2) listenAttempt(call, attempt + 1, biasing); else call.reject("음성 인식을 시작하지 못했어요: " + t);
+        }
     }
 
     @PluginMethod public void stopListen(final PluginCall call) {

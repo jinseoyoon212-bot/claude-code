@@ -6,6 +6,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -18,6 +19,13 @@ public class AssistActivity extends BridgeActivity {
         registerPlugin(AuroraDevicePlugin.class);
         super.onCreate(savedInstanceState);
         AuroraAssistState.alive = true;
+        try {
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+            getWindow().setStatusBarColor(Color.TRANSPARENT); getWindow().setNavigationBarColor(Color.TRANSPARENT);
+            if (android.os.Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
+            if (android.os.Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        } catch (Throwable ignored) { }
         try { getWindow().setBackgroundDrawableResource(android.R.color.transparent); } catch (Throwable ignored) { }
         applyTransparent();
         // 화면이 준비되기 전(흰 화면/깜빡임)에는 숨기고, 웹이 assistReady()를 부르면 보여준다. 안전장치: 1.5초 뒤엔 무조건 표시

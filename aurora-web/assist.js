@@ -41,7 +41,9 @@
 
   // ---- 동그라미 그리기 ----
   const g = cv.getContext('2d'); let pts = [], drawing = false, fade = null;
-  const fit = () => { const d = window.devicePixelRatio || 1; cv.width = innerWidth * d; cv.height = innerHeight * d; g.setTransform(d, 0, 0, d, 0, 0); };
+  // 캔버스의 '화면에 보이는 크기'를 뷰포트에 딱 맞춘다 (픽셀 수만 배율만큼 늘림). 안 맞추면 그림이 배율만큼 커져 오른쪽/아래로 밀린다
+  const fit = () => { const d = window.devicePixelRatio || 1; cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px'; cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); g.setTransform(d, 0, 0, d, 0, 0); };
+  const at = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   fit(); addEventListener('resize', fit);
   const chaikin = (P) => { for (let k = 0; k < 2 && P.length > 2; k++) { const Q = [P[0]]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; Q.push({ x: .75 * a.x + .25 * b.x, y: .75 * a.y + .25 * b.y }, { x: .25 * a.x + .75 * b.x, y: .25 * a.y + .75 * b.y }); } Q.push(P[P.length - 1]); P = Q; } return P; };
   const stroke = () => {
@@ -57,8 +59,8 @@
     g.shadowBlur = 0;
   };
   const clearStroke = () => { pts = []; g.clearRect(0, 0, innerWidth, innerHeight); };
-  cv.addEventListener('pointerdown', (e) => { if (busy) return; drawing = true; pts = [{ x: e.clientX, y: e.clientY }]; cv.setPointerCapture(e.pointerId); hint.classList.add('off'); try { D.stopSpeak(); } catch {} });
-  cv.addEventListener('pointermove', (e) => { if (!drawing) return; pts.push({ x: e.clientX, y: e.clientY }); stroke(); });
+  cv.addEventListener('pointerdown', (e) => { if (busy) return; drawing = true; pts = [at(e)]; cv.setPointerCapture(e.pointerId); hint.classList.add('off'); try { D.stopSpeak(); } catch {} });
+  cv.addEventListener('pointermove', (e) => { if (!drawing) return; pts.push(at(e)); stroke(); });
   cv.addEventListener('pointerup', () => {
     if (!drawing) return; drawing = false;
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
@@ -77,9 +79,9 @@
     if (!shotImg) { clearStroke(); bubble.textContent = '화면 캡처가 없어서 써클 투 서치를 못 써요. ⚙ 설정에서 Shizuku를 켜거나, 어시스턴트 설정의 "스크린샷 사용"을 켜세요.'; return; }
     busy = true; resetIdle(); setState('thinking'); Face.setMood('thinking'); Face.doMotion('tilt'); bubble.textContent = '🔍 살펴보는 중…'; acts.style.display = 'none';
     try {
-      const k = shotImg.naturalWidth / innerWidth, pad = Math.max(16, 0.1 * Math.max(box.r - box.l, box.b - box.t));
-      const sx = Math.max(0, (box.l - pad) * k), sy = Math.max(0, (box.t - pad) * k);
-      const sw = Math.min(shotImg.naturalWidth - sx, (box.r - box.l + pad * 2) * k), sh = Math.min(shotImg.naturalHeight - sy, (box.b - box.t + pad * 2) * k);
+      const kx = shotImg.naturalWidth / innerWidth, ky = shotImg.naturalHeight / innerHeight, pad = Math.max(16, 0.1 * Math.max(box.r - box.l, box.b - box.t));
+      const sx = Math.max(0, (box.l - pad) * kx), sy = Math.max(0, (box.t - pad) * ky);
+      const sw = Math.min(shotImg.naturalWidth - sx, (box.r - box.l + pad * 2) * kx), sh = Math.min(shotImg.naturalHeight - sy, (box.b - box.t + pad * 2) * ky);
       const sc = Math.min(1, 1024 / Math.max(sw, sh)), oc = document.createElement('canvas'); oc.width = Math.round(sw * sc); oc.height = Math.round(sh * sc);
       oc.getContext('2d').drawImage(shotImg, sx, sy, sw, sh, 0, 0, oc.width, oc.height);
       const data = oc.toDataURL('image/jpeg', 0.88).split(',')[1];
