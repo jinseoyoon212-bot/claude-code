@@ -1,7 +1,7 @@
 // 지팡이에서 뿜어져 나오는 불줄기 / 용의 꼬리가 되는 불의 몸통: 튜브 메시 위에 3D 노이즈 불꽃을 얹는다.
 // UV.x = 꼬리(0) → 머리(1), 메시의 반지름은 코드에서 만든다. 가장자리는 투명하게 녹아 불길처럼 보인다.
 shader_type spatial;
-render_mode blend_add, depth_draw_never, cull_disabled, unshaded;
+render_mode blend_add, depth_draw_never, cull_disabled, unshaded, fog_disabled;
 
 uniform float fade : hint_range(0.0, 1.0) = 1.0;
 uniform float intensity = 1.7;

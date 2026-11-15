@@ -24,7 +24,7 @@ const BREATH_REACH := 7.0
 const IGNITE_TO_DEATH := 0.3
 const HEAD_S := 2.1              # 용 머리 크기 (머리 길이 약 3.5 단위 × 이 값)
 const HN := 760                   # 용 머리를 이루는 불꽃 입자 수
-const HEAD_GAIN := 0.016          # 입자 하나의 밝기(겹쳐서 더해지므로 낮게)
+const HEAD_GAIN := 0.045          # 입자 하나의 밝기(겹쳐서 더해지므로 낮게)
 const RIB_N := 44                 # 불줄기 튜브의 마디 수
 const RIB_SIDES := 8
 const NECK := 1.25                # 머리 중심에서 목 시작점까지(머리 단위)
@@ -618,7 +618,7 @@ func _update_head(pos: Vector3, b: Basis, sc: float, jaw: float, dir: Vector3) -
 		var cr := lerpf(c.r, 0.55, ember) * g
 		var cg := lerpf(c.g, 0.08, ember) * g
 		var cb := lerpf(c.b, 0.02, ember) * g
-		var s := h_size[i] * sc * 0.5 * (0.35 + 0.65 * ke)
+		var s := h_size[i] * sc * 0.65 * (0.35 + 0.65 * ke)
 		h_buf[o] = s
 		h_buf[o + 1] = 0.0
 		h_buf[o + 2] = 0.0
@@ -684,7 +684,7 @@ func _build_ribbon(mesh: ArrayMesh, pts: PackedVector3Array, rad: PackedFloat32A
 
 func _update_ribbons() -> void:
 	rib_mat.set_shader_parameter("fade", 1.0 - ash_k)
-	rib_mat.set_shader_parameter("intensity", 0.38 + 0.1 * sin(t * 13.0))
+	rib_mat.set_shader_parameter("intensity", 0.9 + 0.2 * sin(t * 13.0))
 	# 1) 지팡이 → 용: 소용돌이치며 솟는 불줄기. 용이 모습을 갖추면 줄기의 꼬리가 용에게 빨려 들어간다
 	if stream_mi.visible:
 		var tip := staff_tip()

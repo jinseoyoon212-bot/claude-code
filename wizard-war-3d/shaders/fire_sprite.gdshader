@@ -1,7 +1,7 @@
 // 불의 용 머리를 이루는 불꽃 입자(MultiMesh 인스턴스). 카메라를 향하는 빌보드 + 일렁이는 노이즈 불꽃 모양.
 // 인스턴스 색의 rgb = 밝기가 곱해진 불꽃 색, a = 입자마다 다른 노이즈 씨앗.
 shader_type spatial;
-render_mode blend_add, unshaded, depth_draw_never, cull_disabled;
+render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 varying vec4 vc;
 
