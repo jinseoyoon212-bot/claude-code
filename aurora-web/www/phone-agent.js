@@ -118,14 +118,39 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     const m = t.match(/^(.{1,20}?)\s*(?:앱|어플|어플리케이션)?\s*(?:을|를)?\s*(?:좀\s*)?(?:열어|켜|실행|띄워|시작)/);
     if (m) {
       const name = m[1].replace(/(을|를)$/, '').trim(); if (!name) return null;
-      const f = filterApps((await D.listApps()).apps, name); const q = name.toLowerCase();
-      const hit = f.find((a) => a.name.toLowerCase() === q) || f[0]; if (!hit) return null;
+      const hit = findApp(await cachedApps(), name); if (!hit) return null;
       if (!(await ask('앱 실행', `${hit.name} (${hit.package})`))) return { text: '알겠어요, 실행하지 않았어요.', mood: 'neutral' };
       notify({ type: 'tool', name: 'launch_app', input: { name: hit.name } });
       await D.launchApp({ package: hit.package }); return { text: `${hit.name}${eulReul(hit.name)} 열었어요 📱`, mood: 'happy', stay: true };
     }
     return null;
   }
+
+
+  // ---- 앱 이름 퍼지 매칭 (음성 인식이 "내이버"처럼 살짝 틀려도 찾기) ----
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\s\-_.·]/g, '');
+  function lev(a, b) { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
+  function findApp(apps, name) {
+    const q = norm(name); if (!q) return null;
+    const ex = apps.find((a) => norm(a.name) === q); if (ex) return ex;
+    const inc = apps.filter((a) => norm(a.name).includes(q)).sort((x, y) => x.name.length - y.name.length)[0]; if (inc) return inc;
+    let best = null, bd = 99; const lim = q.length >= 5 ? 2 : q.length >= 3 ? 1 : 0;
+    for (const a of apps) { const n = norm(a.name); if (n.length < 2) continue; const dd = lev(q, n); if (dd < bd) { bd = dd; best = a; } }
+    return best && bd <= lim ? best : null;
+  }
+  let appCache = { t: 0, apps: [] };
+  async function cachedApps() { if (Date.now() - appCache.t > 60000) { try { appCache = { t: Date.now(), apps: (await dev().listApps()).apps }; } catch {} } return appCache.apps; }
+  const APP_RE = /^(.{1,20}?)\s*(?:앱|어플|어플리케이션)?\s*(?:을|를)?\s*(?:좀\s*)?(?:열어|켜|실행|띄워|시작)/;
+  // 음성 인식 후보 점수: 우리가 아는 명령/설치된 앱 이름과 맞을수록 높음
+  async function matchScore(text) {
+    const t = String(text).trim().replace(/\s+/g, ' '); let s = 0;
+    if (TOGGLES.some(([re]) => re.test(t)) && /(켜|꺼|끄)/.test(t)) s += 3;
+    if (/(볼륨|소리).*(올려|높여|키워|크게|내려|낮춰|줄여|작게)|음소거|무음/.test(t)) s += 3;
+    if (/^(배터리|충전|저장 ?공간|용량)/.test(t)) s += 2;
+    const m = t.match(APP_RE); if (m && !/[?？]/.test(t) && findApp(await cachedApps(), m[1].replace(/(을|를)$/, ''))) s += 3;
+    return s;
+  }
+  async function vocab() { const apps = await cachedApps(); return ['와이파이', '블루투스', '모바일 데이터', '비행기 모드', '볼륨', '음소거', '배터리', '저장공간', '오로라'].concat(apps.map((a) => a.name)).slice(0, 250); }
 
   const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
@@ -176,8 +201,7 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
         case 'launch_app': {
           let pkg = i.package;
           if (!pkg) {
-            const f = filterApps((await D.listApps()).apps, i.name || ''); const q = String(i.name || '').toLowerCase();
-            const hit = f.find((a) => a.name.toLowerCase() === q) || f[0];
+            const hit = findApp(await cachedApps(), i.name || '');
             if (!hit) return `앱을 찾지 못했어요: ${i.name}`; pkg = hit.package;
           }
           return j(await D.launchApp({ package: pkg }));
@@ -223,5 +247,5 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     if (uiUsed && settings.screenControl) await comeBack();
     return { text: '작업이 너무 길어져서 여기서 멈췄어요. 이어서 말씀해 주세요.', mood: 'surprised' };
   }
-  window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev() };
+  window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev(), matchScore, vocab };
 })();

@@ -219,6 +219,29 @@ public class AuroraDevicePlugin extends Plugin {
         return best;
     }
 
+    /** 웹이 오버레이 화면을 그릴 준비가 끝났음을 알림 → 숨겨 둔 웹뷰를 보여준다 */
+    @PluginMethod public void assistReady(final PluginCall call) {
+        try { if (getActivity() instanceof AssistActivity) ((AssistActivity) getActivity()).showWeb(); } catch (Throwable ignored) { }
+        call.resolve();
+    }
+
+    /** 호출 순간의 화면 캡처(JPEG base64). 없으면 image:null */
+    @PluginMethod public void getAssistScreenshot(final PluginCall call) {
+        async(call, new Job() { public JSObject run() throws Exception {
+            android.graphics.Bitmap b = AuroraAssistState.screenshot;
+            JSObject o = new JSObject();
+            if (b == null) { o.put("image", JSObject.NULL); return o; }
+            int max = call.getInt("maxPx", 1600); float q = call.getFloat("quality", 0.82f);
+            int w = b.getWidth(), h = b.getHeight(); float s = Math.min(1f, (float) max / Math.max(w, h));
+            android.graphics.Bitmap t = s < 1f ? android.graphics.Bitmap.createScaledBitmap(b, Math.round(w * s), Math.round(h * s), true) : b;
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            t.compress(android.graphics.Bitmap.CompressFormat.JPEG, Math.round(q * 100), bo);
+            o.put("image", android.util.Base64.encodeToString(bo.toByteArray(), android.util.Base64.NO_WRAP));
+            o.put("width", w); o.put("height", h); o.put("sentWidth", t.getWidth()); o.put("sentHeight", t.getHeight());
+            return o;
+        }});
+    }
+
     @PluginMethod public void isAssistMode(final PluginCall call) {
         JSObject o = new JSObject(); o.put("assist", getActivity() instanceof AssistActivity); call.resolve(o);
     }
@@ -277,6 +300,8 @@ public class AuroraDevicePlugin extends Plugin {
     }
 
     private void startListening(final PluginCall call) {
+        final ArrayList<String> biasing = new ArrayList<String>();
+        try { com.getcapacitor.JSArray ba = call.getArray("biasing"); if (ba != null) for (int k = 0; k < ba.length() && k < 300; k++) { String s = ba.optString(k, ""); if (!s.isEmpty()) biasing.add(s); } } catch (Throwable ignored) { }
         getActivity().runOnUiThread(new Runnable() { public void run() {
             try {
                 if (recognizer != null) { recognizer.destroy(); recognizer = null; }
@@ -288,10 +313,17 @@ public class AuroraDevicePlugin extends Plugin {
                 i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR");
                 i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
                 i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx().getPackageName());
+                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);                                   // 후보 5개 (JS가 명령어/앱 이름과 맞는 걸 고름)
+                i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false);                            // 온라인 인식이 더 정확
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR");
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L);   // 말 사이 쉼에 끊기지 않게
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1300L);
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L);
+                if (biasing != null && !biasing.isEmpty()) i.putStringArrayListExtra("android.speech.extra.BIASING_STRINGS", biasing);   // 앱 이름·명령어를 우선 인식 (안드로이드 13+)
                 recognizer.setRecognitionListener(new RecognitionListener() {
-                    public void onReadyForSpeech(Bundle p) { }
+                    public void onReadyForSpeech(Bundle p) { notifyListeners("speechReady", new JSObject()); }
                     public void onBeginningOfSpeech() { }
-                    public void onRmsChanged(float v) { }
+                    public void onRmsChanged(float v) { JSObject o = new JSObject(); o.put("rms", v); notifyListeners("speechRms", o); }
                     public void onBufferReceived(byte[] b) { }
                     public void onEndOfSpeech() { }
                     public void onEvent(int t, Bundle p) { }
@@ -302,7 +334,10 @@ public class AuroraDevicePlugin extends Plugin {
                     public void onResults(Bundle r) {
                         ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (l == null || l.isEmpty()) { call.reject("말소리가 들리지 않았어요."); return; }
-                        JSObject o = new JSObject(); o.put("text", l.get(0)); call.resolve(o);
+                        float[] sc = r.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+                        JSArray texts = new JSArray(), scores = new JSArray();
+                        for (int k = 0; k < l.size(); k++) { texts.put(l.get(k)); try { scores.put(sc != null && k < sc.length ? (double) sc[k] : 0.0); } catch (Exception ignored) { } }
+                        JSObject o = new JSObject(); o.put("text", l.get(0)); o.put("texts", texts); o.put("scores", scores); call.resolve(o);
                     }
                     public void onPartialResults(Bundle r) {
                         ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);

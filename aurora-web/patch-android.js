@@ -6,7 +6,7 @@ const javaDir = path.join(root, 'app/src/main/java', ...appId.split('.')), res =
 if (!fs.existsSync(root)) { console.error('android/ 가 없어요. 먼저 npx cap add android'); process.exit(1); }
 const pkg = (f) => fs.readFileSync(path.join(native, f), 'utf8').replace(/^package .*;/m, `package ${appId};`);
 fs.mkdirSync(javaDir, { recursive: true });
-for (const f of ['AuroraDevicePlugin.java', 'AuroraAccessibilityService.java', 'AssistActivity.java', 'AuroraVoiceService.java', 'AuroraSessionService.java', 'AuroraSession.java', 'AuroraRecognitionProxyService.java']) fs.writeFileSync(path.join(javaDir, f), pkg(f));
+for (const f of ['AuroraDevicePlugin.java', 'AuroraAccessibilityService.java', 'AssistActivity.java', 'AuroraVoiceService.java', 'AuroraSessionService.java', 'AuroraSession.java', 'AuroraRecognitionProxyService.java', 'AuroraAssistState.java', 'ShizukuHelper.java']) fs.writeFileSync(path.join(javaDir, f), pkg(f));
 fs.writeFileSync(path.join(javaDir, 'MainActivity.java'), `package ${appId};
 
 import android.os.Bundle;
@@ -24,6 +24,7 @@ fs.mkdirSync(path.join(res, 'xml'), { recursive: true }); fs.mkdirSync(path.join
 fs.copyFileSync(path.join(native, 'aurora_accessibility.xml'), path.join(res, 'xml/aurora_accessibility.xml'));
 fs.copyFileSync(path.join(native, 'aurora_strings.xml'), path.join(res, 'values/aurora_strings.xml'));
 fs.copyFileSync(path.join(native, 'aurora_styles.xml'), path.join(res, 'values/aurora_styles.xml'));
+fs.mkdirSync(path.join(res, 'values-v31'), { recursive: true }); fs.copyFileSync(path.join(native, 'aurora_styles_v31.xml'), path.join(res, 'values-v31/aurora_styles.xml'));
 fs.copyFileSync(path.join(native, 'aurora_voice_interaction.xml'), path.join(res, 'xml/aurora_voice_interaction.xml'));
 
 const mf = path.join(root, 'app/src/main/AndroidManifest.xml'); let m = fs.readFileSync(mf, 'utf8');
