@@ -43,7 +43,7 @@
       } else if (m.content.some((b) => b.type === 'tool_result')) {
         for (const b of m.content) if (b.type === 'tool_result') oa.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content) });
       } else {
-        oa.push({ role: m.role, content: m.content.map((b) => b.type === 'image' ? { type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } } : { type: 'text', text: b.text }) });
+        oa.push({ role: m.role, content: m.content.map((b) => b.type === 'image' ? { type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } } : b.type === 'audio' ? { type: 'input_audio', input_audio: { data: b.source.data, format: /mp3|mpeg/.test(b.source.media_type) ? 'mp3' : 'wav' } } : { type: 'text', text: b.text }) });
       }
     }
     const body = { model, messages: oa, max_tokens: maxTokens };

@@ -108,16 +108,79 @@
   D.addListener('speechPartial', (e) => { if (busy) bubble.textContent = '🎤 ' + e.text; });
   let lastRms = 0; D.addListener('speechRms', (e) => { const now = Date.now(); if (now - lastRms < 60) return; lastRms = now; root.style.setProperty('--lvl', Math.max(0, Math.min(1, (e.rms + 2) / 12)).toFixed(2)); });
 
+
+  // ---- 직접 녹음 + Gemini 받아쓰기: 안드로이드 음성 인식 서비스(구글 앱)에 의존하지 않는다 ----
+  const STT_SYS = '당신은 한국어 음성 받아쓰기 도구입니다. 들린 말을 그대로 한 줄로 적습니다. 설명·따옴표·마침표 장식 없이 말한 내용만 적습니다. 소리가 없거나 알아들을 수 없으면 정확히 (없음) 이라고만 씁니다. 대부분 폰에 시키는 짧은 명령입니다(예: 와이파이 꺼줘, 네이버 열어줘, 볼륨 올려).';
+  const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  function wavOf(f32, sr) {
+    const buf = new ArrayBuffer(44 + f32.length * 2), v = new DataView(buf), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + f32.length * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, f32.length * 2, true);
+    for (let i = 0; i < f32.length; i++) { const x = Math.max(-1, Math.min(1, f32[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+    return new Uint8Array(buf);
+  }
+  async function recordWav({ maxMs = 14000, noSpeechMs = 7000, silenceMs = 1300, onLevel, onSpeech }) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const AC = window.AudioContext || window.webkitAudioContext; let ctx; try { ctx = new AC({ sampleRate: 16000 }); } catch { ctx = new AC(); }
+    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch {} }
+    const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain(); mute.gain.value = 0;
+    const chunks = []; const t0 = performance.now(); let speechStart = 0, lastLoud = 0, floor = 0.006, done = false, finish;
+    const stop = () => { if (done) return; done = true; try { proc.disconnect(); src.disconnect(); mute.disconnect(); } catch {} stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); finish(); };
+    proc.onaudioprocess = (e) => {
+      if (done) return; const d = e.inputBuffer.getChannelData(0); const now = performance.now(); chunks.push({ t: now, d: new Float32Array(d) });
+      let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; const rms = Math.sqrt(s / d.length); if (onLevel) onLevel(Math.min(1, rms * 9));
+      if (now - t0 < 400) { floor = Math.max(floor, rms); return; }                       // 처음 0.4초로 배경 소음 크기를 잰다
+      if (rms > Math.max(0.018, floor * 2.6)) { if (!speechStart) { speechStart = now; if (onSpeech) onSpeech(); } lastLoud = now; }
+      if (speechStart && now - lastLoud > silenceMs && now - speechStart > 350) stop();
+      else if (!speechStart && now - t0 > noSpeechMs) stop();
+      else if (now - t0 > maxMs) stop();
+    };
+    src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+    await new Promise((r) => { finish = r; });
+    if (!speechStart) return '';
+    const keep = chunks.filter((c) => c.t >= speechStart - 350).map((c) => c.d); let n = 0; keep.forEach((c) => (n += c.length));
+    let pcm = new Float32Array(n), o = 0; keep.forEach((c) => { pcm.set(c, o); o += c.length; });
+    const sr = ctx.sampleRate;
+    if (sr !== 16000) { const r = sr / 16000, m = Math.floor(pcm.length / r), out = new Float32Array(m); for (let i = 0; i < m; i++) { const p = i * r, i0 = Math.floor(p), f = p - i0; out[i] = pcm[i0] * (1 - f) + (pcm[i0 + 1] || pcm[i0]) * f; } pcm = out; }
+    return b64(wavOf(pcm, 16000));
+  }
+  async function geminiListen(s) {
+    const wav = await recordWav({ onLevel: (v) => root.style.setProperty('--lvl', v.toFixed(2)), onSpeech: () => { bubble.textContent = '🎤 듣고 있어요…'; } });
+    root.style.setProperty('--lvl', 0); if (!wav) return '';
+    setState('thinking'); bubble.textContent = '✍ 받아쓰는 중…';
+    let hint = ''; try { hint = (await window.PhoneAgent.vocab()).slice(0, 80).join(', '); } catch {}
+    const r = await window.LLM.call({ provider: 'gemini', apiKey: s.apiKey, model: s.model, system: STT_SYS, maxTokens: 120,
+      messages: [{ role: 'user', content: [{ type: 'text', text: '받아적어줘.' + (hint ? ' 자주 나오는 단어: ' + hint : '') }, { type: 'audio', source: { type: 'base64', media_type: 'audio/wav', data: wav } }] }] });
+    const t = r.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim().replace(/^["'“”‘’「」]+|["'“”‘’「」]+$/g, '');
+    return /^\(?\s*없음\s*\)?$/.test(t) ? '' : t;
+  }
+
   async function listen() {
     if (busy) return; busy = true; resetIdle(); clearStroke(); acts.style.display = 'none';
     try { D.stopSpeak(); } catch {}
     setState('listening'); Face.setMood('surprised'); Face.doMotion('jump'); bubble.textContent = '🎤 준비 중…';
     try {
-      let bias = []; try { bias = await window.PhoneAgent.vocab(); } catch {}
-      const r = await D.listen({ biasing: bias });
-      // 후보 중 우리가 아는 명령/앱 이름과 가장 잘 맞는 문장을 고른다 (없으면 1순위)
-      let best = r.text, bs = -1; const texts = r.texts && r.texts.length ? r.texts : [r.text];
-      for (let i = 0; i < texts.length; i++) { let sc = 0; try { sc = await window.PhoneAgent.matchScore(texts[i]); } catch {} sc += (r.scores && r.scores[i] || 0) * 0.5 - i * 0.05; if (sc > bs) { bs = sc; best = texts[i]; } }
+      let best = '', why = '';
+      const s = await window.api.getSettings();
+      // 1순위: 직접 녹음 + Gemini 받아쓰기 (구글 음성 서비스 오류와 무관, 정확도 높음)
+      if (s.provider === 'gemini' && s.apiKey && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try { best = await geminiListen(s); if (!best) { busy = false; setState(null); Face.setMood('sad'); bubble.textContent = '말소리가 들리지 않았어요. 얼굴을 눌러 다시 말해 주세요.'; resetIdle(); return; } }
+        catch (e) { why = 'Gemini 받아쓰기 실패: ' + (e && e.message ? e.message : e); best = ''; }
+      }
+      // 2순위: 안드로이드 음성 인식 → 3순위: 시스템 음성 입력 창
+      if (!best) {
+        setState('listening'); bubble.textContent = '🎤 준비 중…';
+        let bias = []; try { bias = await window.PhoneAgent.vocab(); } catch {}
+        let r;
+        try { r = await D.listen({ biasing: bias }); }
+        catch (e) {
+          const msg = e && e.message ? e.message : '';
+          if (/코드 (3|4|5|8|11|12|13|14)\b|시작하지 못/.test(msg) && D.listenDialog) { bubble.textContent = '🎤 시스템 음성 입력 창으로 시도해요…'; try { r = await D.listenDialog(); } catch (e2) { throw new Error(msg + (why ? ' / ' + why : '')); } }
+          else throw e;
+        }
+        // 후보 중 우리가 아는 명령/앱 이름과 가장 잘 맞는 문장을 고른다 (없으면 1순위)
+        let bs = -1; const texts = r.texts && r.texts.length ? r.texts : [r.text]; best = r.text;
+        for (let i = 0; i < texts.length; i++) { let sc = 0; try { sc = await window.PhoneAgent.matchScore(texts[i]); } catch {} sc += (r.scores && r.scores[i] || 0) * 0.5 - i * 0.05; if (sc > bs) { bs = sc; best = texts[i]; } }
+      }
       root.style.setProperty('--lvl', 0); setState('thinking');
       bubble.textContent = best; input.value = best; form.requestSubmit();     // 이후는 기존 대화/명령 로직(renderer.js)이 처리
     } catch (e) {

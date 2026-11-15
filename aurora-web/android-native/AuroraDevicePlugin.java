@@ -27,6 +27,7 @@ import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityManager;
 
+import androidx.activity.result.ActivityResult;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -36,6 +37,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.PermissionState;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -375,6 +377,28 @@ public class AuroraDevicePlugin extends Plugin {
         } catch (Throwable t) {
             if (attempt < 2) listenAttempt(call, attempt + 1, biasing); else call.reject("음성 인식을 시작하지 못했어요: " + t);
         }
+    }
+
+    /** 마지막 수단: 시스템(구글) 음성 입력 창을 띄워 결과만 받는다. 인식 서비스 바인딩을 쓰지 않아 다른 경로가 막혀도 되는 경우가 많다 */
+    @PluginMethod public void listenDialog(final PluginCall call) {
+        try {
+            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR");
+            i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
+            i.putExtra(RecognizerIntent.EXTRA_PROMPT, "말씀하세요");
+            startActivityForResult(call, i, "listenDialogResult");
+        } catch (Throwable t) { call.reject("시스템 음성 입력 창을 열 수 없어요: " + t); }
+    }
+
+    @ActivityCallback private void listenDialogResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        ArrayList<String> l = result.getData() != null ? result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) : null;
+        if (result.getResultCode() != android.app.Activity.RESULT_OK || l == null || l.isEmpty()) { call.reject("음성 입력이 취소됐거나 인식되지 않았어요."); return; }
+        float[] sc = result.getData().getFloatArrayExtra(RecognizerIntent.EXTRA_CONFIDENCE_SCORES);
+        JSArray texts = new JSArray(), scores = new JSArray();
+        for (int k = 0; k < l.size(); k++) { texts.put(l.get(k)); try { scores.put(sc != null && k < sc.length ? (double) sc[k] : 0.0); } catch (Exception ignored) { } }
+        JSObject o = new JSObject(); o.put("text", l.get(0)); o.put("texts", texts); o.put("scores", scores); call.resolve(o);
     }
 
     @PluginMethod public void stopListen(final PluginCall call) {
