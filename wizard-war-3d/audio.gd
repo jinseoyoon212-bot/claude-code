@@ -2,7 +2,8 @@ extends Node
 ## 효과음·배경음악 관리 (자동 로드 싱글톤 "Sfx").
 
 const NAMES := ["cast", "hit", "explode", "nova", "shield", "chain", "frost", "heal", "meteor", "coin", "click", "buy",
-	"error", "wave", "boss", "win", "lose", "dash", "bones", "summon", "levelup", "impact", "whoosh"]
+	"error", "wave", "boss", "win", "lose", "dash", "bones", "summon", "levelup", "impact", "whoosh",
+	"festis_charge", "festis_burst", "dragon_roar", "dragon_pass", "ignite"]
 
 var streams := {}
 var pool: Array = []
@@ -11,12 +12,15 @@ var last_play := {}
 var recent: Array = []
 var stat_skipped := 0   # 빈 재생기가 없어 생략한 소리 수 (진단용)
 var stat_stolen := 0    # 재생 중인 소리를 끊고 가져간 횟수 (진단용)
-const BIG := ["win", "lose", "boss", "impact", "wave", "nova", "explode", "meteor", "summon", "levelup"]
+const BIG := ["win", "lose", "boss", "impact", "wave", "nova", "explode", "meteor", "summon", "levelup",
+	"festis_charge", "festis_burst", "dragon_roar", "dragon_pass"]
 var music_a: AudioStreamPlayer
 var music_b: AudioStreamPlayer
 var cur_music := ""
 var fade := 0.0
 var fade_len := 1.2
+var duck := 1.0       # 음악 볼륨 배율 (컷씬에서 낮춘다)
+var duck_now := 1.0
 var music_t0_ms := 0     # 현재 곡이 (0초 기준으로) 시작된 실제 시각. 웹에서는 get_playback_position()이 항상 0이라 직접 잰다
 var voice_ms := {}       # 효과음 재생기별 시작 시각 (가장 오래된 소리를 찾는 용도)
 # 반복 이음새 겹침 길이: 박자의 정수배 (제목 76bpm×1박, 전투 124bpm×2박, 보스 138bpm×2박)
@@ -122,7 +126,8 @@ func _check_loop() -> void:
 
 func _process(delta: float) -> void:
 	var real_delta := delta / maxf(Engine.time_scale, 0.01)   # 슬로모션과 상관없이 실제 시간으로 페이드
-	var vol: float = Save.settings.music * 0.7
+	duck_now = move_toward(duck_now, duck, real_delta * 1.6)
+	var vol: float = Save.settings.music * 0.7 * duck_now
 	if fade > 0.0:
 		fade = maxf(0.0, fade - real_delta / fade_len)
 		var k := 1.0 - fade

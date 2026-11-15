@@ -33,6 +33,13 @@
   Netlify·Workers(`gh-pages` 브랜치)는 기존 단일 스레드 빌드를 유지한다.
 - Cloudflare Workers Builds: Production branch=`gh-pages`, Build command 비움, Deploy command=`npx wrangler deploy`
 
+## 개발자 전용 스킬: 페스티스 인센티움
+- 개발자 모드(비밀번호)를 켠 뒤에만 쓸 수 있다. 전투 화면에 주황색 불꽃 버튼(T 키)이 나타나고, 치트 메뉴(전투 중)에서도 발동할 수 있다.
+- 컷씬: 주인공이 지팡이를 들고(마법진) → 1초 뒤 지팡이에서 불이 뿜어져 나오고 → 불이 모여 **불의 용**이 되어 포효 → 전장을 가로지르며 불을 뿜어 모든 적에게 **9999** 피해.
+- 대기시간 30초. 컷씬 중에는 입력이 막히고(무적), 아무 키/터치로 건너뛸 수 있다 (피해는 그대로 들어간다).
+- 구현: `festis.gd` (연출·타임라인), `shaders/fire_dragon.gdshader`(불꽃 용), `shaders/magic_circle.gdshader`(마법진), 효과음은 `tools/gen_audio.py festis`.
+- 용 모델: Quaternius Animated Monster Pack (CC0) — `models/fx/`
+
 ## 조작
 | PC | 모바일 | 동작 |
 |---|---|---|
@@ -55,6 +62,7 @@
 
 ## 에셋 출처
 - 캐릭터·무기 3D 모델: KayKit Adventurers / Skeletons by Kay Lousberg — CC0 (`models/LICENSE-*.txt`)
+- 컷씬 용 모델: Quaternius Animated Monster Pack (CC0, OpenGameArt) — `models/fx/LICENSE-Quaternius-Monsters.txt`
 - 배경·건물·나무·수정 등 모든 환경 모델: KayKit Medieval Hexagon / Halloween Bits / Dungeon Remastered, OpenGameArt LowPoly Crystals — 모두 CC0 (`models/env/SOURCES.md`)
 - 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)

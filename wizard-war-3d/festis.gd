@@ -1,0 +1,565 @@
+extends Node
+class_name Festis
+## 페스티스 인센티움 (개발자 전용 스킬): 컷씬 + 불의 용이 전장을 쓸어버린다. 피해 9999, 대기시간 30초.
+##
+## 타임라인
+##   0.0  지팡이를 든다 (마법진이 켜지고 마력이 지팡이로 모인다)
+##   1.0  지팡이에서 불이 뿜어져 나온다
+##   2.3  불이 모여 용의 모습이 된다 (포효)
+##   3.5  용이 전장 왼쪽 끝으로 크게 돈다
+##   4.5  용이 왼쪽에서 오른쪽으로 전장을 가로지르며 불을 뿜는다 (지나가는 곳의 적이 불붙어 쓰러진다)
+##   7.0  용이 하늘로 솟구쳐 흩어진다
+##   8.6  끝
+
+const DUR := 8.6
+const T_RAISE := 1.0     # 지팡이를 든 뒤 1초 뒤에 불이 나온다
+const T_FORM := 2.3
+const T_ARC := 3.5
+const T_SWEEP := 4.5
+const T_EXIT := 7.0
+const T_END := 7.9
+const SWEEP_X0 := -34.0
+const SWEEP_SPEED := 29.6
+const BREATH_REACH := 7.0
+const IGNITE_TO_DEATH := 0.3
+const DRAGON_SCALE := 3.0         # 드래곤 메시는 약 3.9 단위(FBX 루트의 0.01 배율은 우리가 덮어쓴다) → 약 12m
+const ANIM_FLY := "DragonArmature|Dragon_Flying"
+const ANIM_ROAR := "DragonArmature|Dragon_Attack2"
+const ANIM_BITE := "DragonArmature|Dragon_Attack"
+const DAMAGE := 9999.0
+
+var main
+var hero: Unit
+var t := 0.0
+var done := false
+var hp := Vector3.ZERO
+var root: Node3D
+
+var circle: MeshInstance3D
+var circle_mat: ShaderMaterial
+var staff_light: OmniLight3D
+var charge: CPUParticles3D
+var stream: CPUParticles3D
+var embers: CPUParticles3D
+var dragon: Node3D
+var dragon_mat: ShaderMaterial
+var dragon_anim: AnimationPlayer
+var dragon_light: OmniLight3D
+var breath: CPUParticles3D
+var trail: CPUParticles3D
+var smoke: CPUParticles3D
+var wave: CPUParticles3D
+var victims: Array = []
+var killed := 0
+var f := {}                       # 한 번만 일어나는 사건 표시
+var ov := {"bars": 0.0, "title": 0.0, "heat": 0.0, "skip": 0.0}
+var smoke_mesh: QuadMesh
+var fire_mesh: QuadMesh
+var fire_ramp: Gradient
+var fire_curve: Curve
+var smoke_ramp: Gradient
+var bite_t := 0.0
+var sun_e0 := 1.0
+var amb0 := 0.6
+var bg0 := 1.0
+
+
+static var prewarmed := false
+
+
+static func prewarm(m) -> void:
+	## 용·불꽃 셰이더는 처음 그릴 때 컴파일되느라 순간적으로 멈추므로 (소리도 같이 끊긴다),
+	## 개발자 모드면 전투가 시작될 때 아주 작게 한 번 그려서 미리 컴파일해 둔다.
+	if prewarmed:
+		return
+	prewarmed = true
+	var holder := Node3D.new()
+	holder.position = m.hero.position + Vector3(0, 2.0, 0)
+	m.add_child(holder)
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/fire_dragon.gdshader")
+	mat.set_shader_parameter("dissolve", 1.0)
+	var d: Node3D = (load("res://models/fx/Dragon.fbx") as PackedScene).instantiate()
+	d.scale = Vector3.ONE * 0.004
+	for mi in d.find_children("*", "MeshInstance3D", true, false):
+		mi.material_override = mat
+	holder.add_child(d)
+	var q := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.02, 0.02)
+	q.mesh = qm
+	var cmat := ShaderMaterial.new()
+	cmat.shader = load("res://shaders/magic_circle.gdshader")
+	q.material_override = cmat
+	holder.add_child(q)
+	m.get_tree().create_timer(0.8).timeout.connect(holder.queue_free)
+
+
+func start(m, h: Unit) -> void:
+	main = m
+	hero = h
+	hp = hero.position
+	root = Node3D.new()
+	root.name = "FestisFx"
+	main.add_child(root)
+	_make_assets()
+	sun_e0 = main.sun.light_energy
+	if main.world_env:
+		amb0 = main.world_env.ambient_light_energy
+		bg0 = main.world_env.background_energy_multiplier
+	main.cine_active = true
+	main.touch_attack = false
+	main.move_input = Vector2.ZERO
+	hero.face(Vector3(1, 0, 0), true)
+	hero.play_once("Spellcast_Raise", 2.2, 0.95)
+	hero.shield_t = maxf(hero.shield_t, 0.34)   # 컷씬 동안은 맞지 않는다
+	Sfx.play("festis_charge", 1.0, 0.0)
+	Sfx.duck = 0.3
+	# 발밑 마법진
+	circle = MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(12.0, 12.0)
+	circle.mesh = qm
+	circle_mat = ShaderMaterial.new()
+	circle_mat.shader = load("res://shaders/magic_circle.gdshader")
+	circle_mat.set_shader_parameter("power", 0.0)
+	circle.material_override = circle_mat
+	circle.rotation_degrees.x = -90.0
+	circle.position = hp + Vector3(0, 0.08, 0)
+	circle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(circle)
+	# 지팡이 불빛과 빨려드는 마력
+	staff_light = OmniLight3D.new()
+	staff_light.light_color = Color(1.0, 0.55, 0.18)
+	staff_light.omni_range = 14.0
+	staff_light.light_energy = 0.0
+	root.add_child(staff_light)
+	charge = _fire(root, hp, 100, 0.55, 0.0, 0.2, 0.25, 0.55, Vector3(0, 1, 0), 180.0, Vector3.ZERO, false)
+	charge.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE
+	charge.emission_sphere_radius = 2.4
+	charge.radial_accel_min = -11.0
+	charge.radial_accel_max = -8.0
+	charge.emitting = true
+
+
+func _make_assets() -> void:
+	fire_ramp = Gradient.new()
+	fire_ramp.offsets = PackedFloat32Array([0.0, 0.08, 0.4, 0.75, 1.0])
+	fire_ramp.colors = PackedColorArray([Color(1.0, 0.78, 0.32, 0.0), Color(1.0, 0.68, 0.24, 0.62), Color(1.0, 0.4, 0.07, 0.55),
+		Color(0.72, 0.15, 0.03, 0.34), Color(0.2, 0.04, 0.02, 0.0)])
+	fire_curve = Curve.new()
+	fire_curve.add_point(Vector2(0.0, 0.35))
+	fire_curve.add_point(Vector2(0.25, 1.0))
+	fire_curve.add_point(Vector2(1.0, 0.25))
+	smoke_ramp = Gradient.new()
+	smoke_ramp.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	smoke_ramp.colors = PackedColorArray([Color(0.12, 0.1, 0.1, 0.0), Color(0.16, 0.13, 0.13, 0.5), Color(0.08, 0.07, 0.07, 0.0)])
+	# 연기: 밝게 더해지는 불꽃과 달리 어둡게 덮이는 일반 알파 혼합
+	fire_mesh = QuadMesh.new()   # 1m 쿼드 (main.spark_mesh는 0.25m라 불기둥에는 너무 작다)
+	fire_mesh.size = Vector2(1.0, 1.0)
+	fire_mesh.material = main.spark_mesh.material
+	smoke_mesh = QuadMesh.new()
+	smoke_mesh.size = Vector2(1.0, 1.0)
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	sm.vertex_color_use_as_albedo = true
+	sm.albedo_texture = main.spark_mesh.material.albedo_texture
+	smoke_mesh.material = sm
+
+
+func _fire(parent: Node, pos: Vector3, amount: int, life: float, v0: float, v1: float, s0: float, s1: float,
+		dir: Vector3, spread: float, grav: Vector3, local := false, as_smoke := false) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.mesh = smoke_mesh if as_smoke else fire_mesh
+	p.amount = amount
+	p.lifetime = life
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.25
+	p.direction = dir
+	p.spread = spread
+	p.initial_velocity_min = v0
+	p.initial_velocity_max = v1
+	p.gravity = grav
+	p.scale_amount_min = s0
+	p.scale_amount_max = s1
+	p.scale_amount_curve = fire_curve
+	p.color_ramp = smoke_ramp if as_smoke else fire_ramp
+	p.local_coords = local
+	p.emitting = false
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(p)
+	p.position = pos
+	return p
+
+
+func _ease_back(x: float) -> float:
+	var c1 := 1.70158
+	var c3 := c1 + 1.0
+	return 1.0 + c3 * pow(x - 1.0, 3.0) + c1 * pow(x - 1.0, 2.0)
+
+
+func staff_tip() -> Vector3:
+	## 지팡이 끝 위치: 지팡이 메시의 가장 높은 모서리들의 평균
+	var node: Node = hero.model.find_child("2H_Staff", true, false)
+	var mi: MeshInstance3D = null
+	if node is MeshInstance3D:
+		mi = node
+	elif node:
+		var kids := node.find_children("*", "MeshInstance3D", true, false)
+		if not kids.is_empty():
+			mi = kids[0]
+	if mi == null:
+		return hero.position + Vector3(0.6, 3.3, 0)
+	var ab := mi.get_aabb()
+	var top := -1e9
+	for i in 8:
+		top = maxf(top, (mi.global_transform * ab.get_endpoint(i)).y)
+	var sum := Vector3.ZERO
+	var n := 0
+	for i in 8:
+		var p: Vector3 = mi.global_transform * ab.get_endpoint(i)
+		if p.y > top - 0.2:
+			sum += p
+			n += 1
+	return sum / float(maxi(n, 1))
+
+
+# ---------------- 용의 경로 ----------------
+func _bezier(a: Vector3, b: Vector3, c: Vector3, d: Vector3, k: float) -> Vector3:
+	var u := 1.0 - k
+	return a * u * u * u + b * 3.0 * u * u * k + c * 3.0 * u * k * k + d * k * k * k
+
+
+func dragon_pos(tt: float) -> Vector3:
+	if tt < T_ARC:   # 주인공 머리 위에 떠 있다 (불이 모이는 동안 조금 솟아오른다)
+		var rise := smoothstep(T_FORM, T_FORM + 1.2, tt)
+		return hp + Vector3(0.0, 5.0 + 1.6 * rise + 0.25 * sin(tt * 3.0), 0.0)
+	if tt < T_SWEEP:   # 크게 돌아 왼쪽 끝으로 간다
+		var k := smoothstep(0.0, 1.0, (tt - T_ARC) / (T_SWEEP - T_ARC))
+		var p0 := hp + Vector3(0.0, 6.6, 0.0)
+		var p3 := Vector3(SWEEP_X0, 3.6, 0.0)
+		return _bezier(p0, p0 + Vector3(-8.0, 10.0, 10.0), p3 + Vector3(-6.0, 9.0, 9.0), p3, k)
+	if tt < T_EXIT:   # 왼쪽 끝에서 오른쪽 끝까지 낮게 가로지른다
+		var s := tt - T_SWEEP
+		return Vector3(SWEEP_X0 + SWEEP_SPEED * s, 3.5 + 0.35 * sin(s * 5.0), 1.6 * sin(s * 2.2))
+	var e := tt - T_EXIT   # 하늘로 솟구친다
+	var ex := SWEEP_X0 + SWEEP_SPEED * (T_EXIT - T_SWEEP)
+	return Vector3(ex + SWEEP_SPEED * 0.8 * e, 3.5 + 18.0 * pow(e / (T_END - T_EXIT), 2.0), 0.0)
+
+
+func update(delta: float) -> void:
+	if done:
+		return
+	t += delta
+	hp = hero.position
+	hero.shield_t = maxf(hero.shield_t, 0.34)
+	_events()
+	_update_hero()
+	_update_world()
+	_update_fx()
+	_update_dragon(delta)
+	_update_victims()
+	_update_overlay()
+	if t >= DUR:
+		finish()
+
+
+func _events() -> void:
+	if t >= T_RAISE and not f.has("burst"):
+		f["burst"] = true
+		Sfx.play("festis_burst", 1.0, 0.0)
+		main.white_flash = 0.55
+		main.shake = maxf(main.shake, 1.2)
+		var tip := staff_tip()
+		stream = _fire(root, tip, 190, 1.3, 13.0, 24.0, 1.3, 3.0, Vector3(0.22, 1, 0), 15.0, Vector3(0, 4.0, 0), false)
+		stream.tangential_accel_min = 3.0
+		stream.tangential_accel_max = 8.0
+		stream.emitting = true
+		embers = _fire(root, tip, 90, 1.6, 6.0, 14.0, 0.12, 0.3, Vector3(0.2, 1, 0), 28.0, Vector3(0, 3.0, 0), false)
+		embers.emitting = true
+		main.ring_effect(hp, Color(1.0, 0.55, 0.15), 0.6, 13.0, 0.9)
+		main.ring_effect(hp, Color(1.0, 0.9, 0.5), 0.4, 8.0, 0.7)
+		main.sparks(tip, Color(1.0, 0.75, 0.3), 70, 12.0, 0.9)
+	if t >= T_FORM - 0.35 and not f.has("charge_off"):
+		f["charge_off"] = true
+		if charge:
+			charge.emitting = false
+	if t >= T_FORM and not f.has("form"):
+		f["form"] = true
+		_spawn_dragon()
+		Sfx.play("dragon_roar", 1.0, 0.0)
+		main.white_flash = 0.4
+		main.shake = maxf(main.shake, 1.0)
+		var dp := dragon_pos(T_FORM)
+		main.ring_effect(Vector3(dp.x, 0.0, dp.z), Color(1.0, 0.5, 0.12), 0.5, 15.0, 1.0)
+		main.sparks(dp, Color(1.0, 0.7, 0.25), 90, 14.0, 1.1)
+		if stream:
+			stream.emitting = false
+		if dragon_anim and dragon_anim.has_animation(ANIM_ROAR):
+			dragon_anim.play(ANIM_ROAR, 0.1)
+	if t >= T_FORM + 1.9 and not f.has("fly"):
+		f["fly"] = true
+		if dragon_anim and dragon_anim.has_animation(ANIM_FLY):
+			dragon_anim.play(ANIM_FLY, 0.25)
+	if t >= T_ARC and not f.has("arc"):
+		f["arc"] = true
+		_snapshot_victims()
+	if t >= T_SWEEP - 0.2 and not f.has("sweep"):
+		f["sweep"] = true
+		Sfx.play("dragon_pass", 1.0, 0.0)
+		main.shake = maxf(main.shake, 0.6)
+		if breath:
+			breath.emitting = true
+		if wave:
+			wave.emitting = true
+	if t >= T_EXIT and not f.has("exit"):
+		f["exit"] = true
+		if breath:
+			breath.emitting = false
+		if wave:
+			wave.emitting = false
+		main.sparks(dragon.position if dragon else hp, Color(1.0, 0.6, 0.2), 60, 16.0, 1.2)
+	if t >= T_END and not f.has("gone"):
+		f["gone"] = true
+		if dragon:
+			main.sparks(dragon.position, Color(1.0, 0.7, 0.3), 120, 18.0, 1.6)
+			dragon.visible = false
+		for p in [trail, breath, wave, smoke]:
+			if p:
+				p.emitting = false
+
+
+func _update_world() -> void:
+	## 불빛이 주인공이 되도록 컷씬 동안 세상을 어둡게 한다 (낮 하늘에서는 불이 묻혀서 모양이 안 보인다)
+	var k := smoothstep(0.4, 1.3, t) * (1.0 - smoothstep(T_EXIT, T_END, t))
+	main.sun.light_energy = sun_e0 * (1.0 - 0.78 * k)
+	if main.world_env:
+		main.world_env.ambient_light_energy = amb0 * (1.0 - 0.7 * k)
+		main.world_env.background_energy_multiplier = bg0 * (1.0 - 0.82 * k)
+
+
+func _update_hero() -> void:
+	if t >= 2.2 and t < T_END - 0.3:
+		hero.loop_anim("Spellcasting")
+	elif t >= T_END - 0.3:
+		hero.lock_t = 0.0
+		hero.loop_anim("Idle")
+
+
+func _update_fx() -> void:
+	var tip := staff_tip()
+	# 마법진: 켜지고, 불이 터질 때 강해졌다가, 끝에서 꺼진다
+	var pw := smoothstep(0.0, 0.7, t) * 1.2
+	if t >= T_RAISE:
+		pw += 0.7 * exp(-(t - T_RAISE) * 1.2)
+	pw *= 1.0 - smoothstep(T_EXIT, T_END, t)
+	circle_mat.set_shader_parameter("power", pw)
+	circle.position = hp + Vector3(0, 0.08, 0)
+	# 지팡이 불빛
+	var le := 0.0
+	if t < T_RAISE:
+		le = 6.0 * t
+	elif t < T_ARC:
+		le = 11.0 + 3.0 * sin(t * 18.0)
+	else:
+		le = maxf(0.0, 11.0 * (1.0 - (t - T_ARC) * 2.0))
+	staff_light.light_energy = le
+	staff_light.position = tip
+	if charge:
+		charge.position = tip
+	if stream:
+		stream.position = tip
+	if embers:
+		embers.position = tip
+	main.shake = maxf(main.shake, 0.35 if (t > T_RAISE and t < T_FORM) else 0.0)
+
+
+func _spawn_dragon() -> void:
+	var ps: PackedScene = load("res://models/fx/Dragon.fbx")
+	dragon = ps.instantiate()
+	root.add_child(dragon)
+	dragon_mat = ShaderMaterial.new()
+	dragon_mat.shader = load("res://shaders/fire_dragon.gdshader")
+	dragon_mat.set_shader_parameter("dissolve", 0.0)
+	for mi in dragon.find_children("*", "MeshInstance3D", true, false):
+		mi.material_override = dragon_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dragon_anim = dragon.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if dragon_anim:
+		for a in [ANIM_FLY, ANIM_BITE]:
+			if dragon_anim.has_animation(a):
+				dragon_anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+		if dragon_anim.has_animation(ANIM_FLY):
+			dragon_anim.play(ANIM_FLY)
+	dragon_light = OmniLight3D.new()
+	dragon_light.light_color = Color(1.0, 0.5, 0.15)
+	dragon_light.light_energy = 0.0
+	dragon_light.omni_range = 26.0
+	root.add_child(dragon_light)
+	var dp := dragon_pos(T_FORM)
+	trail = _fire(root, dp, 100, 1.0, 0.6, 2.4, 1.8, 3.4, Vector3(0, 1, 0), 40.0, Vector3(0, 1.6, 0), false)
+	trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	trail.emission_sphere_radius = 2.2
+	trail.emitting = true
+	smoke = _fire(root, dp, 50, 1.6, 0.4, 1.6, 2.5, 4.2, Vector3(0, 1, 0), 40.0, Vector3(0, 2.0, 0), false, true)
+	smoke.emission_sphere_radius = 2.0
+	smoke.emitting = true
+	breath = _fire(root, dp, 150, 0.75, 30.0, 42.0, 2.2, 4.2, Vector3(0, 0, 1), 11.0, Vector3(0, 2.0, 0), false)
+	breath.emission_sphere_radius = 0.5
+	wave = _fire(root, Vector3(SWEEP_X0, 0.3, 0.0), 110, 0.9, 3.0, 8.0, 1.6, 3.0, Vector3(0, 1, 0), 18.0, Vector3(0, 3.0, 0), false)
+	wave.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	wave.emission_box_extents = Vector3(0.8, 0.2, 16.0)
+
+
+func _update_dragon(delta: float) -> void:
+	if dragon == null or not dragon.visible:
+		return
+	var pos := dragon_pos(t)
+	var ahead := dragon_pos(t + 0.06) - dragon_pos(t - 0.06)
+	var dir := ahead.normalized() if ahead.length() > 0.01 else Vector3(1, 0, 0)
+	if t < T_ARC:   # 떠 있는 동안은 적 쪽(오른쪽)을 향한다
+		dir = Vector3(1.0, -0.05, 0.12 * sin(t * 1.3)).normalized()
+	# 모양이 만들어지는 크기·디졸브
+	var form := clampf((t - T_FORM) / 1.15, 0.0, 1.0)
+	var out := clampf((t - T_EXIT - 0.15) / (T_END - T_EXIT - 0.15), 0.0, 1.0)
+	var sc := DRAGON_SCALE * (0.35 + 0.65 * _ease_back(form)) * (1.0 - 0.35 * out)
+	dragon_mat.set_shader_parameter("dissolve", clampf(form * 1.15, 0.0, 1.0) * (1.0 - out))
+	dragon_mat.set_shader_parameter("intensity", 1.7 + 0.7 * sin(t * 9.0))
+	var b := Basis.looking_at(-dir, Vector3.UP).scaled(Vector3.ONE * sc)
+	dragon.global_transform = Transform3D(b, pos)
+	dragon_light.position = pos + Vector3(0, 1.0, 0)
+	dragon_light.light_energy = (9.0 + 2.0 * sin(t * 14.0)) * (1.0 - out)
+	trail.position = pos
+	smoke.position = pos
+	var head := pos + dir * 5.2 + Vector3(0, 0.6, 0)
+	breath.position = head
+	breath.basis = Basis.looking_at(-dir, Vector3.UP)
+	wave.position = Vector3(pos.x + 3.0, 0.3, 0.0)
+	# 입으로 무는 동작을 반복하며 불을 뿜는다
+	if t >= T_SWEEP - 0.2 and t < T_EXIT and dragon_anim and dragon_anim.has_animation(ANIM_BITE):
+		bite_t -= delta
+		if bite_t <= 0.0:
+			bite_t = 0.95
+			dragon_anim.play(ANIM_BITE, 0.08)
+	if t >= T_SWEEP and t < T_EXIT:
+		main.shake = maxf(main.shake, 0.4)
+
+
+# ---------------- 적 태우기 ----------------
+func _snapshot_victims() -> void:
+	victims.clear()
+	for u in main.units:
+		if u.team == 1 and not u.dead and not u.scripted:
+			# 용이 u 보다 BREATH_REACH 만큼 뒤에 왔을 때 불이 붙는다
+			var ign: float = T_SWEEP - 0.05 + maxf(0.0, (u.position.x - BREATH_REACH - SWEEP_X0) / SWEEP_SPEED)
+			victims.append({"u": u, "ign": ign, "kill": -1.0, "st": 0})
+
+
+func _update_victims() -> void:
+	for v in victims:
+		var u: Unit = v.u
+		if not is_instance_valid(u):
+			v.st = 2
+			continue
+		if v.st == 0 and t >= v.ign:
+			v.st = 1
+			v.kill = t + IGNITE_TO_DEATH
+			_ignite(u)
+		if v.st == 1 and t >= v.kill:
+			v.st = 2
+			_kill(u)
+
+
+func _ignite(u: Unit) -> void:
+	if u.dead:
+		return
+	u.base_overlay = main._tint_mat("burn")
+	u._set_overlay(u.base_overlay)
+	var fx := _fire(u, Vector3(0, 1.0, 0), 40, 0.7, 1.2, 2.8, 0.6, 1.2, Vector3(0, 1, 0), 30.0, Vector3(0, 2.6, 0), true)
+	fx.emission_sphere_radius = 0.5
+	fx.emitting = true
+	Sfx.play("ignite", 0.8, 0.12)
+	main.sparks(u.position + Vector3(0, 1.0, 0), Color(1.0, 0.6, 0.15), 18, 6.0, 0.6)
+
+
+func _kill(u: Unit) -> void:
+	if u.dead:
+		return
+	u.take_damage(DAMAGE, null, true)
+	killed += 1
+	main.sparks(u.position + Vector3(0, 1.0, 0), Color(1.0, 0.5, 0.12), 36 if not u.is_boss else 120, 9.0, 0.9)
+	main.burst_effect(u.position + Vector3(0, 1.0, 0), Color(1.0, 0.65, 0.2))
+
+
+# ---------------- 화면 연출 값과 카메라 ----------------
+func _update_overlay() -> void:
+	ov.bars = clampf(t / 0.55, 0.0, 1.0) * (1.0 - clampf((t - (T_END - 0.1)) / 0.7, 0.0, 1.0))
+	ov.title = smoothstep(T_RAISE, T_RAISE + 0.35, t) * (1.0 - smoothstep(T_ARC - 0.5, T_ARC + 0.2, t))
+	var heat := 0.3 * smoothstep(T_RAISE, T_FORM, t)
+	heat += 0.18 * smoothstep(T_SWEEP - 0.3, T_SWEEP + 0.3, t) * (1.0 - smoothstep(T_EXIT, T_END, t))
+	ov.heat = heat * (1.0 - smoothstep(T_END, DUR, t))
+	ov.skip = smoothstep(0.8, 1.3, t)
+
+
+func camera() -> Array:
+	if t < T_RAISE:   # 지팡이를 드는 모습을 낮은 각도에서 가까이
+		var k := smoothstep(0.0, 1.0, t / T_RAISE)
+		var pos := hp + Vector3(lerpf(3.8, 2.8, k), lerpf(4.0, 3.5, k), lerpf(7.0, 5.6, k))
+		var look := hp + Vector3(0.0, lerpf(2.3, 3.2, k), 0.0)
+		return [pos, look]
+	if t < T_FORM:   # 불이 솟는 걸 보며 뒤로 빠진다
+		var k2 := smoothstep(0.0, 1.0, (t - T_RAISE) / (T_FORM - T_RAISE))
+		var pos2 := hp + Vector3(2.8, 3.5, 5.6).lerp(Vector3(8.5, 4.4, 12.0), k2)
+		var look2 := hp + Vector3(0.0, lerpf(3.0, 5.6, k2), 0.0)
+		return [pos2, look2]
+	var dp := dragon_pos(minf(t, T_END + 0.5))
+	if t < T_ARC:   # 용이 모습을 갖추는 걸 올려다보며 천천히 돈다
+		var k3 := smoothstep(0.0, 1.0, (t - T_FORM) / (T_ARC - T_FORM))
+		var pos3 := hp + Vector3(8.5, 4.2, 12.0).lerp(Vector3(11.5, 5.5, 14.0), k3)
+		return [pos3, dp + Vector3(0.0, 0.4, 0.0)]
+	if t < T_SWEEP:   # 용을 따라 왼쪽 끝으로
+		var k4 := smoothstep(0.0, 1.0, (t - T_ARC) / (T_SWEEP - T_ARC))
+		var from_pos := hp + Vector3(11.5, 5.5, 14.0)
+		var to_pos := Vector3(-30.0, 8.6, 25.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
+		return [from_pos.lerp(to_pos, k4), dp]
+	if t < T_EXIT:   # 전장을 가로지르는 용을 옆에서 따라간다
+		return [Vector3(maxf(dp.x - 11.0, -30.0), 8.6, 25.0), Vector3(dp.x + 3.0, 5.2, 0.0)]
+	var k5 := smoothstep(0.0, 1.0, (t - T_EXIT) / (DUR - T_EXIT))
+	var p5 := Vector3(maxf(dp.x - 11.0, -30.0), 8.6, 25.0).lerp(hp + Vector3(0.0, 13.0, 15.0), k5)
+	var l5 := Vector3(dp.x + 3.0, 5.2, 0.0).lerp(hp, k5)
+	return [p5, l5]
+
+
+# ---------------- 끝내기 / 건너뛰기 ----------------
+func skip() -> void:
+	if done or t < 0.8:
+		return
+	finish()
+
+
+func finish() -> void:
+	if done:
+		return
+	done = true
+	# 아직 안 쓰러진 적은 모두 쓰러뜨린다 (건너뛰어도 피해는 똑같이 들어간다)
+	if victims.is_empty():
+		_snapshot_victims()
+	for v in victims:
+		if is_instance_valid(v.u) and not v.u.dead:
+			_kill(v.u)
+	if root:
+		root.queue_free()
+	main.sun.light_energy = sun_e0   # 어두워졌던 세상을 원래대로
+	if main.world_env:
+		main.world_env.ambient_light_energy = amb0
+		main.world_env.background_energy_multiplier = bg0
+	Sfx.duck = 1.0
+	hero.lock_t = 0.0
+	hero.cur_anim = ""
+	hero.loop_anim("Idle")
+	main.cine_active = false
+	main.festis = null
+	main.show_banner("페스티스 인센티움", "불꽃의 용이 적 %d명을 태웠습니다" % killed, 2.4)
+	queue_free()

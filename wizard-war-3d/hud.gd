@@ -26,6 +26,8 @@ func _layout() -> void:
 		buttons["slot%d" % i] = {"c": slots[i], "r": 44.0, "kind": "skill", "id": Save.equipped[i], "key": SLOT_KEYS[i]}
 	for i in Save.ITEMS.size():
 		buttons["item%d" % i] = {"c": Vector2(s.x / 2 - 80.0 + i * 80.0, s.y - 50), "r": 32.0, "kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i]}
+	if Save.dev_unlocked:
+		buttons["festis"] = {"c": Vector2(s.x - 410, s.y - 175), "r": 40.0, "kind": "festis", "id": "festis", "key": "T"}
 
 
 func _layout_hotbar() -> void:
@@ -38,6 +40,8 @@ func _layout_hotbar() -> void:
 	row.append({"kind": "dash", "key": "Shift", "r": 26.0})
 	for i in Save.ITEMS.size():
 		row.append({"kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i], "r": 24.0})
+	if Save.dev_unlocked:   # 개발자 전용: 페스티스 인센티움
+		row.append({"kind": "festis", "id": "festis", "key": "T", "r": 32.0})
 	var gap := 72.0
 	var x0 := s.x / 2 - gap * (row.size() - 1) / 2.0
 	for i in row.size():
@@ -47,7 +51,7 @@ func _layout_hotbar() -> void:
 
 
 func _active() -> bool:
-	return main != null and main.state == "play" and not main.paused
+	return main != null and main.state == "play" and not main.paused and not main.cine_active
 
 
 func _input(ev: InputEvent) -> void:
@@ -105,6 +109,9 @@ func _press(b: String, down: bool) -> void:
 		"dash":
 			if down:
 				main.dash()
+		"festis":
+			if down:
+				main.use_festis()
 		"skill":
 			if down:
 				main.use_skill(bt.id)
@@ -115,7 +122,13 @@ func _press(b: String, down: bool) -> void:
 					Sfx.play("error")
 
 
+var was_cine := false
+
+
 func _process(d: float) -> void:
+	if main and was_cine and not main.cine_active:
+		appear_t = 0.0   # 컷씬이 끝나면 HUD가 다시 부드럽게 나타난다
+	was_cine = main != null and main.cine_active
 	if main and main.state == "play":
 		appear_t += d
 	elif main:
@@ -133,7 +146,7 @@ func _draw() -> void:
 	if main == null or main.hero == null or main.state in ["gate", "intro", "title"]:
 		return
 	_draw_world_ui()
-	if main.state != "play":
+	if main.state != "play" or main.cine_active:
 		return
 	_draw_panels()
 	if not touch_ui and buttons.size() > 0:
@@ -227,21 +240,21 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 	var col: Color = SKILL_COL.get(id, C_GOLD)
 	var rdy := true
 	var cdk := 0.0
-	if bt.kind == "skill" or bt.kind == "dash":
+	if bt.kind == "skill" or bt.kind == "dash" or bt.kind == "festis":
 		cdk = main.cds[id] / main.cd_max[id] if main.cd_max[id] > 0 else 0.0
 		rdy = cdk <= 0.0
 	elif bt.kind == "item":
 		rdy = Save.items[id] > 0
 	# 스킬을 쓴 순간(키보드든 터치든)은 눌린 모션, 다시 쓸 수 있게 된 순간은 파동
 	var pc: float = prev_cd.get(bname, 0.0)
-	if bt.kind in ["skill", "dash"]:
+	if bt.kind in ["skill", "dash", "festis"]:
 		if pc <= 0.0 and cdk > 0.0:
 			mark_press(bname)
 		elif pc > 0.0 and cdk <= 0.0:
 			ready_ms[bname] = Time.get_ticks_msec()
 		prev_cd[bname] = cdk
 	fx_begin(c, press_scale(bname) * (0.92 if pressed else 1.0))
-	if rdy and bt.kind == "skill":
+	if rdy and (bt.kind == "skill" or bt.kind == "festis"):
 		draw_circle(c, r + 4, Color(col, 0.12 + 0.06 * sin(main.t * 4.0)))
 	draw_circle(c, r, Color(0.07, 0.07, 0.16, 0.82) if not pressed else Color(0.3, 0.26, 0.1, 0.92))
 	draw_arc(c, r, 0, TAU, 48, Color(col, 0.9 if rdy else 0.3), 3.0, true)

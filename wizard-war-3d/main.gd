@@ -83,10 +83,13 @@ var cam_focus: Unit = null
 var cam_focus_t := 0.0
 var slowmo_until := 0
 var white_flash := 0.0
+var cine_active := false          # 페스티스 인센티움 컷씬 진행 중
+var festis: Festis = null
 var env_cache := {}
 var tint_mats := {}
 var clouds: Array = []
 var portal_disc: MeshInstance3D
+var world_env: Environment
 
 
 func _ready() -> void:
@@ -192,6 +195,8 @@ func _ready() -> void:
 	for id in Save.SKILL_ORDER:
 		cds[id] = 0.0
 		cd_max[id] = Save.skill_cd(id)
+	cds["festis"] = 0.0
+	cd_max["festis"] = 30.0   # 개발자 전용 스킬 페스티스 인센티움
 	for i in 4:
 		_ally("knight", Vector3(-15, 0, -6 + i * 4), Vector3(3.5, 0, -4.5 + i * 3.0))
 	for i in 2:
@@ -253,6 +258,8 @@ func _ready() -> void:
 		Sfx.music("music_title")
 	_update_camera(1.0, true)
 	_warmup()
+	if Save.dev_unlocked:
+		Festis.prewarm(self)
 
 
 func leave_gate() -> void:
@@ -367,7 +374,7 @@ func env_scene(path: String) -> PackedScene:
 func _tint_mat(key: String) -> StandardMaterial3D:
 	if not tint_mats.has(key):
 		var tints := {"dark": Color(0.14, 0.05, 0.22, 0.55), "ice": Color(0.78, 0.9, 1.0, 0.38), "gloom": Color(0.12, 0.05, 0.2, 0.4),
-			"fire": Color(1.0, 0.42, 0.1, 0.3), "night": Color(0.05, 0.08, 0.28, 0.3)}
+			"fire": Color(1.0, 0.42, 0.1, 0.3), "burn": Color(1.0, 0.36, 0.05, 0.6), "night": Color(0.05, 0.08, 0.28, 0.3)}
 		var c: Color = tints[key]
 		tint_mats[key] = _overlay(c)
 	return tint_mats[key]
@@ -411,6 +418,7 @@ func _build_world() -> void:
 	e.glow_intensity = 0.5
 	e.glow_hdr_threshold = 1.1
 	env.environment = e
+	world_env = e
 	add_child(env)
 
 	sun = DirectionalLight3D.new()
@@ -1089,7 +1097,7 @@ func reinforce() -> void:
 
 func _process(delta: float) -> void:
 	# 시간 배율: 치트 속도 × 슬로모션
-	var ts := float(Save.cheats.speed) if state == "play" else 1.0
+	var ts := float(Save.cheats.speed) if (state == "play" and not cine_active) else 1.0
 	if Time.get_ticks_msec() < slowmo_until:
 		ts *= 0.3
 	if paused:
@@ -1107,9 +1115,12 @@ func _process(delta: float) -> void:
 		cds[k] = 0.0 if Save.cheats.no_cd else maxf(0.0, cds[k] - delta)
 	shake = maxf(0.0, shake - delta * 3.0)
 	cam_focus_t -= delta
-	var active := state == "play"
+	var active := state == "play" and not cine_active
 	if state == "intro":
 		_update_intro(delta)
+	elif cine_active:
+		if festis:
+			festis.update(delta)
 	elif active:
 		_update_hero(delta)
 		_update_waves(delta)
@@ -1229,7 +1240,7 @@ func _update_hero(delta: float) -> void:
 
 
 func dash() -> void:
-	if state != "play" or hero.dead or cds.dash > 0.0 or paused:
+	if state != "play" or hero.dead or cds.dash > 0.0 or paused or cine_active:
 		return
 	cds.dash = cd_max.dash
 	var v := move_input
@@ -1246,6 +1257,8 @@ func dash() -> void:
 
 
 func hero_attack() -> void:
+	if cine_active:
+		return
 	cds.attack = cd_max.attack
 	var tg := nearest_enemy(hero, hero.attack_range)
 	var dir := hero.forward()
@@ -1259,13 +1272,23 @@ func hero_attack() -> void:
 	Sfx.play("cast", 0.45, 0.15)
 
 
+func use_festis() -> void:
+	## 페스티스 인센티움: 개발자 전용 (개발자 모드를 켠 뒤에만 쓸 수 있다). 컷씬 후 모든 적에게 9999 피해.
+	if not Save.dev_unlocked or state != "play" or paused or cine_active or hero.dead or cds["festis"] > 0.0:
+		return
+	cds["festis"] = cd_max["festis"]
+	festis = Festis.new()
+	add_child(festis)
+	festis.start(self, hero)
+
+
 func use_slot(i: int) -> void:
 	if i < Save.equipped.size():
 		use_skill(Save.equipped[i])
 
 
 func use_skill(s: String) -> void:
-	if state != "play" or paused or hero.dead or not cds.has(s) or cds[s] > 0.0 or Save.skills.get(s, 0) <= 0:
+	if state != "play" or paused or cine_active or hero.dead or not cds.has(s) or cds[s] > 0.0 or Save.skills.get(s, 0) <= 0:
 		return
 	cds[s] = cd_max[s]
 	var v := Save.sv(s, Save.skills[s])
@@ -1355,7 +1378,7 @@ func use_skill(s: String) -> void:
 
 
 func use_item(id: String) -> bool:
-	if state != "play" or paused or hero.dead or Save.items.get(id, 0) <= 0:
+	if state != "play" or paused or cine_active or hero.dead or Save.items.get(id, 0) <= 0:
 		return false
 	match id:
 		"potion_hp":
@@ -1405,6 +1428,12 @@ func cheat_battle(id: String) -> String:
 		"heal":
 			hero.hp = hero.max_hp
 			crystal.hp = crystal.max_hp
+		"festis":
+			set_paused(false)
+			if menu:
+				menu.page = ""
+			cds["festis"] = 0.0
+			use_festis()
 	return "적용 완료"
 
 
@@ -1628,6 +1657,10 @@ func _update_camera(delta: float, snap := false) -> void:
 		pos = r[0]
 		look = r[1]
 		snap = true
+	elif cine_active and festis:
+		var cr: Array = festis.camera()
+		pos = cr[0]
+		look = cr[1]
 	elif state == "title" or state == "gate":
 		var a := sin(t * 0.12) * 0.55
 		look = Vector3(-17, 1.6, 0)
@@ -1641,11 +1674,13 @@ func _update_camera(delta: float, snap := false) -> void:
 		pos = focus + Vector3(0, 13, 15)
 	if snap:
 		cam.position = pos
+	elif cine_active:
+		cam.position = cam.position.lerp(pos, minf(1.0, delta * 14.0))   # 컷씬은 더 빠르게 따라간다
 	else:
 		cam.position = cam.position.lerp(pos, minf(1.0, delta * 5.0))
 	if shake > 0.0:
 		cam.position += Vector3(randf() - 0.5, randf() - 0.5, 0) * shake
-	if state == "play" and cam_focus_t <= 0.0:
+	if state == "play" and cam_focus_t <= 0.0 and not cine_active:
 		cam.look_at(cam.position + Vector3(0, -13, -15), Vector3.UP)
 	else:
 		cam.look_at(look, Vector3.UP)
@@ -1653,6 +1688,10 @@ func _update_camera(delta: float, snap := false) -> void:
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventKey and ev.pressed and not ev.echo:
+		if cine_active:
+			if festis:
+				festis.skip()
+			return
 		if state == "gate":
 			leave_gate()
 			return
@@ -1670,6 +1709,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				use_slot(3)
 			KEY_SHIFT, KEY_K:
 				dash()
+			KEY_T:
+				use_festis()
 			KEY_1:
 				use_item("potion_hp")
 			KEY_2:
@@ -1682,6 +1723,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 
 
 func set_paused(p: bool) -> void:
+	if cine_active:
+		return
 	paused = p
 	touch_attack = false
 	if menu:

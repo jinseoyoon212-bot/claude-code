@@ -491,6 +491,77 @@ def music_battle(boss=False):
     return fold_loop(out, total)
 
 
+# ---------------- 페스티스 인센티움 (개발자 스킬) ----------------
+def sfx_festis_charge():
+    """지팡이를 들고 마력을 모으는 2.4초: 올라가는 울림 + 빨려드는 바람 + 낮은 진동"""
+    d = 2.4
+    n = int(SR * d)
+    k = np.linspace(0, 1, n)
+    f = 110 * (14 ** k)
+    x = osc(f, d, "sine") * 0.5 + osc(f * 1.5, d, "tri") * 0.18
+    x *= (0.4 + 0.6 * k) * (0.75 + 0.25 * np.sin(2 * np.pi * (6 + 18 * k) * t_axis(d)))
+    wind = lowpass(highpass(noise(d), 300), 600 + 5200 * k) * (0.2 + 0.8 * k ** 2) * 0.55
+    rumble = osc(48 + 14 * k, d, "saw") * (0.2 + 0.5 * k)
+    rumble = lp_fast(rumble, 160) * 0.8
+    tail = np.concatenate([np.ones(int(n * 0.92)), np.linspace(1, 0, n - int(n * 0.92))])
+    return reverb(norm((x + wind + rumble) * tail, 0.85), 0.35)
+
+
+def sfx_festis_burst():
+    """불이 터져 나오는 순간: 폭발음 + 불꽃 쏟아지는 소리"""
+    d = 1.9
+    n = int(SR * d)
+    k = np.linspace(0, 1, n)
+    boom = osc(sweep(120, 28, d), d, "sine") * np.exp(-3.2 * k)
+    blast = lowpass(noise(d), 4800 * np.exp(-3.0 * k) + 250) * np.exp(-2.1 * k)
+    roar = lowpass(noise(d) * (0.6 + 0.4 * np.sin(2 * np.pi * 38 * t_axis(d))), 1100) * np.exp(-1.2 * k) * 0.7
+    crack = highpass(noise(d) * (rng.random(n) > 0.965), 1800) * np.exp(-1.6 * k)
+    atk = np.minimum(1, np.arange(n) / (SR * 0.012))
+    return reverb(norm((boom * 1.4 + blast * 1.1 + roar + crack * 0.9) * atk, 0.95), 0.45)
+
+
+def sfx_dragon_roar():
+    """용의 포효: 낮은 톱니파 + 떨림 + 목소리 같은 필터 + 거친 숨"""
+    d = 2.6
+    n = int(SR * d)
+    k = np.linspace(0, 1, n)
+    f0 = 95 - 38 * k + 14 * np.sin(2 * np.pi * 5.5 * t_axis(d))
+    v = osc(f0, d, "saw") + 0.6 * osc(f0 * 2.01, d, "saw") + 0.3 * osc(f0 * 0.5, d, "square")
+    # 모음 소리처럼 들리게: 두 대역을 시간에 따라 움직인다
+    a = lowpass(v, 500 + 900 * np.sin(np.pi * k)) - lp_fast(v, 140)
+    b = lowpass(v, 1500 + 700 * k) - lp_fast(v, 800)
+    growl = lp_fast(noise(d), 900) * (0.5 + 0.5 * np.sin(2 * np.pi * 26 * t_axis(d))) * 0.5
+    env = np.minimum(1, k / 0.08) * np.where(k < 0.62, 1.0, np.exp(-5.5 * (k - 0.62)))
+    return reverb(norm((a * 1.3 + b * 0.7 + growl) * env, 0.95), 0.5)
+
+
+def sfx_dragon_pass():
+    """용이 전장을 가로지르며 불을 뿜는 소리 (도플러처럼 높아졌다 낮아지는 바람)"""
+    d = 2.8
+    n = int(SR * d)
+    k = np.linspace(0, 1, n)
+    env = np.sin(np.pi * k) ** 1.5
+    cutoff = 350 + 3800 * np.sin(np.pi * k) ** 2
+    wh = lowpass(noise(d), cutoff) * env
+    fl = lp_fast(noise(d) * (0.6 + 0.4 * np.sin(2 * np.pi * 31 * t_axis(d))), 1400) * env * 0.8
+    sub = osc(sweep(80, 42, d), d, "sine") * env * 0.7
+    return reverb(norm(wh + fl + sub, 0.9), 0.35)
+
+
+def sfx_ignite():
+    """적에게 불이 붙는 소리: 짧은 펑 + 타닥거림"""
+    d = 0.7
+    n = int(SR * d)
+    k = np.linspace(0, 1, n)
+    pop = lp_fast(noise(d), 2600) * np.exp(-12 * k)
+    low = osc(sweep(160, 60, d), d, "sine") * np.exp(-9 * k)
+    crackle = highpass(noise(d) * (rng.random(n) > 0.93), 2200) * np.exp(-3.2 * k)
+    return norm(pop + low * 0.9 + crackle * 0.8, 0.8)
+
+
+FESTIS_SFX = {"festis_charge": sfx_festis_charge, "festis_burst": sfx_festis_burst,
+    "dragon_roar": sfx_dragon_roar, "dragon_pass": sfx_dragon_pass, "ignite": sfx_ignite}
+
 SFX = {
     "cast": sfx_cast, "hit": sfx_hit, "explode": sfx_explode, "nova": sfx_nova, "shield": sfx_shield,
     "chain": sfx_chain, "frost": sfx_frost, "heal": sfx_heal, "meteor": sfx_meteor, "coin": sfx_coin,
@@ -501,6 +572,10 @@ SFX = {
 
 if __name__ == "__main__":
     only_music = len(sys.argv) > 1 and sys.argv[1] == "music"   # python3 tools/gen_audio.py music
+    if len(sys.argv) > 1 and sys.argv[1] == "festis":            # python3 tools/gen_audio.py festis  (개발자 스킬 효과음만)
+        for name, fn in FESTIS_SFX.items():
+            save(name, fn(), 0.3)
+        sys.exit(0)
     if not only_music:
         for name, fn in SFX.items():
             save(name, fn(), 0.3)
