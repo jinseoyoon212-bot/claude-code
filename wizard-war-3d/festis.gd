@@ -835,6 +835,9 @@ func _update_overlay() -> void:
 
 
 func camera() -> Array:
+	if OS.get_environment("FCAM") == "1":
+		var dd := dragon_pos(minf(t, T_END))
+		return [dd + Vector3(3.0, 0.5, 15.0), dd]
 	if t < T_RAISE:   # 지팡이를 드는 모습을 낮은 각도에서 가까이
 		var k := smoothstep(0.0, 1.0, t / T_RAISE)
 		var pos := hp + Vector3(lerpf(3.8, 2.8, k), lerpf(4.0, 3.5, k), lerpf(7.0, 5.6, k))
