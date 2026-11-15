@@ -132,8 +132,8 @@ const Face = (() => {
     }
     g.restore();
     // 말풍선 대신 작은 이펙트
-    if (mood === 'thinking') { g.fillStyle = '#ffffffd0'; [[112, -112, 5], [130, -134, 8], [154, -164, 12]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y + Math.sin(t * 3 + r) * 3, r, 0, 7); g.fill(); }); }
-    if (mood === 'sleepy') { g.fillStyle = '#fff'; g.font = 'bold 32px sans-serif'; g.fillText('z', 112, -86 + Math.sin(t * 2) * 6); g.font = 'bold 22px sans-serif'; g.fillText('z', 140, -118 + Math.sin(t * 2 + 1) * 6); }
+    if (mood === 'thinking') { g.fillStyle = 'rgba(150,128,255,.78)'; [[112, -112, 5], [130, -134, 8], [154, -164, 12]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y + Math.sin(t * 3 + r) * 3, r, 0, 7); g.fill(); }); }
+    if (mood === 'sleepy') { g.fillStyle = '#a392ff'; g.font = 'bold 32px sans-serif'; g.fillText('z', 112, -86 + Math.sin(t * 2) * 6); g.font = 'bold 22px sans-serif'; g.fillText('z', 140, -118 + Math.sin(t * 2 + 1) * 6); }
     if (mood === 'sad') { g.fillStyle = '#9bdcff'; const k = (t * 0.6) % 1; g.globalAlpha = 1 - k * 0.6; g.beginPath(); g.ellipse(-ex - 8, ey + 20 + k * 80, 6, 9, 0, 0, 7); g.fill(); g.globalAlpha = 1; }
     if (mood === 'angry') { g.fillStyle = 'rgba(255,100,130,.9)'; g.font = 'bold 30px sans-serif'; g.fillText('💢', 100, -110); }
   }

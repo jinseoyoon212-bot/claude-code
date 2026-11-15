@@ -1,5 +1,9 @@
 const $ = (id) => document.getElementById(id);
-const log = $('log'), bubble = $('bubble'), input = $('input');
+const log = $('log'), bubble = $('bubble'), input = $('input'), ubub = $('ubub');
+let fadeT;
+// 사용자의 글(타이핑 중 미리보기 / 보낸 글)을 얼굴 위 유리 풍선으로
+function showUser(text, typing) { clearTimeout(fadeT); ubub.classList.remove('fade'); ubub.classList.toggle('typing', !!typing); ubub.textContent = text; }
+window.showUser = showUser;
 const history = [];
 let busy = false;
 
@@ -14,12 +18,13 @@ api.onEvent((ev) => {
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim(); if (!text || busy) return;
-  input.value = ''; busy = true;
-  addLog('🙂 ' + text);
+  input.value = ''; busy = true; document.body.classList.add('busy');
+  showUser(text, false);
   Face.react(text); bubble.textContent = '…';
   history.push({ role: 'user', content: text });
   const r = await api.send(history);
-  busy = false;
+  busy = false; document.body.classList.remove('busy');
+  fadeT = setTimeout(() => ubub.classList.add('fade'), 7000);
   if (r.error) { Face.setMood('sad'); Face.doMotion('droop'); bubble.textContent = '⚠ ' + r.error; history.pop(); if (window.AuroraAssist) window.AuroraAssist.onAnswer({ text: '오류가 났어요. ' + String(r.error).slice(0, 80) }); return; }
   history.push({ role: 'assistant', content: r.text });
   Face.setMood(r.mood); Face.doMotion({ happy: 'wave', laugh: 'bounce', love: 'bounce', sad: 'droop', angry: 'shake', surprised: 'jump', sleepy: 'sway', thinking: 'tilt' }[r.mood] || 'nod');
@@ -27,7 +32,7 @@ $('form').addEventListener('submit', async (e) => {
   if (window.AuroraAssist) window.AuroraAssist.onAnswer(r);
   Face.setTalking(true); setTimeout(() => Face.setTalking(false), Math.min(4000, 300 + r.text.length * 60));
 });
-input.addEventListener('input', () => Face.lookAt(0, 0.6));
+input.addEventListener('input', () => { Face.lookAt(0, 0.6); const v = input.value.trim(); if (v) showUser(input.value, true); else { ubub.textContent = ''; ubub.classList.remove('typing'); } });
 
 // 설정: data-k 속성이 붙은 입력칸을 자동으로 읽고 저장 (화면에 보이는 칸만)
 const dlg = $('settings');

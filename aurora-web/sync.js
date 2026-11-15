@@ -7,7 +7,7 @@ html = html
   .replace('<link rel="stylesheet" href="style.css">', '<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="assist.css">')
   .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0b1a"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src *">`)
   .replace('<script src="face.js">', '<script src="phone-agent.js"></script><script src="web-api.js"></script><script src="face.js">')
-  .replace('</head>', '<style>[data-only=desktop]{display:none!important}[data-only=web]{display:block!important}[data-only=web].row{display:flex!important}html,body{height:100dvh}#form{padding-bottom:calc(12px + env(safe-area-inset-bottom))}#gear{top:calc(10px + env(safe-area-inset-top))}</style></head>');
+  .replace('</head>', '<style>[data-only=desktop]{display:none!important}[data-only=web]{display:block!important}[data-only=web].row{display:flex!important}html,body{height:100dvh}</style></head>');
 for (const out of [path.join(__dirname, 'www'), path.join(src, 'www')]) {
   fs.mkdirSync(out, { recursive: true });
   for (const f of ['style.css', 'face.js', 'renderer.js', 'llm.js']) fs.copyFileSync(path.join(src, f), path.join(out, f));

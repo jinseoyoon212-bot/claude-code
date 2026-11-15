@@ -6,7 +6,7 @@
   if (!st.assist) return;
 
   const root = document.documentElement; root.classList.add('assist');
-  const bubble = document.getElementById('bubble'), face = document.getElementById('face'), input = document.getElementById('input'), form = document.getElementById('form');
+  const ubub = document.getElementById('ubub'), bubble = document.getElementById('bubble'), face = document.getElementById('face'), input = document.getElementById('input'), form = document.getElementById('form');
   const shownAt = Date.now();
   let busy = false, idle, shotImg = null;
   const setState = (s) => { ['listening', 'thinking', 'speaking'].forEach((c) => root.classList.toggle(c, c === s)); };
@@ -18,7 +18,7 @@
   const aura = document.createElement('div'); aura.id = 'aura';
   aura.innerHTML = '<div class="ring glow"><i></i></div><div class="ring crisp"><i></i></div><div class="wash"></div>';
   const hint = document.createElement('div'); hint.id = 'hint';
-  const acts = document.createElement('div'); acts.id = 'acts'; face.after(acts);
+  const acts = document.createElement('div'); acts.id = 'acts'; (face.parentElement || face).after(acts);
   const cv = document.createElement('canvas'); cv.id = 'circle';
   document.body.prepend(cv); document.body.prepend(aura); document.body.append(hint);
   requestAnimationFrame(() => requestAnimationFrame(() => { try { D.assistReady(); } catch {} }));   // 흰 화면 방지: 그릴 준비가 되면 보여준다
@@ -105,7 +105,7 @@
 
   // ---- 음성: 얼굴을 터치하면 듣기 ----
   D.addListener('speechReady', () => { if (busy) { bubble.textContent = '🎤 말씀하세요'; Face.setMood('surprised'); } });
-  D.addListener('speechPartial', (e) => { if (busy) bubble.textContent = '🎤 ' + e.text; });
+  D.addListener('speechPartial', (e) => { if (busy && window.showUser) window.showUser(e.text, true); });
   let lastRms = 0; D.addListener('speechRms', (e) => { const now = Date.now(); if (now - lastRms < 60) return; lastRms = now; root.style.setProperty('--lvl', Math.max(0, Math.min(1, (e.rms + 2) / 12)).toFixed(2)); });
 
 
