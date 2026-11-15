@@ -76,8 +76,8 @@ func _input(ev: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	if main.cine_active:
-		if main.festis and ((ev is InputEventScreenTouch and ev.pressed) or (ev is InputEventKey and ev.pressed)):
-			main.festis.skip()
+		if main.judge and ((ev is InputEventScreenTouch and ev.pressed) or (ev is InputEventKey and ev.pressed)):
+			main.judge.skip()
 			get_viewport().set_input_as_handled()
 		return
 	if not _active():
@@ -327,19 +327,19 @@ func _draw() -> void:
 		draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
-# ---------------- 페스티스 인센티움 컷씬 화면 ----------------
+# ---------------- 아스트라 유디키움 컷씬 화면 ----------------
 func _draw_cine() -> void:
-	var fs_: Festis = main.festis
+	var fs_: Judge = main.judge
 	if fs_ == null:
 		return
 	var s := size
 	var ov: Dictionary = fs_.ov
-	# 불꽃 색조와 가장자리 어두워짐(비네팅)
+	# 별빛 색조와 가장자리 어두워짐(비네팅)
 	if ov.heat > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, s), Color(1.0, 0.38, 0.05, ov.heat * 0.22))
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0.55, 0.68, 1.0, ov.heat * 0.2))
 	for i in 9:
 		var g := 7.0 * i
-		draw_rect(Rect2(g, g, s.x - g * 2, s.y - g * 2), Color(0.3, 0.05, 0.0, 0.09 * (1.0 - i / 9.0) * (0.4 + ov.bars)), false, 8.0)
+		draw_rect(Rect2(g, g, s.x - g * 2, s.y - g * 2), Color(0.03, 0.05, 0.22, 0.1 * (1.0 - i / 9.0) * (0.4 + ov.bars)), false, 8.0)
 	# 위아래 검은 띠 (영화처럼)
 	var bh: float = s.y * 0.125 * float(ov.bars)
 	draw_rect(Rect2(0, 0, s.x, bh), Color.BLACK)
@@ -350,12 +350,12 @@ func _draw_cine() -> void:
 		var c := Vector2(s.x / 2, s.y * 0.3)
 		var pop := ease_out_back(clampf((fs_.t - fs_.T_RAISE) / 0.45, 0.0, 1.0))
 		fx_begin(c, lerpf(1.35, 1.0, pop))
-		var title := "페스티스 인센티움"
-		draw_string_outline(f_disp, Vector2(c.x - 700, c.y), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, 16, Color(0.55, 0.06, 0.0, 0.75 * a))
-		draw_string(f_disp, Vector2(c.x - 700, c.y), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, Color(1.0, 0.62 + 0.2 * sin(fs_.t * 12.0), 0.16, a))
-		draw_string(f_disp, Vector2(c.x - 700, c.y - 3), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, Color(1.0, 0.95, 0.7, a * 0.35))
-		txt(f_bold, Vector2(c.x, c.y + 40), "F E S T I S   I N C E N T I U M", 20, Color(1.0, 0.82, 0.5, a), HORIZONTAL_ALIGNMENT_CENTER, false)
-		txt(f_body, Vector2(c.x, c.y + 70), "개발자 전용 스킬 · 불꽃의 용이 전장을 쓸어버린다", 15, Color(1.0, 0.9, 0.75, a * 0.85), HORIZONTAL_ALIGNMENT_CENTER, false)
+		var title := "아스트라 유디키움"
+		draw_string_outline(f_disp, Vector2(c.x - 700, c.y), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, 16, Color(0.08, 0.14, 0.5, 0.75 * a))
+		draw_string(f_disp, Vector2(c.x - 700, c.y), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, Color(0.82 + 0.1 * sin(fs_.t * 10.0), 0.9, 1.0, a))
+		draw_string(f_disp, Vector2(c.x - 700, c.y - 3), title, HORIZONTAL_ALIGNMENT_CENTER, 1400, 76, Color(1.0, 0.95, 0.75, a * 0.4))
+		txt(f_bold, Vector2(c.x, c.y + 40), "A S T R A   I U D I C I U M", 20, Color(1.0, 0.88, 0.55, a), HORIZONTAL_ALIGNMENT_CENTER, false)
+		txt(f_body, Vector2(c.x, c.y + 70), "개발자 전용 스킬 · 하늘이 열리고 별들이 심판한다", 15, Color(0.88, 0.93, 1.0, a * 0.85), HORIZONTAL_ALIGNMENT_CENTER, false)
 		fx_end()
 	if ov.skip > 0.01:
 		txt(f_bold, Vector2(s.x - 30, s.y - 14), ("화면을 눌러 건너뛰기  ▶" if touch_ui else "아무 키나 눌러 건너뛰기  ▶"), 14, Color(C_DIM, ov.skip * 0.8), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -696,7 +696,7 @@ func _draw_cheat() -> void:
 			["bcheat:next_wave", "다음 웨이브로", "portal", false],
 			["bcheat:boss", "보스 즉시 소환", "boss", false],
 			["bcheat:heal", "체력·수정 완전 회복", "heal", false],
-			["bcheat:festis", "페스티스 인센티움 (T)", "festis", false],
+			["bcheat:judge", "아스트라 유디키움 (T)", "judge", false],
 		]
 	items.append(["cheat:lock", "개발자 모드 잠금", "lock", false])
 	var cols := 4

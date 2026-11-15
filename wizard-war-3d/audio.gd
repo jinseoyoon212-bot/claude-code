@@ -3,7 +3,7 @@ extends Node
 
 const NAMES := ["cast", "hit", "explode", "nova", "shield", "chain", "frost", "heal", "meteor", "coin", "click", "buy",
 	"error", "wave", "boss", "win", "lose", "dash", "bones", "summon", "levelup", "impact", "whoosh",
-	"festis_charge", "festis_burst", "dragon_roar", "dragon_pass", "ignite"]
+	"judge_charge", "judge_open", "star_fall", "star_hit", "judge_pillar"]
 
 var streams := {}
 var pool: Array = []
@@ -13,7 +13,7 @@ var recent: Array = []
 var stat_skipped := 0   # 빈 재생기가 없어 생략한 소리 수 (진단용)
 var stat_stolen := 0    # 재생 중인 소리를 끊고 가져간 횟수 (진단용)
 const BIG := ["win", "lose", "boss", "impact", "wave", "nova", "explode", "meteor", "summon", "levelup",
-	"festis_charge", "festis_burst", "dragon_roar", "dragon_pass"]
+	"judge_charge", "judge_open", "judge_pillar"]
 var music_a: AudioStreamPlayer
 var music_b: AudioStreamPlayer
 var cur_music := ""

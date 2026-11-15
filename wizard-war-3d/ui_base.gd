@@ -33,7 +33,7 @@ const C_DARK := Color("15132a")
 const SKILL_COL := {
 	"attack": Color("ffb347"), "shield": Color("7fd6e8"), "nova": Color("ffd36b"), "summon": Color("9fc3ff"),
 	"chain": Color("b9d4ff"), "frost": Color("a8ecff"), "heal": Color("7fe39a"), "meteor": Color("ff8a4c"),
-	"dash": Color("ffe9a8"), "festis": Color("ff7a2e"), "potion_hp": Color("ff9a9a"), "potion_mana": Color("b59cff"), "potion_crystal": Color("7fd6e8"),
+	"dash": Color("ffe9a8"), "judge": Color("8fb4ff"), "potion_hp": Color("ff9a9a"), "potion_mana": Color("b59cff"), "potion_crystal": Color("7fd6e8"),
 }
 
 const ICON_NAMES := ["attack", "shield", "nova", "summon", "chain", "frost", "heal", "meteor", "potion_hp", "potion_mana",
@@ -53,7 +53,7 @@ func _ready() -> void:
 	f_disp = load("res://fonts/GowunBatang-Bold.ttf")
 	for n in ICON_NAMES:
 		icons[n] = load("res://icons/%s.svg" % n)
-	icons["festis"] = icons["flame"]   # 페스티스 인센티움 버튼은 불꽃 아이콘
+	icons["judge"] = icons["nova"]   # 아스트라 유디키움 버튼은 별빛 아이콘
 
 
 func fit() -> void:

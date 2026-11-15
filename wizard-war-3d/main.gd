@@ -83,8 +83,8 @@ var cam_focus: Unit = null
 var cam_focus_t := 0.0
 var slowmo_until := 0
 var white_flash := 0.0
-var cine_active := false          # 페스티스 인센티움 컷씬 진행 중
-var festis: Festis = null
+var cine_active := false          # 아스트라 유디키움 컷씬 진행 중
+var judge: Judge = null
 var env_cache := {}
 var tint_mats := {}
 var clouds: Array = []
@@ -195,8 +195,8 @@ func _ready() -> void:
 	for id in Save.SKILL_ORDER:
 		cds[id] = 0.0
 		cd_max[id] = Save.skill_cd(id)
-	cds["festis"] = 0.0
-	cd_max["festis"] = 30.0   # 개발자 전용 스킬 페스티스 인센티움
+	cds["judge"] = 0.0
+	cd_max["judge"] = 30.0   # 개발자 전용 스킬 아스트라 유디키움
 	for i in 4:
 		_ally("knight", Vector3(-15, 0, -6 + i * 4), Vector3(3.5, 0, -4.5 + i * 3.0))
 	for i in 2:
@@ -259,7 +259,7 @@ func _ready() -> void:
 	_update_camera(1.0, true)
 	_warmup()
 	if Save.dev_unlocked:
-		Festis.prewarm(self)
+		Judge.prewarm(self)
 
 
 func leave_gate() -> void:
@@ -1119,8 +1119,8 @@ func _process(delta: float) -> void:
 	if state == "intro":
 		_update_intro(delta)
 	elif cine_active:
-		if festis:
-			festis.update(delta)
+		if judge:
+			judge.update(delta)
 	elif active:
 		_update_hero(delta)
 		_update_waves(delta)
@@ -1272,14 +1272,14 @@ func hero_attack() -> void:
 	Sfx.play("cast", 0.45, 0.15)
 
 
-func use_festis() -> void:
-	## 페스티스 인센티움: 개발자 전용 (개발자 모드를 켠 뒤에만 쓸 수 있다). 컷씬 후 모든 적에게 9999 피해.
-	if not Save.dev_unlocked or state != "play" or paused or cine_active or hero.dead or cds["festis"] > 0.0:
+func use_judge() -> void:
+	## 아스트라 유디키움: 개발자 전용 (개발자 모드를 켠 뒤에만 쓸 수 있다). 컷씬 후 모든 적에게 9999 피해.
+	if not Save.dev_unlocked or state != "play" or paused or cine_active or hero.dead or cds["judge"] > 0.0:
 		return
-	cds["festis"] = cd_max["festis"]
-	festis = Festis.new()
-	add_child(festis)
-	festis.start(self, hero)
+	cds["judge"] = cd_max["judge"]
+	judge = Judge.new()
+	add_child(judge)
+	judge.start(self, hero)
 
 
 func use_slot(i: int) -> void:
@@ -1428,12 +1428,12 @@ func cheat_battle(id: String) -> String:
 		"heal":
 			hero.hp = hero.max_hp
 			crystal.hp = crystal.max_hp
-		"festis":
+		"judge":
 			set_paused(false)
 			if menu:
 				menu.page = ""
-			cds["festis"] = 0.0
-			use_festis()
+			cds["judge"] = 0.0
+			use_judge()
 	return "적용 완료"
 
 
@@ -1657,8 +1657,8 @@ func _update_camera(delta: float, snap := false) -> void:
 		pos = r[0]
 		look = r[1]
 		snap = true
-	elif cine_active and festis:
-		var cr: Array = festis.camera()
+	elif cine_active and judge:
+		var cr: Array = judge.camera()
 		pos = cr[0]
 		look = cr[1]
 	elif state == "title" or state == "gate":
@@ -1689,8 +1689,8 @@ func _update_camera(delta: float, snap := false) -> void:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventKey and ev.pressed and not ev.echo:
 		if cine_active:
-			if festis:
-				festis.skip()
+			if judge:
+				judge.skip()
 			return
 		if state == "gate":
 			leave_gate()
@@ -1710,7 +1710,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			KEY_SHIFT, KEY_K:
 				dash()
 			KEY_T:
-				use_festis()
+				use_judge()
 			KEY_1:
 				use_item("potion_hp")
 			KEY_2:
