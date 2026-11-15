@@ -6,7 +6,7 @@ render_mode blend_add, depth_draw_never, cull_disabled, unshaded;
 uniform float fade : hint_range(0.0, 1.0) = 1.0;
 uniform float intensity = 1.7;
 uniform float lick = 1.5;                               // 불길이 바깥으로 널름거리는 정도
-uniform vec4 core_col : source_color = vec4(1.0, 0.86, 0.45, 1.0);
+uniform vec4 core_col : source_color = vec4(1.0, 0.68, 0.22, 1.0);
 uniform vec4 mid_col : source_color = vec4(1.0, 0.42, 0.06, 1.0);
 uniform vec4 edge_col : source_color = vec4(0.55, 0.06, 0.0, 1.0);
 

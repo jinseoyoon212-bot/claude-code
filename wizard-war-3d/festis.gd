@@ -25,7 +25,7 @@ const IGNITE_TO_DEATH := 0.3
 const DRAGON_SCALE := 4.2         # 드래곤 메시는 약 3.9 단위(FBX 루트의 0.01 배율은 우리가 덮어쓴다) → 약 16m
 const RIB_N := 44                 # 불줄기 튜브의 마디 수
 const RIB_SIDES := 8
-const REAR := 5.2                 # 용 중심에서 꼬리 끝까지(스케일 4.2 기준)
+const REAR := 9.5                 # 용 중심에서 꼬리 끝까지(스케일 4.2 기준)
 const ANIM_FLY := "DragonArmature|Dragon_Flying"
 const ANIM_ROAR := "DragonArmature|Dragon_Attack2"
 const ANIM_BITE := "DragonArmature|Dragon_Attack"
@@ -278,10 +278,10 @@ func _bezier(a: Vector3, b: Vector3, c: Vector3, d: Vector3, k: float) -> Vector
 func dragon_pos(tt: float) -> Vector3:
 	if tt < T_ARC:   # 주인공 머리 위에 떠 있다 (불이 모이는 동안 조금 솟아오른다)
 		var rise := smoothstep(T_FORM, T_FORM + 1.2, tt)
-		return hp + Vector3(3.2, 6.8 + 2.4 * rise + 0.25 * sin(tt * 3.0), 0.0)
+		return hp + Vector3(8.0, 1.2 + 1.6 * rise + 0.25 * sin(tt * 3.0), 0.0)
 	if tt < T_SWEEP:   # 크게 돌아 왼쪽 끝으로 간다
 		var k := smoothstep(0.0, 1.0, (tt - T_ARC) / (T_SWEEP - T_ARC))
-		var p0 := hp + Vector3(3.2, 9.2, 0.0)
+		var p0 := hp + Vector3(8.0, 2.8, 0.0)
 		var p3 := Vector3(SWEEP_X0, 3.6, 0.0)
 		return _bezier(p0, p0 + Vector3(-8.0, 10.0, 10.0), p3 + Vector3(-6.0, 9.0, 9.0), p3, k)
 	if tt < T_EXIT:   # 왼쪽 끝에서 오른쪽 끝까지 낮게 가로지른다
@@ -486,7 +486,7 @@ func _update_dragon(delta: float) -> void:
 	dragon_mat.set_shader_parameter("ash", ash_k)
 	var b := Basis.looking_at(-dir, Vector3.UP).scaled(Vector3.ONE * sc)
 	dragon.global_transform = Transform3D(b, pos)
-	hist.append(pos - dir * REAR * (sc / DRAGON_SCALE))
+	hist.append(pos - dir * REAR * (sc / DRAGON_SCALE) + Vector3(0.0, 3.0, 0.0))
 	if hist.size() > 700:
 		hist = hist.slice(hist.size() - 600)
 	if ash_fall:
@@ -557,12 +557,12 @@ func _build_ribbon(mesh: ArrayMesh, pts: PackedVector3Array, rad: PackedFloat32A
 
 func _update_ribbons() -> void:
 	rib_mat.set_shader_parameter("fade", 1.0 - ash_k)
-	rib_mat.set_shader_parameter("intensity", 1.7 + 0.35 * sin(t * 13.0))
+	rib_mat.set_shader_parameter("intensity", 1.1 + 0.25 * sin(t * 13.0))
 	# 1) 지팡이 → 용: 소용돌이치며 솟는 불줄기. 용이 모습을 갖추면 줄기의 꼬리가 용에게 빨려 들어간다
 	if stream_mi.visible:
 		var tip := staff_tip()
 		var dp := dragon_pos(maxf(t, T_FORM))
-		var rear := dp - Vector3(1.0, 0.0, 0.0) * REAR * 0.55
+		var rear := dp - Vector3(1.0, 0.0, 0.0) * REAR * 0.55 + Vector3(0.0, 3.0, 0.0)
 		var p := 1.0 - pow(1.0 - clampf((t - T_RAISE) / (T_FORM - T_RAISE), 0.0, 1.0), 2.2)
 		var ak := smoothstep(T_FORM + 0.25, T_ARC, t)
 		var pts := PackedVector3Array()
@@ -715,25 +715,25 @@ func camera() -> Array:
 		return [pos, look]
 	if t < T_FORM:   # 불이 솟는 걸 보며 뒤로 빠진다
 		var k2 := smoothstep(0.0, 1.0, (t - T_RAISE) / (T_FORM - T_RAISE))
-		var pos2 := hp + Vector3(2.8, 3.5, 5.6).lerp(Vector3(8.0, 5.5, 20.0), k2)
-		var look2 := hp + Vector3(1.0, lerpf(3.0, 6.5, k2), 0.0)
+		var pos2 := hp + Vector3(2.8, 3.5, 5.6).lerp(Vector3(8.0, 5.0, 24.0), k2)
+		var look2 := hp + Vector3(2.0, lerpf(3.0, 7.0, k2), 0.0)
 		return [pos2, look2]
 	var dp := dragon_pos(minf(t, T_END + 0.5))
 	if t < T_ARC:   # 용이 모습을 갖추는 걸 올려다보며 천천히 돈다
 		var k3 := smoothstep(0.0, 1.0, (t - T_FORM) / (T_ARC - T_FORM))
-		var pos3 := hp + Vector3(8.0, 5.5, 20.0).lerp(Vector3(12.0, 6.5, 26.0), k3)
-		return [pos3, dp + Vector3(-1.0, -1.5, 0.0)]
+		var pos3 := hp + Vector3(8.0, 5.0, 24.0).lerp(Vector3(12.0, 6.5, 28.0), k3)
+		return [pos3, dp + Vector3(-4.0, 6.0, 0.0)]
 	if t < T_SWEEP:   # 용을 따라 왼쪽 끝으로
 		var k4 := smoothstep(0.0, 1.0, (t - T_ARC) / (T_SWEEP - T_ARC))
-		var from_pos := hp + Vector3(12.0, 6.5, 26.0)
-		var to_pos := Vector3(-28.0, 9.0, 34.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
-		return [from_pos.lerp(to_pos, k4), dp]
+		var from_pos := hp + Vector3(12.0, 6.5, 28.0)
+		var to_pos := Vector3(-24.0, 11.0, 36.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
+		return [from_pos.lerp(to_pos, k4), dp + Vector3(-4.0, 6.0, 0.0)]
 	if t < T_EXIT:   # 전장을 가로지르는 용을 옆에서 따라간다
-		return [Vector3(maxf(dp.x - 12.0, -28.0), 9.0, 34.0), Vector3(dp.x + 3.0, 5.0, 0.0)]
+		return [Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0), Vector3(dp.x - 1.0, 8.0, 0.0)]
 	# 용이 재가 되어 하늘로 솟는 걸 따라가다가, 낮은 각도에서 올려다보며 재가 하늘로 흩어지는 모습을 본다
 	var k5 := smoothstep(0.0, 1.0, (t - T_EXIT) / (DUR - T_EXIT))
-	var p5 := Vector3(maxf(dp.x - 12.0, -28.0), 9.0, 34.0).lerp(hp + Vector3(6.0, 2.6, 17.0), k5)
-	var l5 := Vector3(dp.x + 3.0, 5.2, 0.0).lerp(hp + Vector3(8.0, 15.0, 0.0), smoothstep(0.0, 1.0, (t - T_EXIT - 0.6) / (DUR - T_EXIT - 0.6)))
+	var p5 := Vector3(maxf(dp.x - 6.0, -24.0), 11.0, 36.0).lerp(hp + Vector3(6.0, 2.6, 17.0), k5)
+	var l5 := Vector3(dp.x - 1.0, 8.0, 0.0).lerp(hp + Vector3(8.0, 15.0, 0.0), smoothstep(0.0, 1.0, (t - T_EXIT - 0.6) / (DUR - T_EXIT - 0.6)))
 	return [p5, l5]
 
 
