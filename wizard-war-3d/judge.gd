@@ -505,7 +505,7 @@ func _plan_meteors() -> void:
 	var left := _live_enemies()
 	left.sort_custom(func(a, b): return a.position.x < b.position.x)
 	var targets: Array = []
-	while not left.is_empty() and targets.size() < MAX_METEORS - 5:
+	while not left.is_empty() and targets.size() < MAX_METEORS:
 		var e: Unit = left.pop_front()
 		var tg := Vector3(e.position.x, 0.0, e.position.z)
 		targets.append(tg)
@@ -514,8 +514,13 @@ func _plan_meteors() -> void:
 			if Vector2(u.position.x - tg.x, u.position.z - tg.z).length() > BLAST_R:
 				rest.append(u)
 		left = rest
-	for i in 5:   # 볼거리를 위한 빈 땅 낙하
-		targets.append(Vector3(FIELD_X + rng.randf_range(-32.0, 34.0), 0.0, rng.randf_range(-5.0, 5.0)))
+	# 적이 적을 때도 유성우가 볼만하도록, 살아 있는 적을 한 번 더 겨냥한다 (빈 땅에는 떨어뜨리지 않는다)
+	var alive := _live_enemies()
+	var extra := 0
+	while not alive.is_empty() and targets.size() < 10 and extra < 12:
+		var e2: Unit = alive[rng.randi() % alive.size()]
+		targets.append(Vector3(e2.position.x + rng.randf_range(-1.0, 1.0), 0.0, e2.position.z + rng.randf_range(-1.0, 1.0)))
+		extra += 1
 	targets.shuffle()
 	var n := targets.size()
 	for i in n:
