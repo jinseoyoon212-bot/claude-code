@@ -297,12 +297,12 @@ public class AuroraDevicePlugin extends Plugin {
     @PluginMethod public void stopSpeak(final PluginCall call) { try { if (tts != null) tts.stop(); } catch (Throwable ignored) { } call.resolve(); }
 
     @PluginMethod public void listen(final PluginCall call) {
-        if (getPermissionState("mic") != PermissionState.GRANTED) { requestPermissionForAlias("mic", call, "micPermsCallback"); return; }
+        if (ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestPermissionForAlias("mic", call, "micPermsCallback"); return; }
         startListening(call);
     }
 
     @PermissionCallback private void micPermsCallback(PluginCall call) {
-        if (getPermissionState("mic") == PermissionState.GRANTED) startListening(call); else call.reject("마이크 권한이 필요해요.");
+        if (ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startListening(call); else call.reject("마이크 권한이 필요해요.");
     }
 
     private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -380,6 +380,19 @@ public class AuroraDevicePlugin extends Plugin {
     }
 
     /** 마지막 수단: 시스템(구글) 음성 입력 창을 띄워 결과만 받는다. 인식 서비스 바인딩을 쓰지 않아 다른 경로가 막혀도 되는 경우가 많다 */
+    @PluginMethod public void micStatus(final PluginCall call) {
+        JSObject o = new JSObject(); o.put("granted", ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED); call.resolve(o);
+    }
+
+    @PluginMethod public void requestMic(final PluginCall call) {
+        if (ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) { JSObject o = new JSObject(); o.put("granted", true); call.resolve(o); return; }
+        requestPermissionForAlias("mic", call, "requestMicCallback");
+    }
+
+    @PermissionCallback private void requestMicCallback(PluginCall call) {
+        JSObject o = new JSObject(); o.put("granted", ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED); call.resolve(o);
+    }
+
     @PluginMethod public void listenDialog(final PluginCall call) {
         try {
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);

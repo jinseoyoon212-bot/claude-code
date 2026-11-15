@@ -154,10 +154,25 @@
     return /^\(?\s*없음\s*\)?$/.test(t) ? '' : t;
   }
 
+  // ---- 마이크 권한 확보: ① 이미 있음 ② Shizuku로 즉시 허용 ③ 권한 창(12초) ④ 안 되면 설정 화면 안내 ----
+  async function ensureMic() {
+    try { if ((await D.micStatus()).granted) return true; } catch {}
+    try { if (D.shizukuStatus && (await D.shizukuStatus()).granted) { await D.shizukuShell({ command: 'pm grant com.aurora.agent android.permission.RECORD_AUDIO' }); if ((await D.micStatus()).granted) return true; } } catch {}
+    try { const r = await Promise.race([D.requestMic(), new Promise((res) => setTimeout(() => res({ granted: false }), 12000))]); if (r && r.granted) return true; } catch {}
+    return false;
+  }
+  function micDenied() {
+    busy = false; setState(null); Face.setMood('sad'); Face.doMotion('droop');
+    bubble.textContent = '마이크 권한이 필요해요. 설정 → 권한 → 마이크 → 허용으로 바꿔 주세요.';
+    acts.innerHTML = ''; acts.style.display = 'flex';
+    const b = document.createElement('button'); b.textContent = '⚙ 권한 설정 열기'; b.onclick = async (e) => { e.stopPropagation(); await D.openAppInfo(); D.closeAssist(); }; acts.appendChild(b); resetIdle();
+  }
+
   async function listen() {
     if (busy) return; busy = true; resetIdle(); clearStroke(); acts.style.display = 'none';
     try { D.stopSpeak(); } catch {}
     setState('listening'); Face.setMood('surprised'); Face.doMotion('jump'); bubble.textContent = '🎤 준비 중…';
+    if (!(await ensureMic())) { micDenied(); return; }
     try {
       let best = '', why = '';
       const s = await window.api.getSettings();

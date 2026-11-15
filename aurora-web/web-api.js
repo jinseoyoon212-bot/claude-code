@@ -96,6 +96,12 @@
       const D = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AuroraDevice;
       if (!D) return 'APK 앱 안에서만 쓸 수 있어요.';
       try {
+        if (n === 'mic') {
+          if ((await D.micStatus()).granted) return '마이크 권한이 이미 허용돼 있어요 ✅';
+          try { const s = await D.shizukuStatus(); if (s.granted) { await D.shizukuShell({ command: 'pm grant com.aurora.agent android.permission.RECORD_AUDIO' }); if ((await D.micStatus()).granted) return '마이크 권한을 허용했어요 ✅ (Shizuku)'; } } catch {}
+          const r = await D.requestMic(); if (r.granted) return '마이크 권한을 허용했어요 ✅';
+          await D.openAppInfo(); return '권한 창이 안 떠서 앱 정보를 열었어요. 권한 → 마이크 → 허용을 선택하세요.';
+        }
         if (n === 'assist_set') { await D.openAssistantSettings(); return '기본 디지털 어시스턴트 화면을 열었어요. 목록에서 Aurora Agent를 선택하세요. (기기에 따라 설정 → 앱 → 기본 앱 → 디지털 어시스턴트 앱) 그다음 홈 버튼을 길게 누르세요.'; }
         if (n === 'assist_preview') { await D.previewAssist(); return '미리보기를 열었어요.'; }
         if (n === 'a11y') { await D.openAccessibilitySettings(); return '접근성 설정을 열었어요. 목록에서 "설치된 앱/다운로드한 앱"을 찾아 Aurora Agent를 켜세요.'; }
