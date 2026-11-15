@@ -29,7 +29,7 @@ fs.copyFileSync(path.join(native, 'aurora_voice_interaction.xml'), path.join(res
 
 const mf = path.join(root, 'app/src/main/AndroidManifest.xml'); let m = fs.readFileSync(mf, 'utf8');
 // 권한: 이미 있는 건 건너뛰고 빠진 것만 추가
-const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES', 'WRITE_SECURE_SETTINGS', 'RECORD_AUDIO']
+const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES', 'WRITE_SECURE_SETTINGS', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS']
   .filter((p) => !m.includes(`android.permission.${p}`)).map((p) => `    <uses-permission android:name="android.permission.${p}" />\n`).join('');
 if (perms) m = m.replace('<application', perms + '    <application');
 if (!m.includes('requestLegacyExternalStorage')) m = m.replace('<application', '<application android:requestLegacyExternalStorage="true"');

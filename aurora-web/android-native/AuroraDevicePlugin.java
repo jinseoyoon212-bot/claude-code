@@ -19,6 +19,9 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.net.Uri;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
@@ -380,6 +383,62 @@ public class AuroraDevicePlugin extends Plugin {
     }
 
     /** 마지막 수단: 시스템(구글) 음성 입력 창을 띄워 결과만 받는다. 인식 서비스 바인딩을 쓰지 않아 다른 경로가 막혀도 되는 경우가 많다 */
+    /** 웹뷰를 거치지 않는 네이티브 녹음(16kHz): 말이 시작되면 잡고, 조용해지면 끝낸다. 결과는 WAV(base64) */
+    @PluginMethod public void recordWav(final PluginCall call) {
+        if (ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { call.reject("마이크 권한이 없어요."); return; }
+        final int maxMs = call.getInt("maxMs", 14000), noSpeechMs = call.getInt("noSpeechMs", 7000), silenceMs = call.getInt("silenceMs", 1300);
+        async(call, new Job() { public JSObject run() throws Exception {
+            final int sr = 16000;
+            int min = AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (min <= 0) throw new Exception("이 기기에서 녹음을 시작할 수 없어요.");
+            AudioRecord ar = null;
+            for (int src : new int[]{ MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC }) {
+                try { AudioRecord t = new AudioRecord(src, sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, sr) * 2); if (t.getState() == AudioRecord.STATE_INITIALIZED) { ar = t; break; } t.release(); } catch (Throwable ignored) { }
+            }
+            if (ar == null) throw new Exception("마이크를 열 수 없어요. 다른 앱이 마이크를 쓰는 중이거나 권한 문제일 수 있어요.");
+            ByteArrayOutputStream pcm = new ByteArrayOutputStream();
+            short[] frame = new short[1600];                                 // 100ms
+            long t0 = System.currentTimeMillis(), speechStart = 0, lastLoud = 0; double floor = 0.006; int speechOffset = 0; boolean any = false;
+            try {
+                ar.startRecording();
+                while (true) {
+                    int n = ar.read(frame, 0, frame.length);
+                    long now = System.currentTimeMillis();
+                    if (n < 0) throw new Exception("녹음 중 오류가 났어요 (" + n + ")");
+                    if (n == 0) { if (now - t0 > 3000 && !any) throw new Exception("마이크에서 소리가 들어오지 않아요."); continue; }
+                    any = true; double s = 0;
+                    for (int i = 0; i < n; i++) { double v = frame[i] / 32768.0; s += v * v; pcm.write(frame[i] & 0xff); pcm.write((frame[i] >> 8) & 0xff); }
+                    double rms = Math.sqrt(s / n);
+                    JSObject lv = new JSObject(); lv.put("lvl", Math.min(1.0, rms * 9)); notifyListeners("recLevel", lv);
+                    if (now - t0 < 400) { floor = Math.max(floor, rms); continue; }
+                    if (rms > Math.max(0.018, floor * 2.6)) {
+                        if (speechStart == 0) { speechStart = now; speechOffset = Math.max(0, pcm.size() - 3200 * 4); notifyListeners("recSpeech", new JSObject()); }
+                        lastLoud = now;
+                    }
+                    if (speechStart != 0 && now - lastLoud > silenceMs && now - speechStart > 350) break;
+                    if (speechStart == 0 && now - t0 > noSpeechMs) break;
+                    if (now - t0 > maxMs) break;
+                }
+            } finally { try { ar.stop(); } catch (Throwable ignored) { } ar.release(); }
+            JSObject o = new JSObject();
+            if (speechStart == 0) { o.put("wav", ""); return o; }
+            byte[] all = pcm.toByteArray(); int len = all.length - speechOffset;
+            ByteArrayOutputStream w = new ByteArrayOutputStream(len + 44);
+            byte[] h = new byte[44]; int br = sr * 2;
+            String riff = "RIFF", wave = "WAVEfmt ", data = "data";
+            for (int i = 0; i < 4; i++) h[i] = (byte) riff.charAt(i);
+            int cs = 36 + len; h[4] = (byte) cs; h[5] = (byte) (cs >> 8); h[6] = (byte) (cs >> 16); h[7] = (byte) (cs >> 24);
+            for (int i = 0; i < 8; i++) h[8 + i] = (byte) wave.charAt(i);
+            h[16] = 16; h[20] = 1; h[22] = 1; h[24] = (byte) sr; h[25] = (byte) (sr >> 8); h[26] = (byte) (sr >> 16); h[27] = (byte) (sr >> 24);
+            h[28] = (byte) br; h[29] = (byte) (br >> 8); h[30] = (byte) (br >> 16); h[31] = (byte) (br >> 24); h[32] = 2; h[34] = 16;
+            for (int i = 0; i < 4; i++) h[36 + i] = (byte) data.charAt(i);
+            h[40] = (byte) len; h[41] = (byte) (len >> 8); h[42] = (byte) (len >> 16); h[43] = (byte) (len >> 24);
+            w.write(h, 0, 44); w.write(all, speechOffset, len);
+            o.put("wav", android.util.Base64.encodeToString(w.toByteArray(), android.util.Base64.NO_WRAP));
+            return o;
+        }});
+    }
+
     @PluginMethod public void micStatus(final PluginCall call) {
         JSObject o = new JSObject(); o.put("granted", ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED); call.resolve(o);
     }

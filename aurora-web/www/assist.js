@@ -143,8 +143,16 @@
     if (sr !== 16000) { const r = sr / 16000, m = Math.floor(pcm.length / r), out = new Float32Array(m); for (let i = 0; i < m; i++) { const p = i * r, i0 = Math.floor(p), f = p - i0; out[i] = pcm[i0] * (1 - f) + (pcm[i0 + 1] || pcm[i0]) * f; } pcm = out; }
     return b64(wavOf(pcm, 16000));
   }
+  D.addListener('recLevel', (e) => { if (busy) root.style.setProperty('--lvl', Number(e.lvl).toFixed(2)); });
+  D.addListener('recSpeech', () => { if (busy) bubble.textContent = '🎤 듣고 있어요…'; });
   async function geminiListen(s) {
-    const wav = await recordWav({ onLevel: (v) => root.style.setProperty('--lvl', v.toFixed(2)), onSpeech: () => { bubble.textContent = '🎤 듣고 있어요…'; } });
+    bubble.textContent = '🎤 말씀하세요';
+    let wav = null, nerr = '';
+    if (D.recordWav) { try { wav = (await D.recordWav({})).wav; } catch (e) { nerr = e && e.message ? e.message : String(e); wav = null; } }   // 1순위: 네이티브 녹음 (웹뷰 권한과 무관)
+    if (wav === null) {                                                                                                                              // 2순위: 웹뷰 마이크
+      try { wav = await recordWav({ onLevel: (v) => root.style.setProperty('--lvl', v.toFixed(2)), onSpeech: () => { bubble.textContent = '🎤 듣고 있어요…'; } }); }
+      catch (e) { throw new Error((nerr ? '녹음: ' + nerr + ' / ' : '') + '웹뷰 마이크: ' + (e && e.name ? e.name + ' ' : '') + (e && e.message ? e.message : e)); }
+    }
     root.style.setProperty('--lvl', 0); if (!wav) return '';
     setState('thinking'); bubble.textContent = '✍ 받아쓰는 중…';
     let hint = ''; try { hint = (await window.PhoneAgent.vocab()).slice(0, 80).join(', '); } catch {}
@@ -173,8 +181,9 @@
     try { D.stopSpeak(); } catch {}
     setState('listening'); Face.setMood('surprised'); Face.doMotion('jump'); bubble.textContent = '🎤 준비 중…';
     if (!(await ensureMic())) { micDenied(); return; }
+    let why = '';
     try {
-      let best = '', why = '';
+      let best = '';
       const s = await window.api.getSettings();
       // 1순위: 직접 녹음 + Gemini 받아쓰기 (구글 음성 서비스 오류와 무관, 정확도 높음)
       if (s.provider === 'gemini' && s.apiKey && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -200,7 +209,7 @@
       bubble.textContent = best; input.value = best; form.requestSubmit();     // 이후는 기존 대화/명령 로직(renderer.js)이 처리
     } catch (e) {
       busy = false; setState(null); root.style.setProperty('--lvl', 0); Face.setMood('sad'); Face.doMotion('droop');
-      bubble.textContent = (e && e.message ? e.message : '잘 못 들었어요.') + ' 얼굴을 눌러 다시 말해 주세요.'; resetIdle();
+      bubble.textContent = (e && e.message ? e.message : '잘 못 들었어요.') + (why && !String(e && e.message).includes(why) ? ' / ' + why : '') + ' 얼굴을 눌러 다시 말해 주세요.'; resetIdle();
     }
   }
   face.addEventListener('click', (e) => { e.stopPropagation(); listen(); });
