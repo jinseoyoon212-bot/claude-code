@@ -1425,6 +1425,29 @@ func cheat_battle(id: String) -> String:
 			spawn_t = 0.0
 			if next_wave_t >= 0.0:
 				next_wave_t = -1.0
+		"spawn_enemies":
+			set_paused(false)
+			if menu:
+				menu.page = ""
+			var kinds := ["minion", "minion", "minion", "minion", "minion", "minion", "warrior", "warrior", "warrior", "dark_mage"]
+			for i in 10:   # 5열 x 2줄로 흩어서 한꺼번에 나타난다
+				var sp := Vector3(14.0 + (i % 5) * 5.0 + randf_range(-0.8, 0.8), 0.0, -4.0 + (i / 5) * 8.0 + randf_range(-1.0, 1.0))
+				var e := spawn_unit(kinds[i], sp)
+				e.face(Vector3(-1, 0, 0), true)
+				sparks(e.position + Vector3(0, 1.5, 0), Color(0.7, 0.3, 1.0), 14, 4.0, 0.5)
+			Sfx.play("summon", 0.8)
+			return "적 병사 10명 소환"
+		"spawn_allies":
+			set_paused(false)
+			if menu:
+				menu.page = ""
+			var akinds := ["knight", "knight", "knight", "archer", "ally_mage"]
+			for i in 5:
+				var ap := Vector3(-24.0 + (i % 2) * 3.0, 0.0, -6.0 + i * 3.0)
+				_ally(akinds[i], ap, Vector3(randf_range(0.0, 6.0), 0, randf_range(-5.0, 5.0)))
+				sparks(ap + Vector3(0, 1.5, 0), Color(0.6, 0.8, 1.0), 14, 4.0, 0.5)
+			Sfx.play("summon", 0.8)
+			return "아군 병사 5명 소환"
 		"heal":
 			hero.hp = hero.max_hp
 			crystal.hp = crystal.max_hp

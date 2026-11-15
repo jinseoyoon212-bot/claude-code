@@ -695,6 +695,8 @@ func _draw_cheat() -> void:
 			["bcheat:kill_all", "적 전멸", "skull", false],
 			["bcheat:next_wave", "다음 웨이브로", "portal", false],
 			["bcheat:boss", "보스 즉시 소환", "boss", false],
+			["bcheat:spawn_enemies", "적 병사 10명 소환", "skull", false],
+			["bcheat:spawn_allies", "아군 병사 5명 소환", "summon", false],
 			["bcheat:heal", "체력·수정 완전 회복", "heal", false],
 			["bcheat:judge", "아스트라 유디키움 (T)", "judge", false],
 		]
