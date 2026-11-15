@@ -386,7 +386,7 @@ public class AuroraDevicePlugin extends Plugin {
     /** 웹뷰를 거치지 않는 네이티브 녹음(16kHz): 말이 시작되면 잡고, 조용해지면 끝낸다. 결과는 WAV(base64) */
     @PluginMethod public void recordWav(final PluginCall call) {
         if (ContextCompat.checkSelfPermission(ctx(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { call.reject("마이크 권한이 없어요."); return; }
-        final int maxMs = call.getInt("maxMs", 14000), noSpeechMs = call.getInt("noSpeechMs", 7000), silenceMs = call.getInt("silenceMs", 1300);
+        final int maxMs = call.getInt("maxMs", 14000), noSpeechMs = call.getInt("noSpeechMs", 7000), silenceMs = call.getInt("silenceMs", 750);
         async(call, new Job() { public JSObject run() throws Exception {
             final int sr = 16000;
             int min = AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
@@ -410,12 +410,12 @@ public class AuroraDevicePlugin extends Plugin {
                     for (int i = 0; i < n; i++) { double v = frame[i] / 32768.0; s += v * v; pcm.write(frame[i] & 0xff); pcm.write((frame[i] >> 8) & 0xff); }
                     double rms = Math.sqrt(s / n);
                     JSObject lv = new JSObject(); lv.put("lvl", Math.min(1.0, rms * 9)); notifyListeners("recLevel", lv);
-                    if (now - t0 < 400) { floor = Math.max(floor, rms); continue; }
+                    if (now - t0 < 250) { floor = Math.min(0.02, Math.max(floor, rms)); continue; }
                     if (rms > Math.max(0.018, floor * 2.6)) {
                         if (speechStart == 0) { speechStart = now; speechOffset = Math.max(0, pcm.size() - 3200 * 4); notifyListeners("recSpeech", new JSObject()); }
                         lastLoud = now;
                     }
-                    if (speechStart != 0 && now - lastLoud > silenceMs && now - speechStart > 350) break;
+                    if (speechStart != 0 && now - lastLoud > silenceMs && now - speechStart > 250) break;
                     if (speechStart == 0 && now - t0 > noSpeechMs) break;
                     if (now - t0 > maxMs) break;
                 }

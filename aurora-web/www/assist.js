@@ -157,12 +157,12 @@
     try { D.stopSpeak(); } catch {}
     setState('listening'); Face.poke(1); Face.setMood('surprised'); Face.doMotion('jump'); say2('🎤 준비 중…');
     try {
-      const v = await Voice.listen({
+      await window.voiceTurn({
         onStatus: (t, ph) => { say2(t); if (ph === 'transcribing') setState('thinking'); }, onSpeech: () => say2('🎤 듣고 있어요…'),
         onPartial: (t) => window.showUser && window.showUser(t, true), onLevel: (l) => root.style.setProperty('--lvl', Number(l).toFixed(2)),
+        onRecorded: () => { root.style.setProperty('--lvl', 0); setState('thinking'); },
       });
-      root.style.setProperty('--lvl', 0); setState('thinking'); busy = false;
-      window.sendText(v.text, 'face');                                                   // 글이 얼굴에서 쭉 빨려 올라가 풍선이 되고, 이후는 기존 대화/명령 로직
+      root.style.setProperty('--lvl', 0); busy = false;
     } catch (e) {
       busy = false; setState(null); root.style.setProperty('--lvl', 0);
       if (e.code === 'mic') { micDenied(); return; }
@@ -172,14 +172,27 @@
   }
   face.addEventListener('click', (e) => { e.stopPropagation(); listen(); });
 
+  // 답이 스트리밍으로 오는 동안 첫 문장이 완성되면 바로 소리 내기 시작한다 (끝까지 기다리지 않음)
+  let firstTalk = null, firstLen = 0;
+  const clean = (t) => String(t || '').replace(/[`*#_>]/g, '');
   window.AuroraAssist = {
+    onTurnStart: () => { firstTalk = null; firstLen = 0; try { D.stopSpeak(); } catch {} },
+    onDelta: (t) => {
+      if (firstTalk) return; const c = clean(t), m = c.match(/^[\s\S]*?[.!?。！？]+(?=\s|$)|^[^\n]+\n/);
+      if (m && m[0].trim().length >= 6) { firstLen = m[0].length; firstTalk = talk(m[0].trim()); }
+    },
     onAnswer: async (r) => {
       busy = false; resetIdle(); setState(null);
-      const spoken = String(r.text || '').replace(/[`*#_>]/g, '').slice(0, 300);
-      if (r.stay) { say(spoken); setTimeout(() => D.closeAssist(), 500); return; }   // 앱을 열었으면 오버레이를 닫아 앱이 보이게
-      await talk(spoken); resetIdle();
+      const spoken = clean(r.text).slice(0, 300);
+      if (r.stay) { say(spoken); setTimeout(() => D.closeAssist(), 120); return; }   // 앱을 열었으면 오버레이를 바로 닫아 앱이 보이게
+      if (firstTalk) { const rest = spoken.slice(firstLen).trim(); await firstTalk; if (rest) await talk(rest); }
+      else await talk(spoken);
+      resetIdle();
     },
   };
+
+  // 미리 데우기: AI 서버 연결 + 설치된 앱 목록 (첫 명령이 바로 실행되도록)
+  try { window.api.getSettings().then((s) => { if (window.LLM) LLM.warm(s.provider); }); window.PhoneAgent && PhoneAgent.vocab(); } catch {}
 
   say2('무엇을 도와드릴까요?'); Face.setMood('happy'); Face.doMotion('wave'); Face.poke(.8);
   await talk('무엇을 도와드릴까요?'); resetIdle();

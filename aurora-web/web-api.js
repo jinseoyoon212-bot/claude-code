@@ -4,7 +4,7 @@
 (() => {
   const KEY = 'aurora-settings';
   const MOODS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'thinking', 'sleepy', 'love', 'laugh'];
-  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', serverUrl: '', token: '', mode: 'auto', phoneAuto: false, screenControl: false };
+  const defaults = { provider: 'pollinations', apiKey: '', fastModel: '', model: 'openai', serverUrl: '', token: '', mode: 'auto', phoneAuto: false, screenControl: false };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -51,41 +51,16 @@
     return result || { error: '서버가 응답 없이 종료됐어요.' };
   }
 
-  async function sendDirect(s, history) {
+  async function sendDirect(s, history, notify) {
     if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 넣거나 PC 서버에 연결해 주세요.' };
     try {
-      const r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 2048, onWait: (sec) => listeners.forEach((cb) => cb({ type: 'wait', seconds: sec })), messages: history.map((m) => ({ role: m.role, content: m.content })) });
-      let text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      let mood = 'neutral'; const m = text.match(/^\s*\[기분:([a-z]+)\]\s*/);
-      if (m) { if (MOODS.includes(m[1])) mood = m[1]; text = text.slice(m[0].length); }
-      return { text, mood };
+      const msgs = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
+      let r = await LLM.fastStream({ provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, maxTokens: 700, messages: msgs,
+        onWait: (sec) => notify({ type: 'wait', seconds: sec }), onDelta: (t) => { const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
+      let raw = (r.content[0] && r.content[0].text || '').trim();
+      if (!raw) { r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 700, messages: msgs, onWait: (sec) => notify({ type: 'wait', seconds: sec }) }); raw = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); }
+      const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw, mood: c.mood };
     } catch (e) { return { error: String(e.message || e) }; }
-  }
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  async function waitConnected(D, tries) { for (let i = 0; i < tries; i++) { await sleep(1500); try { if ((await D.a11yDiagnose()).connected) return true; } catch {} } return false; }
-  async function appopsAllow(D) {
-    try { const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
-      await sh('appops set com.aurora.agent ACCESS_RESTRICTED_SETTINGS allow'); } catch {}
-  }
-  async function collectDump(D) {
-    const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
-    const list = await sh('settings get secure enabled_accessibility_services'), en = await sh('settings get secure accessibility_enabled');
-    const ops = await sh('appops get com.aurora.agent ACCESS_RESTRICTED_SETTINGS');
-    const logs = await sh('logcat -d -t 600 | grep -iE "accessib|aurora" | tail -12');
-    const d = await D.a11yDiagnose();
-    return `켜진 서비스 목록: ${list}\naccessibility_enabled: ${en}\n제한된 설정(appops): ${ops}\n앱 쪽 연결됨: ${d.connected ? '예' : '아니오'} / 시스템 인식: ${d.registered ? '예' : '아니오'} (안드로이드 ${d.android})\n--- 로그 ---\n${logs || '(관련 줄 없음)'}`;
-  }
-  async function restartA11y(D) {
-    await appopsAllow(D);
-    const sh = async (c) => ((await D.shizukuShell({ command: c })).output || '').trim();
-    const cn = 'com.aurora.agent/com.aurora.agent.AuroraAccessibilityService';
-    let cur = await sh('settings get secure enabled_accessibility_services'); if (cur === 'null' || cur.includes('[종료코드')) cur = '';
-    const others = cur.split(':').filter((x) => x && x !== cn);
-    await sh(`settings put secure enabled_accessibility_services '${others.join(':')}'`);
-    await sleep(1500);
-    await sh(`settings put secure enabled_accessibility_services '${others.concat(cn).join(':')}'`);
-    await sh('settings put secure accessibility_enabled 1');
   }
 
   window.api = {
@@ -138,11 +113,11 @@
     send: async (history) => {
       const s = load(), phone = window.PhoneAgent && window.PhoneAgent.available();
       const notify = (ev) => listeners.forEach((cb) => cb(ev));
-      if (s.mode === 'chat') return sendDirect(s, history);
+      if (s.mode === 'chat') return sendDirect(s, history, notify);
       if (s.mode === 'phone') return phone ? window.PhoneAgent.run({ settings: s, history, notify }) : { error: '폰 제어는 Aurora Agent APK 앱에서만 가능해요.' };
       if (s.mode === 'auto' && phone && !s.serverUrl) return window.PhoneAgent.run({ settings: s, history, notify });
       const base = await bridgeBase(s);
-      if (base === null) return s.mode === 'pc' ? { error: 'PC 서버 주소가 없거나 연결할 수 없어요. ⚙ 설정을 확인해 주세요.' } : sendDirect(s, history);
+      if (base === null) return s.mode === 'pc' ? { error: 'PC 서버 주소가 없거나 연결할 수 없어요. ⚙ 설정을 확인해 주세요.' } : sendDirect(s, history, notify);
       return sendBridge(base, s, history);
     },
   };

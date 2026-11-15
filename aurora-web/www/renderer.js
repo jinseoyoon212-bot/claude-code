@@ -16,29 +16,61 @@ function addLog(msg) { const d = document.createElement('div'); d.textContent = 
 const toolLabel = { run_command: (i) => '⚙ 실행: ' + i.command, read_file: (i) => '📖 읽기: ' + i.path, write_file: (i) => '✏ 쓰기: ' + i.path, list_dir: (i) => '📂 목록: ' + i.path, system_info: () => '🖥 시스템 정보', launch_app: (i) => '📱 앱 실행: ' + (i.name || i.package), list_apps: () => '📱 앱 목록 확인', screen_read: () => '👀 화면 읽는 중', screen_click_text: (i) => '👆 누르는 중: ' + i.text, screen_tap: () => '👆 화면 탭', screen_swipe: () => '👆 스와이프', screen_type: (i) => '⌨ 입력: ' + i.text, screen_global: (i) => '🔘 ' + i.action, device_info: () => '📊 기기 정보', open_intent: () => '🔗 열기', wait: () => '⏳ 잠시 대기', adb_command: (i) => '🛠 adb: ' + i.command, request_all_files_access: () => '🔐 파일 권한 요청', open_accessibility_settings: () => '🔐 접근성 설정 열기' };
 
 api.onEvent((ev) => {
+  if (ev.type === 'delta') { streamBubble(ev.text); return; }
   if (ev.type === 'wait') { bubble.textContent = `무료 서버 한도 때문에 ${ev.seconds}초 기다리는 중이에요… ⏳`; Face.setMood('sleepy'); return; }
   if (ev.type === 'tool') { bubble.textContent = '🔧 ' + ((toolLabel[ev.name] || (() => ev.name))(ev.input)) + ' …'; Face.setMood('thinking'); Face.doMotion('nod'); addLog((toolLabel[ev.name] || (() => ev.name))(ev.input)); }
 });
 
-// 말하거나 입력한 글 보내기: 글이 출발 지점에서 쭉 빨려 올라가 위 풍선이 된다
-async function sendText(raw, from = 'input') {
-  const text = String(raw || '').trim(); if (!text || busy) return;
+// ---- 한 번의 요청(턴): 시작 → (글자가 스트리밍으로 표시) → 끝. 걸린 시간도 기록 ----
+let turn = null;
+function beginTurn(text, from, t0) {
   busy = true; document.body.classList.add('busy');
+  turn = { t0: t0 || performance.now(), tFirst: 0, streamed: false };
   const origin = from === 'face' ? faceRect() : inputRect(text);
   if (from === 'input') { input.value = ''; FX.jelly($('form'), 'jelly'); }
   Face.react(text); setBubble('…');
   history.push({ role: 'user', content: text });
+  if (window.AuroraAssist && window.AuroraAssist.onTurnStart) window.AuroraAssist.onTurnStart();
   FX.flyUp(text, origin, ubub).then(() => { Face.poke(0.7); Face.lookAt(0, -0.5); setTimeout(() => Face.lookAt(0, 0), 900); });
-  const r = await api.send(history);
+}
+function streamBubble(text) {                                   // 답이 오는 대로 풍선에 표시 (첫 글자가 나오기까지의 체감 시간을 줄인다)
+  if (!turn || !text) return;
+  if (!turn.tFirst) turn.tFirst = performance.now();
+  if (!turn.streamed) { turn.streamed = true; setBubble(text); } else bubble.textContent = text;
+  if (window.AuroraAssist && window.AuroraAssist.onDelta) window.AuroraAssist.onDelta(text);
+}
+function finishTurn(r) {
   busy = false; document.body.classList.remove('busy');
   fadeT = setTimeout(() => ubub.classList.add('fade'), 7000);
+  const now = performance.now(), t = turn; turn = null;
+  if (t) addLog('⏱ ' + (r.error ? '' : '첫 응답 ' + (((t.tFirst || now) - t.t0) / 1000).toFixed(1) + '초 · ') + '전체 ' + ((now - t.t0) / 1000).toFixed(1) + '초');
   if (r.error) { Face.setMood('sad'); Face.doMotion('droop'); setBubble('⚠ ' + r.error); history.pop(); if (window.AuroraAssist) window.AuroraAssist.onAnswer({ text: '오류가 났어요. ' + String(r.error).slice(0, 80) }); return; }
   history.push({ role: 'assistant', content: r.text });
   Face.setMood(r.mood); Face.doMotion({ happy: 'wave', laugh: 'bounce', love: 'bounce', sad: 'droop', angry: 'shake', surprised: 'jump', sleepy: 'sway', thinking: 'tilt' }[r.mood] || 'nod');
-  setBubble(r.text);
+  if (t && t.streamed) bubble.textContent = r.text; else setBubble(r.text);
   if (window.AuroraAssist) window.AuroraAssist.onAnswer(r);
   Face.setTalking(true); setTimeout(() => Face.setTalking(false), Math.min(4000, 300 + r.text.length * 60));
 }
+async function sendText(raw, from = 'input') {
+  const text = String(raw || '').trim(); if (!text || busy) return;
+  beginTurn(text, from);
+  let r; try { r = await api.send(history); } catch (e) { r = { error: String(e && e.message || e) }; }
+  finishTurn(r);
+}
+// 음성 한 턴: 말이 끝나면 오디오 한 번으로 "받아쓰기 + 답변"(Gemini). 기기 조작 명령이면 곧바로 명령 경로로
+async function voiceTurn(hooks = {}) {
+  let began = false, recEnd = 0;
+  let v;
+  try {
+    v = await Voice.listenAndAnswer({ ...hooks, onRecorded: () => { recEnd = performance.now(); if (hooks.onRecorded) hooks.onRecorded(); },
+      onTranscript: (t) => { if (!began) { began = true; beginTurn(t, 'face', recEnd || undefined); } }, onDelta: (a) => streamBubble(a) });
+  } catch (e) { if (began) finishTurn({ error: e && e.message ? e.message : String(e) }); throw e; }
+  if (!began) beginTurn(v.text, 'face', recEnd || undefined);
+  let r;
+  if (v.reply) r = v.reply; else { try { r = await api.send(history); } catch (e) { r = { error: String(e && e.message || e) }; } }
+  finishTurn(r);
+}
+window.voiceTurn = voiceTurn;
 window.sendText = sendText;
 window.isBusy = () => busy;
 $('form').addEventListener('submit', (e) => { e.preventDefault(); sendText(input.value, 'input'); });
@@ -86,12 +118,11 @@ $('face').addEventListener('click', async () => {
   if (root.classList.contains('assist') || busy || listening || typeof Voice === 'undefined') return;
   listening = true; Face.poke(1); Face.setMood('surprised'); Face.doMotion('jump'); document.body.classList.add('listening'); setBubble('🎤 준비 중…');
   try {
-    const v = await Voice.listen({
+    await voiceTurn({
       onStatus: (t) => setBubble(t), onSpeech: () => setBubble('🎤 듣고 있어요…'), onPartial: (t) => showUser(t, true),
-      onLevel: (l) => root.style.setProperty('--lvl', Number(l).toFixed(2)),
+      onLevel: (l) => root.style.setProperty('--lvl', Number(l).toFixed(2)), onRecorded: () => { document.body.classList.remove('listening'); root.style.setProperty('--lvl', 0); },
     });
     listening = false; document.body.classList.remove('listening'); root.style.setProperty('--lvl', 0);
-    sendText(v.text, 'face');
   } catch (e) {
     listening = false; document.body.classList.remove('listening'); root.style.setProperty('--lvl', 0); Face.setMood('sad'); Face.doMotion('droop');
     setBubble(e.code === 'silence' ? '말소리가 들리지 않았어요. 얼굴을 눌러 다시 말해 주세요.' : e.code === 'mic' ? '마이크 권한이 필요해요. ⚙ 설정에서 마이크 권한을 허용해 주세요.' : '⚠ ' + (e && e.message ? e.message : e));
@@ -100,3 +131,6 @@ $('face').addEventListener('click', async () => {
 
 // ---- 설정 시트: 스프링으로 열리고, 닫을 때 부드럽게 접힘 ----
 dlg.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); dlg.classList.add('closing'); setTimeout(() => { dlg.classList.remove('closing'); dlg.close(); }, 260); });
+
+// ---- 미리 데우기: AI 서버 연결, 설치된 앱 목록 (첫 요청의 대기 시간 절약) ----
+api.getSettings().then((s) => { if (s && (s.apiKey || s.provider === 'pollinations') && window.LLM) LLM.warm(s.provider); if (window.PhoneAgent && PhoneAgent.available && PhoneAgent.available()) PhoneAgent.vocab(); }).catch(() => {});

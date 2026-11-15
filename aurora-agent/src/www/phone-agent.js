@@ -104,7 +104,6 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     const run = async (cmd, shown) => {
       let s; try { s = await D.shizukuStatus(); } catch { s = {}; }
       if (!s.granted) return { text: 'Shizuku가 실행 중이어야 이 명령을 쓸 수 있어요. ⚙ 설정의 [Shizuku 상태]를 확인해 주세요.', mood: 'sad' };
-      if (!(await ask('명령 실행', cmd))) return { text: '알겠어요, 실행하지 않았어요.', mood: 'neutral' };
       notify({ type: 'tool', name: 'adb_command', input: { command: cmd } });
       const out = (await D.shizukuShell({ command: cmd })).output || '';
       return /error|exception|denied|unknown/i.test(out) ? { text: `실행했는데 오류가 났어요: ${out.slice(0, 200)}`, mood: 'sad' } : { text: shown, mood: 'happy' };
@@ -119,7 +118,6 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     if (m) {
       const name = m[1].replace(/(을|를)$/, '').trim(); if (!name) return null;
       const hit = findApp(await cachedApps(), name); if (!hit) return null;
-      if (!(await ask('앱 실행', `${hit.name} (${hit.package})`))) return { text: '알겠어요, 실행하지 않았어요.', mood: 'neutral' };
       notify({ type: 'tool', name: 'launch_app', input: { name: hit.name } });
       await D.launchApp({ package: hit.package }); return { text: `${hit.name}${eulReul(hit.name)} 열었어요 📱`, mood: 'happy', stay: true };
     }
@@ -152,6 +150,20 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
   }
   async function vocab() { const apps = await cachedApps(); return ['와이파이', '블루투스', '모바일 데이터', '비행기 모드', '볼륨', '음소거', '배터리', '저장공간', '오로라'].concat(apps.map((a) => a.name)).slice(0, 250); }
 
+
+  // ---- 빠른 일반 대화: 도구 없이, 짧은 프롬프트, 글자가 나오는 대로 표시 (기기 조작이 필요하면 [도구필요]로 알려 에이전트 경로로) ----
+  const CHAT_SYS = `당신은 "오로라"라는 귀여운 AI입니다. 한국어로 친근하고 매우 짧게(한두 문장) 답합니다. 맨 첫 줄에 [기분:${MOODS.join('|')}] 태그를 붙입니다. 기기 조작(앱 실행·설정 변경·파일·전화 등)이 필요한 요청이면 다른 말 없이 정확히 [도구필요] 만 출력합니다.`;
+  async function fastChat({ settings, history, notify }) {
+    const msgs = history.slice(-6).map((m) => ({ role: m.role, content: m.content }));
+    const r = await LLM.fastStream({ provider: settings.provider, apiKey: settings.apiKey, model: settings.model, fastModel: settings.fastModel, system: CHAT_SYS, messages: msgs, maxTokens: 320,
+      onWait: (s) => notify({ type: 'wait', seconds: s }),
+      onDelta: (t) => { if (/^\s*\[도구필요/.test(t)) return; const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
+    const raw = (r.content[0] && r.content[0].text || '').trim();
+    if (!raw) throw new Error('빈 응답');
+    if (/^\s*\[도구필요/.test(raw)) return { needTools: true };
+    const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw, mood: c.mood };
+  }
+
   const filterApps = (apps, q) => { q = String(q || '').toLowerCase(); return q ? apps.filter((a) => a.name.toLowerCase().includes(q) || a.package.toLowerCase().includes(q)) : apps; };
 
   async function runPhoneAgent({ settings, history, notify }) {
@@ -162,7 +174,11 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     const lastUser = String(history[history.length - 1].content).slice(0, 200);
     let uiGranted = !!settings.phoneAuto, uiUsed = false;
     const quickAsk = async (title, detail) => settings.phoneAuto ? true : window.confirm(title + '\n\n' + detail + '\n\n허용할까요?');
-    try { const q = await quickRoute(String(history[history.length - 1].content), D, quickAsk, notify); if (q) return q; } catch (e) { /* 실패하면 AI에게 맡김 */ }
+    const lastText = String(history[history.length - 1].content);
+    try { const q = await quickRoute(lastText, D, quickAsk, notify); if (q) return q; } catch (e) { /* 실패하면 AI에게 맡김 */ }
+    if (!LLM.TOOLISH.test(lastText)) {                                   // 기기 조작이 아닌 일반 대화: 빠른 경로
+      try { const f = await fastChat({ settings, history, notify }); if (f && !f.needTools) return f; } catch (e) { /* 도구 경로로 */ }
+    }
 
     const front = async () => { if (uiUsed && ctrl !== 'none') { await comeBack(); await sleep(700); } };
     const ask = async (title, detail) => { if (settings.phoneAuto) return true; await front(); return window.confirm(title + '\n\n' + detail + '\n\n허용할까요?'); };
@@ -247,5 +263,5 @@ ${screen ? `6. 화면 조작이 "접근성 서비스 꺼짐"이면 사용자에�
     if (uiUsed && settings.screenControl) await comeBack();
     return { text: '작업이 너무 길어져서 여기서 멈췄어요. 이어서 말씀해 주세요.', mood: 'surprised' };
   }
-  window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev(), matchScore, vocab };
+  window.PhoneAgent = { run: runPhoneAgent, available: () => !!dev(), matchScore, vocab, fastChat };
 })();
