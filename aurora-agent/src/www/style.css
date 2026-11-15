@@ -5,6 +5,7 @@
   --rim: rgba(255, 255, 255, .85);
   --shadow: 0 10px 34px rgba(46, 56, 120, .13);
   --ai: linear-gradient(135deg, #ff8fd8, #ffb27a 30%, #7fe3c4 55%, #7fa6ff 78%, #b48cff);
+  --spring: cubic-bezier(.34, 1.56, .64, 1); --spring-soft: cubic-bezier(.25, 1.18, .5, 1); --out: cubic-bezier(.22, 1, .36, 1);
   --font: -apple-system, 'SF Pro Display', 'SF Pro Text', 'Pretendard', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -93,3 +94,58 @@ menu button { padding: 11px 22px; }
 .info:empty { display: none; }
 [data-only=web], [data-only=web].row { display: none; }
 select option { color: #161a2e; background: #fff; }
+
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --spring: linear(0, 0.02, 0.075, 0.156, 0.255, 0.365, 0.478, 0.591, 0.699, 0.798, 0.886, 0.963, 1.026, 1.076, 1.114, 1.14, 1.156, 1.163, 1.162, 1.154, 1.143, 1.127, 1.11, 1.092, 1.073, 1.055, 1.038, 1.023, 1.01, 0.999, 0.99, 0.983, 0.978, 0.975, 0.974, 0.973, 0.974, 0.976, 0.978, 0.981, 0.984, 0.987, 0.99, 0.993, 1); --spring-soft: linear(0, 0.01, 0.037, 0.077, 0.127, 0.184, 0.246, 0.31, 0.376, 0.441, 0.504, 0.565, 0.622, 0.676, 0.726, 0.772, 0.813, 0.85, 0.883, 0.912, 0.937, 0.959, 0.977, 0.993, 1.005, 1.015, 1.023, 1.029, 1.033, 1.036, 1.038, 1.038, 1.038, 1.037, 1.036, 1.034, 1.032, 1.029, 1.027, 1.024, 1.022, 1.019, 1.017, 1.015, 1); }
+}
+
+/* ================= 쫀득한 모션 ================= */
+button { transition: transform .7s var(--spring), box-shadow .3s, filter .3s; }
+button:hover { transform: translateY(-1px) scale(1.02); }
+button:active { transform: scale(.9, .84); transition-duration: .12s; transition-timing-function: var(--out); }
+#gear { transition: transform .8s var(--spring), box-shadow .3s; }
+#gear:hover { transform: rotate(35deg) scale(1.06); }
+#gear:active { transform: rotate(90deg) scale(.86); transition-duration: .12s; }
+#form { transition: transform .8s var(--spring), box-shadow .3s; }
+#form:focus-within { transform: scale(1.012, 1.03); }
+button.send { transition: transform .7s var(--spring); }
+#form:focus-within button.send { transform: scale(1.06); }
+
+@keyframes jelly { 0% { transform: scale(.78, 1.18); } 22% { transform: scale(1.14, .88); } 44% { transform: scale(.94, 1.07); } 64% { transform: scale(1.04, .97); } 82% { transform: scale(.99, 1.01); } 100% { transform: none; } }
+@keyframes land { 0% { transform: scale(1.06, .86); } 30% { transform: scale(.96, 1.06); } 58% { transform: scale(1.02, .98); } 100% { transform: none; } }
+@keyframes puff { 0% { opacity: 0; transform: translateY(18px) scale(.7, .5); } 38% { opacity: 1; transform: translateY(-5px) scale(1.1, .9); } 62% { transform: translateY(1px) scale(.96, 1.05); } 82% { transform: scale(1.02, .99); } 100% { opacity: 1; transform: none; } }
+.jelly { animation: jelly .75s var(--out) both; transform-origin: 50% 70%; }
+.land { animation: land .6s var(--out) both; }
+#bubble.jelly { animation-name: puff; animation-duration: .85s; }
+#log div { animation: puff .7s var(--out) both; }
+
+#ubub { animation: none; transition: opacity .7s, transform .7s var(--out), filter .7s; opacity: 0; }
+#ubub.in { opacity: 1; }
+#ubub.measure { animation: none !important; transition: none !important; opacity: 1; }
+#ubub.fade { opacity: 0; transform: translateY(-10px) scale(.94, .9); filter: blur(4px); }
+#ubub.typing { opacity: 1; }
+.fly { position: fixed; z-index: 60; pointer-events: none; padding: 12px 20px; border-radius: 28px; font-size: 17px; line-height: 1.45; text-align: center; word-break: break-word; color: var(--ink); overflow: hidden; will-change: transform;
+  background: linear-gradient(150deg, rgba(168, 190, 255, .9), rgba(214, 176, 255, .72) 60%, rgba(255, 190, 228, .66)); border: 1px solid var(--rim);
+  box-shadow: 0 14px 40px rgba(110, 90, 255, .28), inset 0 1.5px 0 rgba(255, 255, 255, .95); }
+#fx { position: fixed; inset: 0; z-index: 59; pointer-events: none; filter: url(#goo); }
+#fx .drop { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #d7ccff, #b8a8ff 60%, #cba6ff); will-change: transform; }
+
+dialog { animation: sheetIn .8s var(--spring) both; transform-origin: 50% 60%; }
+dialog.closing { animation: sheetOut .28s cubic-bezier(.5, 0, .75, 0) both; }
+dialog::backdrop { animation: aIn .4s ease both; }
+@keyframes sheetIn { from { opacity: 0; transform: translateY(40px) scale(.84, .8); } to { opacity: 1; transform: none; } }
+@keyframes sheetOut { to { opacity: 0; transform: translateY(24px) scale(.94, .9); } }
+@keyframes aIn { from { opacity: 0; } to { opacity: 1; } }
+
+#stage::before, #stage::after { content: ''; position: absolute; left: 50%; top: 52%; width: 56%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; pointer-events: none; opacity: 0; z-index: -1;
+  border: 2px solid rgba(255, 255, 255, .9); background: radial-gradient(circle, rgba(190, 160, 255, .18), rgba(255, 170, 220, .06) 60%, transparent 70%); box-shadow: 0 0 40px rgba(170, 140, 255, .35); }
+body.listening #stage::before { animation: ripple 2.2s var(--out) infinite; }
+body.listening #stage::after { animation: ripple 2.2s var(--out) .9s infinite; }
+@keyframes ripple { 0% { opacity: .9; transform: scale(.7); } 100% { opacity: 0; transform: scale(1.85); } }
+body.listening #form::after { opacity: 1; animation-duration: 2.4s; }
+body.listening #form { transform: scale(calc(1.01 + var(--lvl, 0) * .03), calc(1.02 + var(--lvl, 0) * .08)); }
+#face { cursor: pointer; transition: filter .4s; }
+#face:active { filter: drop-shadow(0 16px 30px rgba(140, 112, 255, .5)) brightness(1.04); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+#fx:empty { display: none; }

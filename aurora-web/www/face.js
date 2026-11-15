@@ -161,5 +161,7 @@ const Face = (() => {
     requestAnimationFrame(frame);
   }
   setMood('neutral'); requestAnimationFrame(frame);
-  return { setMood, doMotion, react, setTalking: (v) => (talking = v), lookAt };
+  // 젤리 포크: 터치/도착 때 통통 눌렸다 튕기는 반응 (얼굴 모양은 그대로, 움직임만)
+  const poke = (s = 1) => { B.sq.v = 7 * s; B.dy.v = -300 * s; B.rot.v = (Math.random() - 0.5) * 1.2 * s; };
+  return { setMood, doMotion, react, poke, setTalking: (v) => (talking = v), lookAt };
 })();
