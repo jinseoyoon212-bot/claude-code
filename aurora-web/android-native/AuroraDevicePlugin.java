@@ -11,6 +11,13 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognitionService;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
@@ -28,7 +35,10 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import rikka.shizuku.Shizuku;
 
@@ -39,13 +49,15 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /** 폰 자체를 다루는 도구 모음: 셸/파일/앱 실행/화면 조작 */
-@CapacitorPlugin(name = "AuroraDevice")
+@CapacitorPlugin(name = "AuroraDevice", permissions = { @Permission(alias = "mic", strings = { Manifest.permission.RECORD_AUDIO }) })
 public class AuroraDevicePlugin extends Plugin {
     private interface Job { JSObject run() throws Exception; }
 
@@ -188,6 +200,122 @@ public class AuroraDevicePlugin extends Plugin {
                 JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
             } catch (Throwable t) { call.reject(String.valueOf(t)); }
         }});
+    }
+
+    // ---------- 어시스턴트(홈 길게 누르기) / 음성 ----------
+    private static TextToSpeech tts;
+    private SpeechRecognizer recognizer;
+
+    /** 기기의 실제 음성인식 서비스(우리 프록시 제외)를 찾는다. 구글 서비스를 우선 */
+    public static ComponentName pickRealRecognizer(Context c) {
+        List<ResolveInfo> l = c.getPackageManager().queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
+        ComponentName best = null;
+        for (ResolveInfo r : l) {
+            if (r.serviceInfo == null || r.serviceInfo.packageName.equals(c.getPackageName())) continue;
+            ComponentName cn = new ComponentName(r.serviceInfo.packageName, r.serviceInfo.name);
+            if (r.serviceInfo.packageName.contains("google")) return cn;
+            if (best == null) best = cn;
+        }
+        return best;
+    }
+
+    @PluginMethod public void isAssistMode(final PluginCall call) {
+        JSObject o = new JSObject(); o.put("assist", getActivity() instanceof AssistActivity); call.resolve(o);
+    }
+
+    @PluginMethod public void closeAssist(final PluginCall call) {
+        try { if (getActivity() instanceof AssistActivity) { getActivity().finish(); getActivity().overridePendingTransition(0, 0); } } catch (Throwable ignored) { }
+        call.resolve();
+    }
+
+    @PluginMethod public void previewAssist(final PluginCall call) {
+        try { startAny(new Intent(ctx(), AssistActivity.class)); JSObject o = new JSObject(); o.put("opened", true); call.resolve(o); }
+        catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    @PluginMethod public void openAssistantSettings(final PluginCall call) {
+        JSObject o = new JSObject();
+        try { startAny(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); o.put("opened", "voice-input"); call.resolve(o); return; } catch (Throwable ignored) { }
+        try { startAny(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); o.put("opened", "default-apps"); call.resolve(o); }
+        catch (Throwable t) { call.reject(String.valueOf(t)); }
+    }
+
+    @PluginMethod public void speak(final PluginCall call) {
+        final String text = call.getString("text", "");
+        getActivity().runOnUiThread(new Runnable() { public void run() {
+            try {
+                if (tts == null) {
+                    tts = new TextToSpeech(ctx().getApplicationContext(), new TextToSpeech.OnInitListener() {
+                        public void onInit(int status) {
+                            if (status != TextToSpeech.SUCCESS) { tts = null; call.reject("음성 합성(TTS)을 쓸 수 없어요."); return; }
+                            tts.setLanguage(Locale.KOREAN); doSpeak(text, call);
+                        }
+                    });
+                } else doSpeak(text, call);
+            } catch (Throwable t) { call.reject(String.valueOf(t)); }
+        }});
+    }
+
+    private void doSpeak(String text, final PluginCall call) {
+        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            public void onStart(String id) { }
+            public void onDone(String id) { call.resolve(); }
+            public void onError(String id) { call.resolve(); }
+        });
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "aurora");
+    }
+
+    @PluginMethod public void stopSpeak(final PluginCall call) { try { if (tts != null) tts.stop(); } catch (Throwable ignored) { } call.resolve(); }
+
+    @PluginMethod public void listen(final PluginCall call) {
+        if (getPermissionState("mic") != PermissionState.GRANTED) { requestPermissionForAlias("mic", call, "micPermsCallback"); return; }
+        startListening(call);
+    }
+
+    @PermissionCallback private void micPermsCallback(PluginCall call) {
+        if (getPermissionState("mic") == PermissionState.GRANTED) startListening(call); else call.reject("마이크 권한이 필요해요.");
+    }
+
+    private void startListening(final PluginCall call) {
+        getActivity().runOnUiThread(new Runnable() { public void run() {
+            try {
+                if (recognizer != null) { recognizer.destroy(); recognizer = null; }
+                ComponentName real = pickRealRecognizer(ctx());
+                if (real == null && !SpeechRecognizer.isRecognitionAvailable(ctx())) { call.reject("이 기기에는 음성 인식 서비스가 없어요. (구글 앱/음성 서비스 필요)"); return; }
+                recognizer = real != null ? SpeechRecognizer.createSpeechRecognizer(ctx(), real) : SpeechRecognizer.createSpeechRecognizer(ctx());
+                Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR");
+                i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx().getPackageName());
+                recognizer.setRecognitionListener(new RecognitionListener() {
+                    public void onReadyForSpeech(Bundle p) { }
+                    public void onBeginningOfSpeech() { }
+                    public void onRmsChanged(float v) { }
+                    public void onBufferReceived(byte[] b) { }
+                    public void onEndOfSpeech() { }
+                    public void onEvent(int t, Bundle p) { }
+                    public void onError(int e) {
+                        String m = e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ? "말소리가 들리지 않았어요." : e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ? "마이크 권한이 없어요." : e == SpeechRecognizer.ERROR_NETWORK || e == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ? "음성 인식 네트워크 오류예요." : "음성 인식 오류 (" + e + ")";
+                        call.reject(m);
+                    }
+                    public void onResults(Bundle r) {
+                        ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (l == null || l.isEmpty()) { call.reject("말소리가 들리지 않았어요."); return; }
+                        JSObject o = new JSObject(); o.put("text", l.get(0)); call.resolve(o);
+                    }
+                    public void onPartialResults(Bundle r) {
+                        ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (l != null && !l.isEmpty()) { JSObject o = new JSObject(); o.put("text", l.get(0)); notifyListeners("speechPartial", o); }
+                    }
+                });
+                recognizer.startListening(i);
+            } catch (Throwable t) { call.reject(String.valueOf(t)); }
+        }});
+    }
+
+    @PluginMethod public void stopListen(final PluginCall call) {
+        getActivity().runOnUiThread(new Runnable() { public void run() { try { if (recognizer != null) recognizer.stopListening(); } catch (Throwable ignored) { } call.resolve(); } });
     }
 
     // ---------- Shizuku (PC 없이 무선 디버깅 권한으로 접근성 켜기 / adb 수준 명령) ----------

@@ -1,0 +1,19 @@
+/* 어시스턴트 오버레이 모드 (홈 버튼 길게 누르기): 파스텔 무지개 테두리 + 아래쪽 작은 얼굴 */
+@property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+#aura { display: none; }
+html.assist, html.assist body { background: transparent !important; }
+html.assist #gear, html.assist #form, html.assist #log, html.assist dialog { display: none !important; }
+html.assist #aura { display: block; position: fixed; inset: 0; pointer-events: none; z-index: 0; animation: auraIn .6s ease both; }
+html.assist #aura::before, html.assist #aura::after {
+  content: ''; position: absolute; inset: 0; border-radius: 26px; padding: 6px;
+  background: conic-gradient(from var(--a), #ffb3e6, #ffd9a0, #fff7a8, #b5ffd9, #a8e8ff, #c4b5ff, #f0b3ff, #ffb3e6);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); mask-composite: exclude;
+  animation: auraSpin 7s linear infinite;
+}
+html.assist #aura::after { filter: blur(18px); padding: 16px; opacity: .85; }
+@keyframes auraSpin { to { --a: 360deg; } }
+@keyframes auraIn { from { opacity: 0; } to { opacity: 1; } }
+html.assist main { position: fixed; left: 0; right: 0; bottom: calc(26px + env(safe-area-inset-bottom)); z-index: 2; padding: 0; flex: none; flex-direction: column-reverse; align-items: center; min-height: 0; }
+html.assist #face { width: 104px; height: 104px; filter: drop-shadow(0 0 22px #ffffffaa); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+html.assist #bubble { margin: 0 0 8px; max-width: 86vw; max-height: 28vh; font-size: 15px; padding: 10px 16px; background: rgba(24, 20, 48, .74); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); animation: auraIn .4s ease both; }

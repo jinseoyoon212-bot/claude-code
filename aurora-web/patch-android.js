@@ -6,7 +6,7 @@ const javaDir = path.join(root, 'app/src/main/java', ...appId.split('.')), res =
 if (!fs.existsSync(root)) { console.error('android/ 가 없어요. 먼저 npx cap add android'); process.exit(1); }
 const pkg = (f) => fs.readFileSync(path.join(native, f), 'utf8').replace(/^package .*;/m, `package ${appId};`);
 fs.mkdirSync(javaDir, { recursive: true });
-for (const f of ['AuroraDevicePlugin.java', 'AuroraAccessibilityService.java']) fs.writeFileSync(path.join(javaDir, f), pkg(f));
+for (const f of ['AuroraDevicePlugin.java', 'AuroraAccessibilityService.java', 'AssistActivity.java', 'AuroraVoiceService.java', 'AuroraSessionService.java', 'AuroraSession.java', 'AuroraRecognitionProxyService.java']) fs.writeFileSync(path.join(javaDir, f), pkg(f));
 fs.writeFileSync(path.join(javaDir, 'MainActivity.java'), `package ${appId};
 
 import android.os.Bundle;
@@ -23,10 +23,12 @@ public class MainActivity extends BridgeActivity {
 fs.mkdirSync(path.join(res, 'xml'), { recursive: true }); fs.mkdirSync(path.join(res, 'values'), { recursive: true });
 fs.copyFileSync(path.join(native, 'aurora_accessibility.xml'), path.join(res, 'xml/aurora_accessibility.xml'));
 fs.copyFileSync(path.join(native, 'aurora_strings.xml'), path.join(res, 'values/aurora_strings.xml'));
+fs.copyFileSync(path.join(native, 'aurora_styles.xml'), path.join(res, 'values/aurora_styles.xml'));
+fs.copyFileSync(path.join(native, 'aurora_voice_interaction.xml'), path.join(res, 'xml/aurora_voice_interaction.xml'));
 
 const mf = path.join(root, 'app/src/main/AndroidManifest.xml'); let m = fs.readFileSync(mf, 'utf8');
 // 권한: 이미 있는 건 건너뛰고 빠진 것만 추가
-const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES', 'WRITE_SECURE_SETTINGS']
+const perms = ['MANAGE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'QUERY_ALL_PACKAGES', 'WRITE_SECURE_SETTINGS', 'RECORD_AUDIO']
   .filter((p) => !m.includes(`android.permission.${p}`)).map((p) => `    <uses-permission android:name="android.permission.${p}" />\n`).join('');
 if (perms) m = m.replace('<application', perms + '    <application');
 if (!m.includes('requestLegacyExternalStorage')) m = m.replace('<application', '<application android:requestLegacyExternalStorage="true"');
@@ -61,6 +63,51 @@ if (!m2.includes('ShizukuProvider')) {
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>`);
   fs.writeFileSync(mf, m2);
+}
+
+
+// 어시스턴트(홈 길게 누르기): 오버레이 액티비티 + 음성 상호작용 서비스 + 음성인식 프록시
+let m3 = fs.readFileSync(mf, 'utf8');
+if (!m3.includes('AuroraVoiceService')) {
+  m3 = m3.replace('</application>', `        <activity
+            android:name="${appId}.AssistActivity"
+            android:theme="@style/AuroraAssistTheme"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.VOICE" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name="${appId}.AuroraVoiceService"
+            android:label="Aurora Agent"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/aurora_voice_interaction" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name="${appId}.AuroraSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name="${appId}.AuroraRecognitionProxyService"
+            android:label="Aurora Agent"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+    </application>`);
+  fs.writeFileSync(mf, m3);
 }
 
 // Gradle 래퍼를 8.7로 (JDK 17/21 모두 지원)

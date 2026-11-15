@@ -20,10 +20,11 @@ $('form').addEventListener('submit', async (e) => {
   history.push({ role: 'user', content: text });
   const r = await api.send(history);
   busy = false;
-  if (r.error) { Face.setMood('sad'); Face.doMotion('droop'); bubble.textContent = '⚠ ' + r.error; history.pop(); return; }
+  if (r.error) { Face.setMood('sad'); Face.doMotion('droop'); bubble.textContent = '⚠ ' + r.error; history.pop(); if (window.AuroraAssist) window.AuroraAssist.onAnswer({ text: '오류가 났어요. ' + String(r.error).slice(0, 80) }); return; }
   history.push({ role: 'assistant', content: r.text });
   Face.setMood(r.mood); Face.doMotion({ happy: 'wave', laugh: 'bounce', love: 'bounce', sad: 'droop', angry: 'shake', surprised: 'jump', sleepy: 'sway', thinking: 'tilt' }[r.mood] || 'nod');
   bubble.textContent = r.text;
+  if (window.AuroraAssist) window.AuroraAssist.onAnswer(r);
   Face.setTalking(true); setTimeout(() => Face.setTalking(false), Math.min(4000, 300 + r.text.length * 60));
 });
 input.addEventListener('input', () => Face.lookAt(0, 0.6));
