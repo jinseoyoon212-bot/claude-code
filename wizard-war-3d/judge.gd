@@ -680,8 +680,8 @@ func _start_pillar() -> void:
 	main.white_flash = 1.0
 	main.shake = maxf(main.shake, 2.0)
 	var c := Vector3(FIELD_X, 0.0, 0.0)
-	pillar_in_mat = _beam_material(Color(1.0, 1.0, 1.0), Color(0.85, 0.92, 1.0), 2.3, 120.0)
-	pillar_out_mat = _beam_material(Color(0.95, 0.95, 1.0), Color(0.3, 0.45, 1.0), 1.5, 120.0)
+	pillar_in_mat = _beam_material(Color(1.0, 1.0, 1.0), Color(0.85, 0.92, 1.0), 1.7, 120.0)
+	pillar_out_mat = _beam_material(Color(0.95, 0.95, 1.0), Color(0.3, 0.45, 1.0), 1.1, 120.0)
 	pillar_in = _cyl(pillar_in_mat)
 	pillar_out = _cyl(pillar_out_mat)
 	root.add_child(pillar_in)
