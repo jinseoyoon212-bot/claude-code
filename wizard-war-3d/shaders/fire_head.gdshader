@@ -178,7 +178,7 @@ void fragment() {
 			}
 			float streak = fbm3(p * vec3(2.4, 4.6, 2.4) + vec3(0.0, -TIME * 3.4, 0.0));
 			float dens = inside * mask;
-			float tt = clamp(0.05 + lit_k * 0.55 + inside * 0.1 + (streak - 0.42) * 1.1 + (1.0 - inside) * 0.12, 0.0, 1.0);
+			float tt = clamp(0.14 + lit_k * 0.6 + inside * 0.1 + (streak - 0.42) * 1.1 + (1.0 - inside) * 0.12, 0.0, 1.0);
 			vec3 fc = fire_color(tt);
 			fc = mix(fc, vec3(0.2, 0.05, 0.02) * (0.5 + nz), ash * 0.85);
 			float a = clamp(dens * dt * 7.0, 0.0, 1.0);
@@ -194,6 +194,6 @@ void fragment() {
 		discard;
 	}
 	vec3 base = col / max(acc, 0.001);
-	ALBEDO = base * (shade + rim * 0.35) * gain;
+	ALBEDO = base * (shade + rim * 0.45) * gain * 1.2;
 	ALPHA = acc;
 }

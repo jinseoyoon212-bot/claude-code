@@ -566,7 +566,7 @@ func _build_ribbon(mesh: ArrayMesh, pts: PackedVector3Array, rad: PackedFloat32A
 
 func _update_ribbons() -> void:
 	rib_mat.set_shader_parameter("fade", 1.0 - ash_k)
-	rib_mat.set_shader_parameter("intensity", 0.6 + 0.15 * sin(t * 13.0))
+	rib_mat.set_shader_parameter("intensity", 0.95 + 0.2 * sin(t * 13.0))
 	# 1) 지팡이 → 용: 소용돌이치며 솟는 불줄기. 용이 모습을 갖추면 줄기의 꼬리가 용에게 빨려 들어간다
 	if stream_mi.visible:
 		var tip := staff_tip()
