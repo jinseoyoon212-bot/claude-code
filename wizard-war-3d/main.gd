@@ -7,6 +7,8 @@ const PORTAL := Vector3(31, 0, 0)
 const CRYSTAL_POS := Vector3(-29, 0, 0)
 const GOLD := {"minion": 4, "warrior": 10, "dark_mage": 8, "rogue": 9,
 	"boss_general": 200, "boss_lich": 250, "boss_rogue": 300, "boss_golem": 350, "boss": 500}
+const WAVE_MIN := 10          # 웨이브 한 번에 나오는 적의 최소 수
+const MAX_CONCURRENT := 10     # 동시에 전장에 있는 적의 수 (보스는 제외하고 이 수가 차면 기다린다)
 const BOSS_ROTATION := ["boss_general", "boss_lich", "boss_rogue", "boss_golem", "boss"]
 const HERO_SPEED := 9.0
 const DASH_CD := 2.0
@@ -1061,6 +1063,8 @@ func _wave_plan(w: int) -> Array:
 	if si >= 2 or (endless and w >= 3):
 		for i in maxi(1, w / 2):
 			q.append("rogue")
+	while q.size() < WAVE_MIN:   # 웨이브마다 최소 WAVE_MIN 명은 나오게 (한 번에 10명 안팎이 몰려온다)
+		q.append("minion")
 	q.shuffle()
 	return q
 
@@ -1173,6 +1177,16 @@ func _update_waves(delta: float) -> void:
 	if not spawn_queue.is_empty():
 		spawn_t -= delta
 		if spawn_t <= 0.0:
+			var nxt: String = spawn_queue[0]
+			var is_bossk := nxt.begins_with("boss")
+			if not is_bossk:
+				var alive := 0
+				for e in units:
+					if e.team == 1 and not e.dead and not e.is_boss and not e.scripted:
+						alive += 1
+				if alive >= MAX_CONCURRENT:
+					spawn_t = 0.25   # 자리가 날 때까지 기다린다
+					return
 			var k: String = spawn_queue.pop_front()
 			var u := spawn_unit(k, PORTAL + Vector3(randf() * 2, 0, randf_range(-3, 3)))
 			u.face(Vector3(-1, 0, 0), true)
@@ -1188,7 +1202,7 @@ func _update_waves(delta: float) -> void:
 				Sfx.play("boss")
 				Sfx.music("music_boss")
 				ring_effect(u.position, Color(0.8, 0.3, 1.0), 0.5, 10.0, 1.0)
-			spawn_t = maxf(0.4, 1.2 - wave * 0.1)
+			spawn_t = maxf(0.25, 0.55 - wave * 0.03)
 		return
 	if not endless and wave >= max_wave:
 		return
@@ -1425,18 +1439,6 @@ func cheat_battle(id: String) -> String:
 			spawn_t = 0.0
 			if next_wave_t >= 0.0:
 				next_wave_t = -1.0
-		"spawn_enemies":
-			set_paused(false)
-			if menu:
-				menu.page = ""
-			var kinds := ["minion", "minion", "minion", "minion", "minion", "minion", "warrior", "warrior", "warrior", "dark_mage"]
-			for i in 10:   # 5열 x 2줄로 흩어서 한꺼번에 나타난다
-				var sp := Vector3(14.0 + (i % 5) * 5.0 + randf_range(-0.8, 0.8), 0.0, -4.0 + (i / 5) * 8.0 + randf_range(-1.0, 1.0))
-				var e := spawn_unit(kinds[i], sp)
-				e.face(Vector3(-1, 0, 0), true)
-				sparks(e.position + Vector3(0, 1.5, 0), Color(0.7, 0.3, 1.0), 14, 4.0, 0.5)
-			Sfx.play("summon", 0.8)
-			return "적 병사 10명 소환"
 		"spawn_allies":
 			set_paused(false)
 			if menu:
