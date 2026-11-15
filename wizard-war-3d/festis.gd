@@ -318,7 +318,7 @@ func _events() -> void:
 		main.white_flash = 0.55
 		main.shake = maxf(main.shake, 1.2)
 		var tip := staff_tip()
-		stream = _fire(root, tip, 120, 0.9, 1.0, 4.0, 1.8, 3.6, Vector3(0.3, 1, 0), 40.0, Vector3(0, 2.5, 0), false)   # 불줄기 끝의 불덩이
+		stream = _fire(root, tip, 40, 0.8, 1.0, 3.0, 0.9, 1.8, Vector3(0.3, 1, 0), 40.0, Vector3(0, 2.5, 0), false)   # 불줄기 끝의 불덩이
 		stream.emission_sphere_radius = 0.9
 		stream.emitting = true
 		embers = _fire(root, tip, 90, 1.6, 6.0, 14.0, 0.12, 0.3, Vector3(0.2, 1, 0), 28.0, Vector3(0, 3.0, 0), false)
@@ -461,9 +461,9 @@ func _spawn_dragon() -> void:
 	smoke = _fire(root, dp, 50, 1.6, 0.4, 1.6, 2.5, 4.2, Vector3(0, 1, 0), 40.0, Vector3(0, 2.0, 0), false, true)
 	smoke.emission_sphere_radius = 2.0
 	smoke.emitting = true
-	breath = _fire(root, dp, 150, 0.75, 30.0, 42.0, 2.2, 4.2, Vector3(0, 0, 1), 11.0, Vector3(0, 2.0, 0), false)
+	breath = _fire(root, dp, 90, 0.75, 30.0, 42.0, 1.4, 2.8, Vector3(0, 0, 1), 11.0, Vector3(0, 2.0, 0), false)
 	breath.emission_sphere_radius = 0.5
-	wave = _fire(root, Vector3(SWEEP_X0, 0.3, 0.0), 110, 0.9, 3.0, 8.0, 1.6, 3.0, Vector3(0, 1, 0), 18.0, Vector3(0, 3.0, 0), false)
+	wave = _fire(root, Vector3(SWEEP_X0, 0.3, 0.0), 70, 0.9, 3.0, 8.0, 1.1, 2.0, Vector3(0, 1, 0), 18.0, Vector3(0, 3.0, 0), false)
 	wave.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	wave.emission_box_extents = Vector3(0.8, 0.2, 16.0)
 
@@ -497,7 +497,6 @@ func _update_dragon(delta: float) -> void:
 	dragon_light.light_energy = (11.0 + 2.5 * sin(t * 14.0)) * (1.0 - ash_k)
 	trail.position = pos
 	smoke.position = pos
-	trail.amount_ratio = 1.0 - ash_k
 	var head := pos + dir * 5.2 + Vector3(0, 0.6, 0)
 	breath.position = head
 	breath.basis = Basis.looking_at(-dir, Vector3.UP)
@@ -663,10 +662,10 @@ func _snapshot_victims() -> void:
 
 func _update_victims() -> void:
 	for v in victims:
-		var u: Unit = v.u
-		if not is_instance_valid(u):
+		if not is_instance_valid(v.u):
 			v.st = 2
 			continue
+		var u: Unit = v.u
 		if v.st == 0 and t >= v.ign:
 			v.st = 1
 			v.kill = t + IGNITE_TO_DEATH
@@ -716,24 +715,24 @@ func camera() -> Array:
 		return [pos, look]
 	if t < T_FORM:   # 불이 솟는 걸 보며 뒤로 빠진다
 		var k2 := smoothstep(0.0, 1.0, (t - T_RAISE) / (T_FORM - T_RAISE))
-		var pos2 := hp + Vector3(2.8, 3.5, 5.6).lerp(Vector3(8.5, 4.4, 12.0), k2)
-		var look2 := hp + Vector3(0.0, lerpf(3.0, 5.6, k2), 0.0)
+		var pos2 := hp + Vector3(2.8, 3.5, 5.6).lerp(Vector3(8.0, 5.5, 20.0), k2)
+		var look2 := hp + Vector3(1.0, lerpf(3.0, 6.5, k2), 0.0)
 		return [pos2, look2]
 	var dp := dragon_pos(minf(t, T_END + 0.5))
 	if t < T_ARC:   # 용이 모습을 갖추는 걸 올려다보며 천천히 돈다
 		var k3 := smoothstep(0.0, 1.0, (t - T_FORM) / (T_ARC - T_FORM))
-		var pos3 := hp + Vector3(8.5, 4.2, 12.0).lerp(Vector3(11.5, 5.5, 14.0), k3)
-		return [pos3, dp + Vector3(0.0, 0.4, 0.0)]
+		var pos3 := hp + Vector3(8.0, 5.5, 20.0).lerp(Vector3(12.0, 6.5, 26.0), k3)
+		return [pos3, dp + Vector3(-1.0, -1.5, 0.0)]
 	if t < T_SWEEP:   # 용을 따라 왼쪽 끝으로
 		var k4 := smoothstep(0.0, 1.0, (t - T_ARC) / (T_SWEEP - T_ARC))
-		var from_pos := hp + Vector3(11.5, 5.5, 14.0)
-		var to_pos := Vector3(-30.0, 8.6, 25.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
+		var from_pos := hp + Vector3(12.0, 6.5, 26.0)
+		var to_pos := Vector3(-28.0, 9.0, 34.0)   # 왼쪽 성벽·탑 뒤로 넘어가지 않게 x를 제한
 		return [from_pos.lerp(to_pos, k4), dp]
 	if t < T_EXIT:   # 전장을 가로지르는 용을 옆에서 따라간다
-		return [Vector3(maxf(dp.x - 11.0, -30.0), 8.6, 25.0), Vector3(dp.x + 3.0, 5.2, 0.0)]
+		return [Vector3(maxf(dp.x - 12.0, -28.0), 9.0, 34.0), Vector3(dp.x + 3.0, 5.0, 0.0)]
 	# 용이 재가 되어 하늘로 솟는 걸 따라가다가, 낮은 각도에서 올려다보며 재가 하늘로 흩어지는 모습을 본다
 	var k5 := smoothstep(0.0, 1.0, (t - T_EXIT) / (DUR - T_EXIT))
-	var p5 := Vector3(maxf(dp.x - 11.0, -30.0), 8.6, 25.0).lerp(hp + Vector3(6.0, 2.6, 17.0), k5)
+	var p5 := Vector3(maxf(dp.x - 12.0, -28.0), 9.0, 34.0).lerp(hp + Vector3(6.0, 2.6, 17.0), k5)
 	var l5 := Vector3(dp.x + 3.0, 5.2, 0.0).lerp(hp + Vector3(8.0, 15.0, 0.0), smoothstep(0.0, 1.0, (t - T_EXIT - 0.6) / (DUR - T_EXIT - 0.6)))
 	return [p5, l5]
 
