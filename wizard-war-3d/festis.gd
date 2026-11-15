@@ -11,21 +11,21 @@ class_name Festis
 ##   7.0  임무를 마친 용이 하늘로 솟구치며 식어서 검은 재가 되어 흩어진다
 ##   10.8 끝 (재가 하늘로 올라가며 세상이 다시 밝아진다)
 
-const DUR := 11.2
+const DUR := 11.5
 const T_RAISE := 1.0     # 지팡이를 든 뒤 1초 뒤에 불이 나온다
-const T_FORM := 2.3
-const T_ARC := 3.5
-const T_SWEEP := 4.5
-const T_EXIT := 7.0
-const T_END := 9.1
+const T_FORM := 2.6
+const T_ARC := 3.8
+const T_SWEEP := 4.8
+const T_EXIT := 7.3
+const T_END := 9.4
 const SWEEP_X0 := -34.0
 const SWEEP_SPEED := 29.6
 const BREATH_REACH := 7.0
 const IGNITE_TO_DEATH := 0.3
-const DRAGON_SCALE := 12.0        # Cethiel 용 메시는 길이 약 1.14 단위, 머리 높이 약 0.43 → 약 14m
+const HEAD_S := 2.2              # 용 머리 크기 (머리 좌표 1단위 = HEAD_S m, 머리 길이 약 4단위)
 const RIB_N := 44                 # 불줄기 튜브의 마디 수
 const RIB_SIDES := 8
-const REAR := 8.4                 # 용 중심에서 꼬리 끝까지(DRAGON_SCALE 기준)
+const NECK := Vector3(-2.6, -1.6, 0.0)   # 머리 좌표에서 목이 끝나는 곳 (여기서 불의 몸통이 이어진다)
 const DAMAGE := 9999.0
 
 var main
@@ -87,14 +87,16 @@ static func prewarm(m) -> void:
 	var holder := Node3D.new()
 	holder.position = m.hero.position + Vector3(0, 2.0, 0)
 	m.add_child(holder)
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/fire_dragon.gdshader")
-	mat.set_shader_parameter("dissolve", 1.0)
-	var d := MeshInstance3D.new()
-	d.mesh = load("res://models/fx/cethiel_dragon.obj")
-	d.scale = Vector3.ONE * 0.004
-	d.material_override = mat
-	holder.add_child(d)
+	var hq := MeshInstance3D.new()
+	var hqm := QuadMesh.new()
+	hqm.size = Vector2(2, 2)
+	hq.mesh = hqm
+	hq.extra_cull_margin = 16384.0
+	var hmat := ShaderMaterial.new()
+	hmat.shader = load("res://shaders/fire_head.gdshader")
+	hmat.set_shader_parameter("head_pos", m.hero.position + Vector3(0, 40, 0))
+	hq.material_override = hmat
+	holder.add_child(hq)
 	var q := MeshInstance3D.new()
 	var qm := QuadMesh.new()
 	qm.size = Vector2(0.02, 0.02)
@@ -327,9 +329,11 @@ func _events() -> void:
 		f["charge_off"] = true
 		if charge:
 			charge.emitting = false
+	if t >= T_FORM - 0.5 and not f.has("spawn"):
+		f["spawn"] = true
+		_spawn_dragon()
 	if t >= T_FORM and not f.has("form"):
 		f["form"] = true
-		_spawn_dragon()
 		Sfx.play("dragon_roar", 1.0, 0.0)
 		main.white_flash = 0.4
 		main.shake = maxf(main.shake, 1.0)
@@ -422,61 +426,83 @@ func _update_fx() -> void:
 
 
 func _spawn_dragon() -> void:
+	## 불줄기의 끝에서 불꽃이 모여 용의 얼굴이 된다 (레이마칭으로 그리는 불의 용 머리, shaders/fire_head.gdshader)
 	dragon = Node3D.new()
 	root.add_child(dragon)
-	var body := MeshInstance3D.new()
-	body.mesh = load("res://models/fx/cethiel_dragon.obj")
 	dragon_mat = ShaderMaterial.new()
-	dragon_mat.shader = load("res://shaders/fire_dragon.gdshader")
-	dragon_mat.set_shader_parameter("dissolve", 0.0)
-	dragon_mat.set_shader_parameter("tex", load("res://models/fx/cethiel_dragon.png"))
-	body.material_override = dragon_mat
-	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	dragon.add_child(body)
+	dragon_mat.shader = load("res://shaders/fire_head.gdshader")
+	dragon_mat.set_shader_parameter("form", 0.0)
+	var q := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(2, 2)
+	q.mesh = qm
+	q.extra_cull_margin = 16384.0
+	q.material_override = dragon_mat
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dragon.add_child(q)
 	dragon_light = OmniLight3D.new()
 	dragon_light.light_color = Color(1.0, 0.5, 0.15)
 	dragon_light.light_energy = 0.0
 	dragon_light.omni_range = 26.0
 	root.add_child(dragon_light)
 	var dp := dragon_pos(T_FORM)
-	trail = _fire(root, dp, 100, 1.0, 0.6, 2.4, 1.8, 3.4, Vector3(0, 1, 0), 40.0, Vector3(0, 1.6, 0), false)
+	trail = _fire(root, dp, 90, 1.0, 0.6, 2.4, 1.6, 3.0, Vector3(0, 1, 0), 40.0, Vector3(0, 1.6, 0), false)
 	trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	trail.emission_sphere_radius = 2.2
+	trail.emission_sphere_radius = 1.8
 	trail.emitting = true
-	smoke = _fire(root, dp, 50, 1.6, 0.4, 1.6, 2.5, 4.2, Vector3(0, 1, 0), 40.0, Vector3(0, 2.0, 0), false, true)
-	smoke.emission_sphere_radius = 2.0
+	smoke = _fire(root, dp, 40, 1.6, 0.4, 1.6, 2.2, 3.6, Vector3(0, 1, 0), 40.0, Vector3(0, 2.0, 0), false, true)
+	smoke.emission_sphere_radius = 1.8
 	smoke.emitting = true
-	breath = _fire(root, dp, 90, 0.75, 30.0, 42.0, 1.4, 2.8, Vector3(0, 0, 1), 11.0, Vector3(0, 2.0, 0), false)
+	breath = _fire(root, dp, 110, 0.75, 30.0, 42.0, 1.6, 3.0, Vector3(0, 0, 1), 11.0, Vector3(0, 2.0, 0), false)
 	breath.emission_sphere_radius = 0.5
 	wave = _fire(root, Vector3(SWEEP_X0, 0.3, 0.0), 70, 0.9, 3.0, 8.0, 1.1, 2.0, Vector3(0, 1, 0), 18.0, Vector3(0, 3.0, 0), false)
 	wave.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	wave.emission_box_extents = Vector3(0.8, 0.2, 16.0)
 
 
-func _update_dragon(delta: float) -> void:
+func _face(tt: float) -> Array:
+	## 용 머리의 위치·방향·크기. 불이 모일 때는 정면(카메라 쪽)을 보고, 날아갈 때는 진행 방향을 보되 얼굴이 보이게 카메라 쪽으로 튼다
+	var pos := dragon_pos(tt)
+	var ahead := dragon_pos(tt + 0.06) - dragon_pos(tt - 0.06)
+	var pdir := ahead.normalized() if ahead.length() > 0.01 else Vector3(1, 0, 0)
+	var face := Vector3(0.5, -0.16, 1.0).normalized()
+	var kfly := smoothstep(T_ARC, T_ARC + 0.9, tt)
+	var dir := face.lerp((pdir * 0.8 + Vector3(0.0, 0.0, 0.55)).normalized(), kfly).normalized()
+	var u := (Vector3.UP - dir * Vector3.UP.dot(dir)).normalized()
+	var b := Basis(dir, u, dir.cross(u))
+	var form := clampf((tt - T_FORM + 0.4) / 1.6, 0.0, 1.0)
+	var out := clampf((tt - T_EXIT - 0.15) / (T_END - T_EXIT - 0.15), 0.0, 1.0)
+	var sc := HEAD_S * (0.75 + 0.25 * _ease_back(form)) * (1.0 + 0.2 * smoothstep(T_ARC, T_SWEEP, tt)) * (1.0 - 0.2 * out)
+	return [pos, b, sc, dir]
+
+
+func _update_dragon(_delta: float) -> void:
 	if dragon == null or not dragon.visible:
 		return
-	var pos := dragon_pos(t)
-	var ahead := dragon_pos(t + 0.06) - dragon_pos(t - 0.06)
-	var dir := ahead.normalized() if ahead.length() > 0.01 else Vector3(1, 0, 0)
-	if t < T_ARC:   # 떠 있는 동안은 적 쪽(오른쪽)을 향한다
-		dir = Vector3(1.0, -0.05, 0.12 * sin(t * 1.3)).normalized()
-	# 모양이 만들어지는 크기·디졸브
-	var form := clampf((t - T_FORM) / 1.15, 0.0, 1.0)
-	var out := clampf((t - T_EXIT - 0.15) / (T_END - T_EXIT - 0.15), 0.0, 1.0)
-	var sc := DRAGON_SCALE * (0.35 + 0.65 * _ease_back(form)) * (1.0 - 0.2 * out)
-	dragon_mat.set_shader_parameter("dissolve", clampf(form * 1.15, 0.0, 1.0))
-	dragon_mat.set_shader_parameter("intensity", (1.9 + 0.7 * sin(t * 9.0)) * (1.0 - 0.5 * ash_k))
+	var fc := _face(t)
+	var pos: Vector3 = fc[0]
+	var b: Basis = fc[1]
+	var sc: float = fc[2]
+	var dir: Vector3 = fc[3]
+	var form := clampf((t - T_FORM + 0.4) / 1.6, 0.0, 1.0)
 	ash_k = smoothstep(0.05, 0.85, clampf((t - T_EXIT) / (T_END - T_EXIT), 0.0, 1.0))
+	# 입: 포효할 때 크게 벌리고, 전장을 쓸 때는 불을 뿜으며 연신 벌린다
+	var roar := smoothstep(T_FORM + 0.05, T_FORM + 0.4, t) * (1.0 - smoothstep(T_FORM + 1.1, T_FORM + 1.8, t))
+	var jaw := 0.14 + 0.5 * roar
+	if t >= T_SWEEP - 0.2 and t < T_EXIT:
+		jaw = 0.34 + 0.2 * sin(t * 6.0)
+	dragon.position = pos
+	var bs := sc * (1.0 + 0.05 * roar * sin(t * 24.0))
+	dragon_mat.set_shader_parameter("head_pos", pos)
+	dragon_mat.set_shader_parameter("axis_f", b.x)
+	dragon_mat.set_shader_parameter("axis_u", b.y)
+	dragon_mat.set_shader_parameter("axis_r", b.z)
+	dragon_mat.set_shader_parameter("head_scale", bs)
+	dragon_mat.set_shader_parameter("jaw", jaw)
+	dragon_mat.set_shader_parameter("form", form)
 	dragon_mat.set_shader_parameter("ash", ash_k)
-	# 목과 몸이 살짝 굽이치고, 포효할 때는 머리가 부풀어 오른다
-	var roar := smoothstep(T_FORM - 0.1, T_FORM + 0.3, t) * (1.0 - smoothstep(T_FORM + 0.9, T_FORM + 1.6, t))
-	sc *= 1.0 + 0.07 * roar * sin(t * 22.0)
-	var b := Basis.looking_at(-dir, Vector3.UP)
-	b = b * Basis(Vector3(1, 0, 0), 0.05 * sin(t * 2.3) - 0.25 * roar) * Basis(Vector3(0, 0, 1), 0.07 * sin(t * 1.7))
-	b = b.scaled(Vector3.ONE * sc)
-	dragon.global_transform = Transform3D(b, pos)
-	hist.append(pos - dir * REAR * (sc / DRAGON_SCALE) + Vector3(0.0, -0.8, 0.0))
+	dragon_mat.set_shader_parameter("gain", 1.0 + 0.08 * sin(t * 11.0))
+	hist.append(pos + b * (NECK * sc))
 	if hist.size() > 700:
 		hist = hist.slice(hist.size() - 600)
 	if ash_fall:
@@ -484,12 +510,11 @@ func _update_dragon(delta: float) -> void:
 	if ash_embers:
 		ash_embers.position = pos
 	dragon_light.position = pos + Vector3(0, 1.0, 0)
-	dragon_light.light_energy = (11.0 + 2.5 * sin(t * 14.0)) * (1.0 - ash_k)
-	trail.position = pos
-	smoke.position = pos
-	var head := pos + dir * 0.45 * sc + Vector3(0, 0.28 * sc, 0)
-	breath.position = head
-	breath.basis = Basis.looking_at(-(dir + Vector3(0, -0.35, 0)).normalized(), Vector3.UP)
+	dragon_light.light_energy = (11.0 + 2.5 * sin(t * 14.0)) * (1.0 - ash_k) * smoothstep(T_FORM - 0.4, T_FORM + 0.6, t)
+	trail.position = pos + b * (NECK * sc * 0.5)
+	smoke.position = trail.position
+	breath.position = pos + b * (Vector3(3.0, -0.35, 0.0) * sc)
+	breath.basis = Basis.looking_at(-(dir + Vector3(0, -0.4, 0)).normalized(), Vector3.UP)
 	wave.position = Vector3(pos.x + 3.0, 0.3, 0.0)
 	if t >= T_SWEEP and t < T_EXIT:
 		main.shake = maxf(main.shake, 0.4)
@@ -546,14 +571,15 @@ func _update_ribbons() -> void:
 	if stream_mi.visible:
 		var tip := staff_tip()
 		var dp := dragon_pos(maxf(t, T_FORM))
-		var rear := dp - Vector3(1.0, 0.0, 0.0) * REAR * 0.35 + Vector3(0.0, 0.4, 0.0)
+		var fc0 := _face(maxf(t, T_FORM))
+		var rear: Vector3 = dp + (fc0[1] as Basis) * (NECK * float(fc0[2]))
 		var p := 1.0 - pow(1.0 - clampf((t - T_RAISE) / (T_FORM - T_RAISE), 0.0, 1.0), 2.2)
-		var ak := smoothstep(T_FORM + 0.25, T_ARC, t)
+		var ak := smoothstep(T_FORM + 0.6, T_ARC + 0.3, t)
 		var pts := PackedVector3Array()
 		var rad := PackedFloat32Array()
 		pts.resize(RIB_N)
 		rad.resize(RIB_N)
-		var rmax := (0.7 + 0.8 * sin(PI * clampf(p, 0.0, 1.0)) + 0.5 * smoothstep(0.7, 1.0, p)) * (1.0 - ak) * smoothstep(0.0, 0.12, p)
+		var rmax := (1.0 + 0.9 * sin(PI * clampf(p, 0.0, 1.0)) + 0.5 * smoothstep(0.7, 1.0, p)) * (1.0 - ak) * smoothstep(0.0, 0.12, p)
 		for i in RIB_N:
 			var sk := float(i) / float(RIB_N - 1)
 			var u := lerpf(ak * p, p, sk)
@@ -573,7 +599,7 @@ func _update_ribbons() -> void:
 			stream_mesh.clear_surfaces()
 	# 2) 용 뒤로 길게 끌리는 불의 몸통
 	if dragon and dragon.visible and hist.size() > 1 and t >= T_FORM + 0.3:
-		var span := 24.0 * smoothstep(T_FORM + 0.3, T_ARC + 0.6, t)
+		var span := 30.0 * smoothstep(T_FORM + 0.3, T_ARC + 0.6, t)
 		var pts2: Array = [hist[hist.size() - 1]]
 		var cum: Array = [0.0]
 		for i in range(hist.size() - 2, -1, -1):
@@ -594,7 +620,7 @@ func _update_ribbons() -> void:
 		out.resize(RIB_N)
 		rr.resize(RIB_N)
 		var j := 0
-		var rt := 1.7 * smoothstep(T_FORM + 0.3, T_ARC + 0.3, t) * (1.0 - 0.7 * ash_k)
+		var rt := 2.3 * smoothstep(T_FORM + 0.3, T_ARC + 0.5, t) * (1.0 - 0.7 * ash_k)
 		for i in RIB_N:
 			var want := float(i) / float(RIB_N - 1) * total   # 머리(꼬리 끝 시작점)로부터의 거리
 			while j < cum.size() - 2 and float(cum[j + 1]) < want:
