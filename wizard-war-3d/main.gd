@@ -7,6 +7,7 @@ const PORTAL := Vector3(31, 0, 0)
 const CRYSTAL_POS := Vector3(-29, 0, 0)
 const GOLD := {"minion": 4, "warrior": 10, "dark_mage": 8, "rogue": 9,
 	"boss_general": 200, "boss_lich": 250, "boss_rogue": 300, "boss_golem": 350, "boss": 500}
+const MAX_ALLIES := 5           # 아군 병사(주인공·수정 제외)는 이 수까지만 나온다
 const WAVE_MIN := 10          # 웨이브 한 번에 나오는 적의 최소 수
 const MAX_CONCURRENT := 10     # 동시에 전장에 있는 적의 수 (보스는 제외하고 이 수가 차면 기다린다)
 const BOSS_ROTATION := ["boss_general", "boss_lich", "boss_rogue", "boss_golem", "boss"]
@@ -199,12 +200,10 @@ func _ready() -> void:
 		cd_max[id] = Save.skill_cd(id)
 	cds["judge"] = 0.0
 	cd_max["judge"] = 30.0   # 개발자 전용 스킬 아스트라 유디키움
-	for i in 4:
-		_ally("knight", Vector3(-15, 0, -6 + i * 4), Vector3(3.5, 0, -4.5 + i * 3.0))
-	for i in 2:
-		_ally("ally_mage", Vector3(-22, 0, -4 + i * 8), Vector3(-2.5, 0, -5.0 + i * 10.0))
-	for i in 2:
-		_ally("archer", Vector3(-21, 0, -1.5 + i * 3), Vector3(-2.0, 0, -1.8 + i * 3.6))
+	for i in 3:   # 시작 병사 5명: 기사 3, 견습 마법사 1, 궁수 1
+		_ally("knight", Vector3(-15, 0, -6 + i * 6), Vector3(3.5, 0, -4.5 + i * 4.5))
+	_ally("ally_mage", Vector3(-22, 0, -4), Vector3(-2.5, 0, -5.0))
+	_ally("archer", Vector3(-21, 0, 3), Vector3(-2.0, 0, 1.8))
 
 	shield_bubble = MeshInstance3D.new()
 	var sb := SphereMesh.new()
@@ -304,6 +303,15 @@ func _overlay(c: Color) -> StandardMaterial3D:
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.albedo_color = c
 	return m
+
+
+func ally_count() -> int:
+	## 살아 있는 아군 병사 수 (주인공·수정 제외)
+	var c := 0
+	for u in units:
+		if u.team == 0 and not u.dead and not u.is_hero and u != crystal and not u.scripted:
+			c += 1
+	return c
 
 
 func _ally(kind: String, pos: Vector3, off: Vector3) -> Unit:
@@ -1090,12 +1098,17 @@ func start_wave() -> void:
 
 
 func reinforce() -> void:
-	for i in 2:
-		_ally("knight", Vector3(-27, 0, -3 + i * 6), Vector3(randf_range(2.0, 5.0), 0, randf_range(-6.0, 6.0)))
-	_ally("archer" if wave % 2 == 0 else "ally_mage", Vector3(-28, 0, 0), Vector3(randf_range(-4.0, -2.0), 0, randf_range(-5.0, 5.0)))
+	## 쓰러진 병사를 보충한다 (병사는 MAX_ALLIES 명까지만)
+	var order := ["knight", "knight", "archer" if wave % 2 == 0 else "ally_mage", "knight", "archer"]
+	var need := mini(MAX_ALLIES - ally_count(), 3)
+	for i in need:
+		_ally(order[i], Vector3(-27, 0, -3 + i * 3), Vector3(randf_range(2.0, 5.0), 0, randf_range(-6.0, 6.0)))
 	hero.heal(hero.max_hp * 0.35)
 	crystal.heal(120)
-	show_banner("증원군 도착", "기사 2명, 원거리 부대 1명 합류 · 체력 회복", 2.4)
+	if need > 0:
+		show_banner("증원군 도착", "병사 %d명 보충 (병사 최대 %d명) · 체력 회복" % [need, MAX_ALLIES], 2.4)
+	else:
+		show_banner("병사 정원 가득", "병사 %d명 모두 무사 · 체력 회복" % MAX_ALLIES, 2.4)
 	Sfx.play("levelup", 0.6)
 
 
@@ -1326,10 +1339,16 @@ func use_skill(s: String) -> void:
 					away.y = 0
 					u.knock = away.normalized() * (4.0 if u.is_boss else 14.0)
 		"summon":
+			var slots := mini(int(v.count), MAX_ALLIES - ally_count())
+			if slots <= 0:   # 병사가 가득 차 있으면 쓰지 않은 것으로 하고 대기시간을 되돌린다
+				cds[s] = 0.0
+				Sfx.play("error", 0.6)
+				show_banner("병사가 가득 찼습니다", "병사는 최대 %d명까지만 나옵니다" % MAX_ALLIES, 1.6)
+				return
 			hero.play_once("Spellcast_Raise", 0.6)
 			Sfx.play("summon")
-			for i in v.count:
-				var p := hero.position + Vector3(1.5, 0, -1.8 * (v.count - 1) / 2.0 + i * 1.8)
+			for i in slots:
+				var p := hero.position + Vector3(1.5, 0, -1.8 * (slots - 1) / 2.0 + i * 1.8)
 				_ally("knight", p, Vector3(randf_range(1.5, 4.5), 0, randf_range(-5.0, 5.0)))
 				ring_effect(p, Color(0.55, 0.9, 1.0), 0.3, 2.5, 0.6)
 				sparks(p + Vector3(0, 1, 0), Color(0.55, 0.9, 1.0), 24, 4.0, 0.7)
