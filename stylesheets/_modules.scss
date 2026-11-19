@@ -1,0 +1,390 @@
+// Using BEM syntax explained here: https://csswizardry.com/2013/01/mindbemding-getting-your-head-round-bem-syntax/
+
+// Module: Contact Name
+.module-contact-name {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+  font-weight: 400;
+}
+
+.module-contact-name span {
+  text-overflow: ellipsis;
+  overflow-x: hidden;
+  width: 100%;
+  text-align: left;
+  user-select: none;
+}
+
+// Module: Message
+
+.module-message__img-attachment {
+  cursor: pointer;
+}
+
+.module-message__generic-attachment {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: var(--border-radius-message-box);
+
+  .module-message__container--outgoing & {
+    color: var(--message-bubble-outgoing-text-color);
+    background: var(--message-bubble-outgoing-background-color);
+  }
+
+  .module-message__container--incoming & {
+    color: var(--message-bubble-incoming-text-color);
+    background: var(--message-bubble-incoming-background-color);
+  }
+}
+
+.module-message__generic-attachment__icon-container {
+  position: relative;
+}
+.module-message__generic-attachment__spinner-container {
+  padding-inline-start: 4px;
+  padding-inline-end: 4px;
+}
+
+.module-message__generic-attachment__text {
+  flex-grow: 1;
+  margin-inline-start: 8px;
+}
+
+.module-message__generic-attachment__file-name {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 500;
+  margin-top: 2px;
+
+  // Handling really long filenames - cut them off
+  overflow-x: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.module-message__generic-attachment__file-name,
+.module-message__generic-attachment__file-size {
+  color: var(--text-primary-color);
+}
+
+.module-message__generic-attachment__file-size {
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+  letter-spacing: 0.3px;
+  margin-top: 3px;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.module-message__generic-attachment__file-name--incoming,
+.module-message__generic-attachment__file-size--incoming {
+  color: var(--message-bubble-incoming-text-color);
+}
+
+.module-message__generic-attachment__file-name--outgoing,
+.module-message__generic-attachment__file-size--outgoing {
+  color: var(--message-bubble-outgoing-text-color);
+}
+
+.module-conversation__user,
+.module-message__author {
+  font-size: var(--font-size-sm);
+  font-weight: 300;
+  line-height: 18px;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  align-items: center;
+}
+
+// Module: Contact List Item
+
+.module-contact-list-item {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  color: var(--text-secondary-color);
+}
+
+.module-contact-list-item--with-click-handler {
+  cursor: pointer;
+}
+
+.module-contact-list-item__text {
+  margin-inline-start: 8px;
+}
+
+.module-contact-list-item__text__name {
+  font-weight: 300;
+  font-size: 14px;
+}
+
+.module-contact-list-item__text__additional-data {
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+// Module: Document List Item
+
+.module-document-list-item {
+  padding-inline-end: 10px;
+  width: 100%;
+  height: 72px;
+}
+
+.module-document-list-item--with-separator {
+  border-bottom: var(--default-borders);
+}
+
+.module-document-list-item__content {
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  height: 100%;
+}
+
+.module-document-list-item__metadata {
+  display: inline-flex;
+  flex-direction: column;
+  flex-grow: 1;
+  margin-inline-start: 8px;
+  margin-inline-end: 8px;
+  min-width: 0;
+}
+
+.module-document-list-item__file-name {
+  font-weight: bold;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-x: hidden;
+}
+
+.module-document-list-item__file-size {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 80%;
+}
+
+.module-document-list-item__date {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+// Module: Conversation List Item
+
+.module-conversation-list-item {
+  max-width: 300px;
+  display: flex;
+  flex-direction: row;
+  padding-inline-end: 16px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-inline-start: 16px;
+  align-items: center;
+
+  cursor: pointer;
+
+  &:focus-visible {
+    box-shadow: var(--box-shadow-focus-visible-inset);
+  }
+}
+
+.module-conversation-list-item__content {
+  flex-grow: 1;
+  margin-inline-start: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  max-height: 100%;
+  display: flex;
+  gap: 5px;
+
+  .session-icon-button:first-child {
+    margin-right: var(--margins-sm);
+  }
+}
+
+.module-conversation-list-item__header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  // enforce height so icons appearing do not make a layout shift
+  height: 21px;
+}
+
+.module-conversation-list-item__header__name {
+  flex-grow: 1;
+  flex-shrink: 1000; // we need this to take all the shrinking instead of the ListItemIcons
+  font-size: 14px;
+  line-height: 18px;
+
+  overflow-x: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  font-weight: 300;
+}
+
+.module-conversation-list-item__header__date {
+  flex-shrink: 0;
+}
+
+.module-conversation-list-item__header__date--has-unread {
+  font-weight: 300;
+  color: var(--conversation-tab-text-unread-color);
+}
+
+.module-conversation-list-item__message {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+// Module: Image
+
+.module-image {
+  overflow: hidden;
+  background: none;
+  position: relative;
+  display: inline-block;
+  margin: 1px;
+  vertical-align: middle;
+}
+
+.module-image__caption-icon {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+}
+
+.module-image__with-click-handler {
+  cursor: pointer;
+}
+
+.module-image--soft-corners {
+  border-radius: var(--border-radius-message-box);
+}
+
+.module-image__loading-placeholder {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: var(--message-link-preview-background-color);
+}
+
+.module-image__image {
+  object-fit: contain;
+  cursor: pointer;
+
+  &-cover {
+    object-fit: cover;
+  }
+}
+
+.module-image__text-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+
+  color: var(--white-color);
+
+  font-size: 20px;
+  font-weight: normal;
+  letter-spacing: 0;
+  text-align: center;
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+// Module: Left Pane
+
+// Module H5AudioPlayer
+$rhap_background-color: var(--transparent-color) !default;
+$rhap_font-family: inherit !default;
+
+.module-message__container--outgoing {
+  .rhap_container {
+    background-color: var(--message-bubble-outgoing-background-color);
+    .rhap_play-pause-button,
+    .session-button {
+      color: var(--message-bubble-outgoing-text-color);
+      &:hover {
+        color: var(--message-bubble-outgoing-text-color);
+      }
+    }
+  }
+
+  .rhap_volume-button {
+    color: var(--message-bubble-outgoing-text-color);
+  }
+
+  .rhap_time {
+    color: var(--message-bubble-outgoing-text-color);
+  }
+
+  .rhap_progress-bar {
+    background-color: var(--text-secondary-color);
+  }
+
+  .rhap_progress-filled {
+    background-color: var(--button-icon-stroke-hover-color);
+  }
+
+  .rhap_download-progress {
+    background-color: var(--button-icon-stroke-hover-color);
+  }
+
+  .rhap_progress-indicator {
+    background: var(--primary-color);
+  }
+}
+
+.module-message__container--incoming {
+  .rhap_container {
+    background-color: var(--message-bubble-incoming-background-color);
+    .rhap_play-pause-button,
+    .session-button {
+      color: var(--message-bubble-incoming-text-color);
+      &:hover {
+        color: var(--message-bubble-incoming-text-color);
+      }
+    }
+  }
+
+  .rhap_volume-button {
+    color: var(--message-bubble-incoming-text-color);
+  }
+
+  .rhap_time {
+    color: var(--message-bubble-incoming-text-color);
+  }
+
+  .rhap_progress-bar {
+    background-color: var(--text-secondary-color);
+  }
+
+  .rhap_progress-filled {
+    background-color: var(--button-icon-stroke-hover-color);
+  }
+
+  .rhap_download-progress {
+    background-color: var(--button-icon-stroke-hover-color);
+  }
+
+  .rhap_progress-indicator {
+    background: var(--primary-color);
+  }
+}

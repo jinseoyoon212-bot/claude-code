@@ -1,0 +1,154 @@
+/* eslint-disable no-unused-expressions */
+import { expect } from 'chai';
+import Sinon from 'sinon';
+import { UserConfigWrapperNode, type ProConfig, type ProConfigSet } from 'libsession_util_nodejs';
+import {
+  base64_variants,
+  from_hex,
+  randombytes_buf,
+  to_base64,
+  to_hex,
+} from 'libsodium-wrappers-sumo';
+
+import { UserUtils } from '../../../../session/utils';
+import { SessionUtilUserProfile } from '../../../../session/utils/libsession/libsession_utils_user_profile';
+import { TestUtils } from '../../../test-utils';
+import { stubWindowLog } from '../../../test-utils/utils';
+import { NetworkTime } from '../../../../util/NetworkTime';
+import { getSodiumNode } from '../../../../node/sodiumNode';
+
+describe('libsession_user_profile', () => {
+  stubWindowLog();
+
+  const getLatestTimestampOffset = 200000;
+  const ourNumber = TestUtils.generateFakePubKeyStr();
+
+  beforeEach(() => {
+    Sinon.stub(NetworkTime, 'getLatestTimestampOffset').returns(getLatestTimestampOffset);
+    Sinon.stub(UserUtils, 'getOurPubKeyStrFromCache').returns(ourNumber);
+    TestUtils.stubLibSessionWorker(undefined);
+  });
+
+  afterEach(() => {
+    Sinon.restore();
+  });
+
+  describe('isUserProfileToStoreInWrapper', () => {
+    it('returns true if thats our convo', () => {
+      expect(SessionUtilUserProfile.isUserProfileToStoreInWrapper(ourNumber)).to.be.true;
+    });
+
+    it('returns false if thats NOT our convo', () => {
+      const notUs = TestUtils.generateFakePubKeyStr();
+      expect(SessionUtilUserProfile.isUserProfileToStoreInWrapper(notUs)).to.be.false;
+    });
+  });
+
+  describe('generateProMasterKey', () => {
+    it('can generate pro master key and regenerate the same key', async () => {
+      const userKeys = await TestUtils.generateUserKeyPairs();
+      const ed25519Seed = userKeys.ed25519KeyPair.privateKey.slice(0, 32);
+
+      const wrapper = new UserConfigWrapperNode(userKeys.ed25519KeyPair.privKeyBytes, null);
+
+      const generated = wrapper.generateProMasterKey({ ed25519SeedHex: to_hex(ed25519Seed) });
+      expect(generated.proMasterKeyHex.length).to.equal(128);
+
+      const generatedAgain = wrapper.generateProMasterKey({ ed25519SeedHex: to_hex(ed25519Seed) });
+
+      expect(generatedAgain).to.be.deep.eq(generated);
+    });
+  });
+
+  describe('proConfig', () => {
+    it('can set, get & remove pro config', async () => {
+      const sodium = await getSodiumNode();
+      const userKeys = await TestUtils.generateUserKeyPairs();
+      const ed25519Seed = userKeys.ed25519KeyPair.privateKey.slice(0, 32);
+
+      const wrapper = new UserConfigWrapperNode(userKeys.ed25519KeyPair.privKeyBytes, null);
+      expect(wrapper.getProConfig()).to.be.null;
+
+      const proPrivKey = from_hex(wrapper.generateRotatingPrivKeyHex().rotatingPrivKeyHex);
+      const proSeed = sodium.crypto_sign_ed25519_sk_to_seed(proPrivKey);
+
+      const proConfig: ProConfigSet = {
+        rotatingSeedHex: to_hex(proSeed),
+        proProof: {
+          // libsession stores the proof expiry in whole seconds (the JS domain stays ms), so a
+          // sub-second value would come back floored. Use a second-aligned one to round-trip as-is.
+          expiryMs: Math.floor(Date.now() / 1000) * 1000 + 1000,
+          revocationTagB64: to_base64(ed25519Seed, base64_variants.ORIGINAL),
+          signatureHex: to_hex(randombytes_buf(64)),
+        },
+      };
+      const rotatingPrivKeyHex = to_hex(proPrivKey);
+      const rotatingPubKeyHex = to_hex(sodium.crypto_sign_ed25519_sk_to_pk(proPrivKey));
+
+      wrapper.setProConfig(proConfig);
+
+      const proConfigFromWrapper = wrapper.getProConfig();
+      if (!proConfigFromWrapper) {
+        throw new Error('proConfigFromWrapper is null');
+      }
+      const expectedProConfig: ProConfig = {
+        rotatingPrivKeyHex,
+        proProof: {
+          rotatingPubkeyHex: rotatingPubKeyHex,
+          expiryMs: proConfig.proProof.expiryMs,
+          revocationTagB64: proConfig.proProof.revocationTagB64,
+          signatureHex: proConfig.proProof.signatureHex,
+        },
+      };
+      expect(proConfigFromWrapper).to.be.deep.eq(expectedProConfig);
+
+      wrapper.removeProConfig();
+
+      expect(wrapper.getProConfig()).to.be.deep.eq(null);
+    });
+  });
+
+  describe('setProBadge', () => {
+    it('can set & get setProBadge', async () => {
+      const userKeys = await TestUtils.generateUserKeyPairs();
+
+      const wrapper = new UserConfigWrapperNode(userKeys.ed25519KeyPair.privKeyBytes, null);
+      expect(wrapper.getProProfileBitset()).to.be.deep.eq(0n);
+
+      wrapper.setProBadge(true);
+
+      expect(wrapper.getProProfileBitset()).to.be.deep.eq(1n);
+    });
+  });
+
+  describe('setAnimatedAvatar', () => {
+    it('can set & get setAnimatedAvatar', async () => {
+      const userKeys = await TestUtils.generateUserKeyPairs();
+
+      const wrapper = new UserConfigWrapperNode(userKeys.ed25519KeyPair.privKeyBytes, null);
+      expect(wrapper.getProProfileBitset()).to.be.deep.eq(0n);
+
+      wrapper.setAnimatedAvatar(true);
+      expect(wrapper.getProProfileBitset()).to.be.deep.eq(2n);
+    });
+  });
+
+  describe('setProAccess', () => {
+    it('can set & get getProAccessExpiry', async () => {
+      const userKeys = await TestUtils.generateUserKeyPairs();
+
+      const wrapper = new UserConfigWrapperNode(userKeys.ed25519KeyPair.privKeyBytes, null);
+      expect(wrapper.getProAccessExpiry()).to.be.deep.eq(null);
+
+      // libsession stores the access expiry in whole seconds (the JS domain stays ms), so a
+      // sub-second value would come back floored. Use a second-aligned one to round-trip as-is.
+      const now = Math.floor(Date.now() / 1000) * 1000;
+      wrapper.setProAccessExpiry(now);
+
+      expect(wrapper.getProAccessExpiry()).to.be.deep.eq(now);
+      wrapper.setProAccessExpiry(null);
+
+      expect(wrapper.getProAccessExpiry()).to.be.deep.eq(null);
+    });
+  });
+});

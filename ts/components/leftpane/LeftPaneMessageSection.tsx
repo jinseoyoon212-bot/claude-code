@@ -1,0 +1,249 @@
+import { isEmpty } from 'lodash';
+import { useSelector } from 'react-redux';
+import { AutoSizer, List, ListRowProps } from 'react-virtualized';
+import styled from 'styled-components';
+import { type JSX } from 'react';
+import { getAppDispatch } from '../../state/dispatch';
+
+import { SearchResults } from '../search/SearchResults';
+import { LeftPaneSectionHeader } from './LeftPaneSectionHeader';
+import { MessageRequestsBanner } from './MessageRequestsBanner';
+
+import { getLeftPaneConversationIds } from '../../state/selectors/conversations';
+import { useSearchTermForType } from '../../state/selectors/search';
+import { useLeftOverlayModeType } from '../../state/selectors/section';
+import { assertUnreachable } from '../../types/sqlSharedTypes';
+import { SessionSearchInput } from '../SessionSearchInput';
+import { StyledLeftPaneList } from './LeftPaneList';
+import { ConversationListItem } from './conversation-list-item/ConversationListItem';
+import { OverlayClosedGroupV2 } from './overlay/OverlayClosedGroup';
+import { OverlayCommunity } from './overlay/OverlayCommunity';
+import { OverlayInvite } from './overlay/OverlayInvite';
+import { OverlayMessage } from './overlay/OverlayMessage';
+import { OverlayMessageRequest } from './overlay/OverlayMessageRequest';
+import { OverlayChooseAction } from './overlay/choose-action/OverlayChooseAction';
+import { sectionActions } from '../../state/ducks/section';
+import {
+  openConversationWithMessages,
+  resetConversationExternal,
+} from '../../state/ducks/conversations';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { KbdShortcut } from '../../util/keyboardShortcuts';
+import { UserUtils } from '../../session/utils';
+
+const StyledLeftPaneContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+`;
+
+const StyledConversationListContent = styled.div`
+  background: var(--background-primary-color);
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  transition: none;
+`;
+
+const ClosableOverlay = () => {
+  const leftOverlayMode = useLeftOverlayModeType();
+
+  switch (leftOverlayMode) {
+    case 'choose-action':
+      return <OverlayChooseAction />;
+    case 'open-group':
+      return <OverlayCommunity />;
+    case 'closed-group':
+      return <OverlayClosedGroupV2 />;
+    case 'message':
+      return <OverlayMessage />;
+    case 'message-requests':
+      return <OverlayMessageRequest />;
+    case 'invite-a-friend':
+      return <OverlayInvite />;
+    case undefined:
+      return null;
+    default:
+      return assertUnreachable(
+        leftOverlayMode,
+        `ClosableOverlay: leftOverlayMode case not handled "${leftOverlayMode}"`
+      );
+  }
+};
+
+const ConversationRow = (
+  { index, key, style }: ListRowProps,
+  conversationIds: Array<string>
+): JSX.Element | null => {
+  // assume conversations that have been marked unapproved should be filtered out by selector.
+  if (!conversationIds) {
+    throw new Error('ConversationRow: Tried to render without conversations');
+  }
+
+  const conversationId = conversationIds[index];
+  if (!conversationId) {
+    throw new Error(
+      'ConversationRow: conversations selector returned element containing falsy value.'
+    );
+  }
+
+  return <ConversationListItem key={key} style={style} conversationId={conversationId} />;
+};
+
+function openConversation(id: string) {
+  return openConversationWithMessages({ conversationKey: id, messageId: null });
+}
+
+function useConversationListKeyboardShortcuts(conversationIds: Array<string>) {
+  const openNoteToSelf = () => {
+    const id = UserUtils.getOurPubKeyStrFromCache();
+    void openConversationWithMessages({ conversationKey: id, messageId: null });
+  };
+
+  const closeOpenConversation = () => {
+    window.inboxStore?.dispatch(resetConversationExternal());
+  };
+
+  useKeyboardShortcut({ shortcut: KbdShortcut.openNoteToSelf, handler: openNoteToSelf });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.closeOpenConversation,
+    handler: closeOpenConversation,
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation1,
+    handler: () => void openConversation(conversationIds[0]),
+    disabled: !conversationIds[0],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation2,
+    handler: () => void openConversation(conversationIds[1]),
+    disabled: !conversationIds[1],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation3,
+    handler: () => void openConversation(conversationIds[2]),
+    disabled: !conversationIds[2],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation4,
+    handler: () => void openConversation(conversationIds[3]),
+    disabled: !conversationIds[3],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation5,
+    handler: () => void openConversation(conversationIds[4]),
+    disabled: !conversationIds[4],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation6,
+    handler: () => void openConversation(conversationIds[5]),
+    disabled: !conversationIds[5],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation7,
+    handler: () => void openConversation(conversationIds[6]),
+    disabled: !conversationIds[6],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation8,
+    handler: () => void openConversation(conversationIds[7]),
+    disabled: !conversationIds[7],
+  });
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationNavigation9,
+    handler: () => void openConversation(conversationIds[8]),
+    disabled: !conversationIds[8],
+  });
+}
+
+function useConversationList() {
+  const searchTerm = useSearchTermForType('global');
+  const conversationIds = useSelector(getLeftPaneConversationIds);
+  return {
+    searchTerm,
+    conversationIds,
+  };
+}
+
+function ConversationList() {
+  const { searchTerm, conversationIds } = useConversationList();
+  useConversationListKeyboardShortcuts(conversationIds);
+
+  if (!isEmpty(searchTerm)) {
+    return <SearchResults />;
+  }
+
+  if (!conversationIds) {
+    throw new Error(
+      'ConversationList: must provided conversations if no search results are provided'
+    );
+  }
+
+  return (
+    <StyledLeftPaneList
+      key="conversation-list-0"
+      onPointerDown={e => {
+        e.currentTarget.dataset.mouseFocus = 'true';
+      }}
+      onFocusCapture={e => {
+        // [react-compiler] is a pain. The good way would be to have two useRefs here, but for some reason the compiler doesn't like that.
+        // Hopefully a release of react will fix it.
+        if (e.currentTarget.dataset.mouseFocus !== 'true') {
+          const container = e.currentTarget;
+          // Only scroll to top when focus enters from outside the list
+          if (!container.contains(e.relatedTarget as Node)) {
+            container.querySelector<HTMLElement>('.ReactVirtualized__List')?.scrollTo(0, 0);
+            setTimeout(() => {
+              container.querySelector<HTMLElement>('.module-conversation-list-item')?.focus();
+            }, 100);
+          }
+        }
+        delete e.currentTarget.dataset.mouseFocus;
+      }}
+    >
+      <AutoSizer>
+        {({ height, width }) => (
+          <List
+            tabIndex={-1}
+            height={height}
+            rowCount={conversationIds.length}
+            rowHeight={64}
+            rowRenderer={props => ConversationRow(props, conversationIds)}
+            width={width}
+            autoHeight={false}
+            conversationIds={conversationIds}
+            style={{ outline: 'none' }}
+          />
+        )}
+      </AutoSizer>
+    </StyledLeftPaneList>
+  );
+}
+
+export function LeftPaneMessageSection() {
+  const leftOverlayMode = useLeftOverlayModeType();
+  const dispatch = getAppDispatch();
+
+  return (
+    <StyledLeftPaneContent>
+      <LeftPaneSectionHeader />
+      {leftOverlayMode ? (
+        <ClosableOverlay />
+      ) : (
+        <StyledConversationListContent>
+          <SessionSearchInput searchType="global" />
+          <MessageRequestsBanner
+            handleOnClick={() => {
+              dispatch(
+                sectionActions.setLeftOverlayMode({ type: 'message-requests', params: null })
+              );
+            }}
+          />
+          <ConversationList />
+        </StyledConversationListContent>
+      )}
+    </StyledLeftPaneContent>
+  );
+}

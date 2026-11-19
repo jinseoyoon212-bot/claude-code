@@ -1,0 +1,295 @@
+import { fromPairs, map } from 'lodash';
+import { ConvoHub } from '../session/conversations';
+import { UserUtils } from '../session/utils';
+import { createStore } from './createStore';
+import { initialCallState } from './ducks/call';
+import { getEmptyConversationState, openConversationWithMessages } from './ducks/conversations';
+import { initialDefaultRoomState } from './ducks/defaultRooms';
+import { initialModalState } from './ducks/modalDialog';
+import { initialOnionPathState } from './ducks/onions';
+import { initialPrimaryColorState } from './ducks/primaryColor';
+import { initialSearchState } from './ducks/search';
+import { initialSectionState } from './ducks/section';
+import { getEmptyStagedAttachmentsState } from './ducks/stagedAttachments';
+import { StateType } from './reducer';
+import { Data } from '../data/data';
+import { SettingsKey } from '../data/settings-key';
+import { groupInfoActions, initialGroupState } from './ducks/metaGroups';
+import { makeUserGroupGetRedux } from './ducks/types/groupReduxTypes';
+import { getSettingsInitialState, updateAllOnStorageReady } from './ducks/settings';
+import { initialSogsRoomInfoState } from './ducks/sogsRoomInfo';
+import { Storage } from '../util/storage';
+import { UserGroupsWrapperActions } from '../webworker/workers/browser/libsession_worker_interface';
+import { initialReleasedFeaturesState } from './ducks/releasedFeatures';
+import { initialDebugState } from './ducks/debug';
+import type { UserGroupState } from './ducks/userGroups';
+import { initialThemeState } from './theme/ducks/theme';
+import { initialNetworkModalState } from './ducks/networkModal';
+import { initialNetworkDataState, networkDataActions } from './ducks/networkData';
+import {
+  applyMockedProStatusAtStartup,
+  initialProBackendDataState,
+  proBackendDataActions,
+  reconcileProProof,
+  refreshProStatusOnStartupIfNeeded,
+} from './ducks/proBackendData';
+import { setProUserConfigChangedHandler } from '../webworker/workers/browser/libsession/libsession_worker_userconfig_interface';
+import { initialProAccessState, refreshProAccess } from './ducks/proAccess';
+import { MessageQueue } from '../session/sending';
+import { AvatarMigrate } from '../session/utils/job_runners/jobs/AvatarMigrateJob';
+import { runUnsupportedMessageMaintenance } from '../session/unsupported_messages/reprocess';
+import { handleTriggeredCTAs } from '../components/dialog/SessionCTA';
+import { UserSync } from '../session/utils/job_runners/jobs/UserSyncJob';
+import { forceSyncConfigurationNowIfNeeded } from '../session/utils/sync/syncUtils';
+import { SnodePool } from '../session/apis/snode_api/snodePool';
+import { AvatarReupload } from '../session/utils/job_runners/jobs/AvatarReuploadJob';
+import { DURATION } from '../session/constants';
+import { getSwarmPollingInstance } from '../session/apis/snode_api';
+import { getOpenGroupManager } from '../session/apis/open_group_api/opengroupV2/OpenGroupManagerV2';
+import { loadDefaultRooms } from '../session/apis/open_group_api/opengroupV2/ApiUtil';
+import { getDataFeatureFlag } from './ducks/types/releasedFeaturesReduxTypes';
+import { isTestIntegration } from '../shared/env_vars';
+import { sleepFor } from '../session/utils/Promise';
+import { UpdateProRevocationList } from '../session/utils/job_runners/jobs/UpdateProRevocationListJob';
+import { initialAnnouncementState } from './ducks/announcements';
+import { LibSessionUtil } from '../session/utils/libsession/libsession_utils';
+
+function makeLookup<T>(items: Array<T>, key: string): { [key: string]: T } {
+  // Yep, we can't index into item without knowing what it is. True. But we want to.
+  const pairs = map(items, item => [(item as any)[key] as string, item]);
+
+  return fromPairs(pairs);
+}
+
+async function createSessionInboxStore() {
+  // Here we set up a full redux store with initial state for our LeftPane Root
+  const conversations = ConvoHub.use()
+    .getConversations()
+    .map(conversation => conversation.getConversationModelProps());
+
+  const userGroups: UserGroupState['userGroups'] = {};
+
+  (await UserGroupsWrapperActions.getAllGroups()).forEach(m => {
+    userGroups[m.pubkeyHex] = makeUserGroupGetRedux(m);
+  });
+
+  const initialState: StateType = {
+    conversations: {
+      ...getEmptyConversationState(),
+      conversationLookup: makeLookup(conversations, 'id'),
+    },
+    user: {
+      ourDisplayNameInProfile: (await UserUtils.getOurProfile()).displayName || '',
+      ourNumber: UserUtils.getOurPubKeyStrFromCache(),
+      uploadingNewAvatarCurrentUser: false,
+      uploadingNewAvatarCurrentUserFailed: false,
+    },
+    section: initialSectionState,
+    defaultRooms: initialDefaultRoomState,
+    search: initialSearchState,
+    theme: initialThemeState,
+    primaryColor: initialPrimaryColorState,
+    onionPaths: initialOnionPathState,
+    modals: initialModalState,
+    stagedAttachments: getEmptyStagedAttachmentsState(),
+    call: initialCallState,
+    sogsRoomInfo: initialSogsRoomInfoState,
+    settings: getSettingsInitialState(),
+    groups: initialGroupState,
+    userGroups: { userGroups },
+    releasedFeatures: initialReleasedFeaturesState,
+    debug: initialDebugState,
+    networkModal: initialNetworkModalState,
+    networkData: initialNetworkDataState,
+    proBackendData: initialProBackendDataState,
+    proAccess: initialProAccessState,
+    announcements: initialAnnouncementState,
+  };
+
+  return createStore(initialState);
+}
+
+// Do this only if we created a new account id, or if we already received the initial configuration message
+const triggerSyncIfNeeded = async () => {
+  const us = UserUtils.getOurPubKeyStrFromCache();
+  await ConvoHub.use().get(us).setDidApproveMe(true, true);
+  await ConvoHub.use().get(us).setIsApproved(true, true);
+  const didWeHandleAConfigurationMessageAlready =
+    (await Data.getItemById(SettingsKey.hasSyncedInitialConfigurationItem))?.value || false;
+  if (didWeHandleAConfigurationMessageAlready) {
+    await forceSyncConfigurationNowIfNeeded();
+  }
+};
+
+/**
+ * We only need to regenerate the last message of groups/communities once,
+ * and we can remove it in a few months safely
+ */
+async function regenerateLastMessagesGroupsCommunities() {
+  if (Storage.getBoolOr(SettingsKey.lastMessageGroupsRegenerated, false)) {
+    return; // already regenerated once
+  }
+
+  ConvoHub.use()
+    .getConversations()
+    .filter(m => m.isClosedGroupV2() || m.isOpenGroupV2())
+    .forEach(m => {
+      m.updateLastMessage();
+    });
+  await Storage.put(SettingsKey.lastMessageGroupsRegenerated, true);
+}
+
+/**
+ * This function is called only once: on app startup with a logged in user
+ */
+export const doAppStartUp = async () => {
+  window.openConversationWithMessages = openConversationWithMessages;
+  window.inboxStore = await createSessionInboxStore();
+  window.getState = window.inboxStore.getState;
+
+  window.inboxStore?.dispatch(
+    updateAllOnStorageReady({
+      hasBlindedMsgRequestsEnabled: Storage.getBoolOr(
+        SettingsKey.hasBlindedMsgRequestsEnabled,
+        false
+      ),
+      settingsLinkPreview: Storage.getBoolOr(SettingsKey.settingsLinkPreview, false),
+      hasFollowSystemThemeEnabled: Storage.getBoolOr(
+        SettingsKey.hasFollowSystemThemeEnabled,
+        false
+      ),
+      hasShiftSendEnabled: Storage.getBoolOr(SettingsKey.hasShiftSendEnabled, false),
+      hideRecoveryPassword: Storage.getBoolOr(SettingsKey.hideRecoveryPassword, false),
+      showOnboardingAccountJustCreated: Storage.getBoolOr(
+        SettingsKey.showOnboardingAccountJustCreated,
+        true
+      ),
+      audioAutoplay: Storage.getBoolOr(SettingsKey.audioAutoplay, false),
+      showRecoveryPhrasePrompt: Storage.getBoolOr(SettingsKey.showRecoveryPhrasePrompt, false),
+      dismissedRecoveryPhrasePrompt: Storage.getBoolOr(
+        SettingsKey.dismissedRecoveryPhrasePrompt,
+        false
+      ),
+      hideMessageRequests: Storage.getBoolOr(SettingsKey.hideMessageRequests, false),
+      hasGiphyIntegrationEnabled: Storage.getBoolOr(SettingsKey.hasGiphyIntegrationEnabled, false),
+    })
+  );
+
+  // React to synced config delivering new Pro values. Registered here rather than dispatched from the
+  // libsession layer, which reports the change but should not decide what it means.
+  setProUserConfigChangedHandler(({ accessValuesChanged, proofChanged }) => {
+    if (proofChanged) {
+      // The proof is ACCESS, so the rendered mirror has to follow it immediately. No fetch: a new proof
+      // is not news about the plan, and treating it as such would hit the backend on every renewal.
+      refreshProAccess();
+    }
+    if (accessValuesChanged) {
+      // Dispatched unconditionally: the thunk applies the persisted status floor itself, which is the
+      // right bound — a second one here would be per-run, so a relaunch would defeat it.
+      window.inboxStore?.dispatch(
+        proBackendDataActions.refreshGetProStatusFromProBackend({}) as any
+      );
+      // Not floored: entitlement comes from the proof, and libsession decides on its own whether one is
+      // actually due.
+      void reconcileProProof();
+    }
+  });
+
+  // Seed the rendered ACCESS value from the config we already hold. Deliberately outside the
+  // swarm-ready block below: what a held proof entitles us to is answerable with no network at all, and
+  // the first projection of an existing account is swallowed by design, so nothing else would set it.
+  refreshProAccess();
+
+  // Deliberately NOT inside the swarm-ready block below: the whole point of the mock is to reach the
+  // expiry CTAs without a backend round trip, and waiting on the swarm would put a network dependency
+  // back in front of it.
+  const proStatusMocked = window.inboxStore?.dispatch
+    ? await applyMockedProStatusAtStartup(window.inboxStore.dispatch)
+    : false;
+
+  // eslint-disable-next-line more/no-then
+  void SnodePool.getFreshSwarmFor(UserUtils.getOurPubKeyStrFromCache()).then(async () => {
+    window.log.debug('appStartup: got our fresh swarm, starting polling');
+    // trigger any other actions that need to be done after the swarm is ready
+    window.inboxStore?.dispatch(networkDataActions.fetchInfoFromSeshServer() as any);
+    // Trigger #1, gated: a cold start only fetches get_pro_status when a home CTA could plausibly
+    // fire, and at most once/24h. Also arms the #6 wake at the account horizon for this session.
+    //
+    // Suppressed when the mocks have already answered for this run: letting both go lets a real
+    // response land on top of a mocked CTA decision moments later.
+    if (!proStatusMocked) {
+      await refreshProStatusOnStartupIfNeeded();
+    }
+    // Deliberately outside the gate, mirroring iOS (`SessionProManager.swift`), where the gated status
+    // fetch and the proof reconcile are two separate statements. Entitlement comes from the proof, so a
+    // relaunch has to be able to notice a renewal is due even on a launch that skips the status fetch —
+    // the loop is otherwise only ever kicked by that fetch.
+    void reconcileProProof();
+    if (window.inboxStore) {
+      const delayedTimeout = getDataFeatureFlag('useLocalDevNet') && isTestIntegration() ? 2000 : 0;
+      /**
+       * When running on the local dev net (during the regression tests), the network is too fast
+       * and we show the DonateCTA before we got the time to grab the recovery phrase.
+       * This sleepFor is there to give some time so we can grab the recovery phrase.
+       * The regression test this is about is `Donate CTA, DB age >= 7 days`
+       */
+      // eslint-disable-next-line more/no-then
+      void sleepFor(delayedTimeout).then(() => {
+        if (window.inboxStore?.dispatch) {
+          void handleTriggeredCTAs(window.inboxStore.dispatch, true);
+        }
+      });
+    }
+    // we want to (try) to fetch from the revocation server before we process
+    // incoming messages, as some might have a pro proof that has been revoked
+    await UpdateProRevocationList.runOnStartup();
+    void getSwarmPollingInstance().start();
+    // trigger a sync message if needed for our other devices
+    void triggerSyncIfNeeded();
+    void loadDefaultRooms();
+  }); // refresh our swarm on start to speed up the first message fetching event
+
+  const groupPubkeysToRefresh = await LibSessionUtil.loadGroupDumpsAndCleanup();
+  window.inboxStore?.dispatch(groupInfoActions.loadMetaDumpsFromDB(groupPubkeysToRefresh) as any); // this loads the dumps from DB and fills the 03-groups slice with the corresponding details
+
+  // this generates the key to encrypt attachments locally
+  await Data.generateAttachmentKeyIfEmpty();
+
+  void Data.cleanupOrphanedAttachments();
+
+  // Note: do not make this a debounce call (as for some reason it doesn't work with promises)
+  await AvatarReupload.addAvatarReuploadJob();
+
+  /* Postpone a little bit of the polling of sogs messages to let the swarm messages come in first. */
+  global.setTimeout(() => {
+    void getOpenGroupManager().startPolling();
+  }, 10000);
+
+  global.setTimeout(() => {
+    // init the messageQueue. In the constructor, we add all not send messages
+    // this call does nothing except calling the constructor, which will continue sending message in the pipeline
+    void MessageQueue.use().processAllPending();
+  }, 3000);
+
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  global.setTimeout(async () => {
+    // Schedule a confSyncJob in some time to let anything incoming from the network be applied and see if there is a push needed
+    // Note: this also starts periodic jobs, so we don't need to keep doing it
+    await UserSync.queueNewJobIfNeeded();
+  }, 20000);
+
+  global.setTimeout(() => {
+    // the group dumps are loaded above, so group messages have their keys by now
+    void runUnsupportedMessageMaintenance();
+
+    // Desktop can stay open, and even focused, for days, so retained messages still need to expire
+    global.setInterval(() => void runUnsupportedMessageMaintenance(), DURATION.HOURS);
+  }, 10000);
+
+  global.setTimeout(() => {
+    // Schedule all avatarMigrateJobs in some time to let anything incoming from the network be handled first
+    void AvatarMigrate.scheduleAllAvatarMigrateJobs();
+  }, 1 * DURATION.MINUTES);
+
+  void regenerateLastMessagesGroupsCommunities();
+};

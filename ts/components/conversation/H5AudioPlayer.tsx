@@ -1,0 +1,297 @@
+// Audio Player
+import { SessionDataTestId, useEffect, useRef, useState } from 'react';
+import H5AudioPlayer, { RHAP_UI } from 'react-h5-audio-player';
+import { useSelector } from 'react-redux';
+import styled from 'styled-components';
+import { getAppDispatch } from '../../state/dispatch';
+import { useEncryptedFileFetch } from '../../hooks/useEncryptedFileFetch';
+import { setNextMessageToPlayId } from '../../state/ducks/conversations';
+import { useMessageDirection, useMessageSelected } from '../../state/selectors';
+import {
+  getNextMessageToPlayId,
+  getSortedMessagesOfSelectedConversation,
+} from '../../state/selectors/conversations';
+import { SessionButton, SessionButtonType } from '../basic/SessionButton';
+import { useIsMessageSelectionMode } from '../../state/selectors/selectedConversation';
+import { LUCIDE_ICONS_UNICODE } from '../icon/lucide';
+import { getAudioAutoplay } from '../../state/selectors/settings';
+import { LucideIcon } from '../icon/LucideIcon';
+import { focusVisibleBoxShadowOutset } from '../../styles/focusVisible';
+import { createButtonOnKeyDownForClickEventHandler } from '../../util/keyboardShortcuts';
+import { closeContextMenus } from '../../util/contextMenu';
+
+const StyledSpeedButton = styled.div`
+  transition: none;
+
+  .session-button {
+    transition: none;
+    width: 34px;
+    padding: 0px;
+  }
+`;
+
+export const StyledH5AudioPlayer = styled(H5AudioPlayer)<{ dropShadow?: boolean }>`
+  &.rhap_container {
+    min-width: 220px;
+    padding: 0px;
+    outline: none;
+    padding: var(--padding-message-content);
+    border-radius: var(--border-radius-message-box);
+
+    svg {
+      transition: fill var(--default-duration);
+    }
+
+    button {
+      outline: none;
+    }
+  }
+
+  .rhap_progress-container {
+    margin: 0 0 0 calc(10px + 1%);
+    outline: none;
+
+    ${focusVisibleBoxShadowOutset()}
+  }
+
+  .rhap_current-time,
+  .rhap_current-left-time,
+  .rhap_total-time {
+    margin: 0 5px 0 4px;
+    flex-shrink: 0;
+  }
+
+  .rhap_volume-container div[role='progressbar'] {
+    display: none;
+  }
+
+  .rhap_time {
+    .module-message__container--incoming & {
+      color: var(--message-bubble-incoming-text-color);
+    }
+    .module-message__container--outgoing & {
+      color: var(--message-bubble-outgoing-text-color);
+    }
+
+    font-size: 12px;
+  }
+
+  .rhap_progress-bar {
+    box-sizing: border-box;
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 5px;
+    border-radius: 2px;
+    min-width: 100px;
+  }
+
+  .rhap_progress-filled {
+    padding-left: 5px;
+  }
+
+  .rhap_download-progress {
+    height: 100%;
+    position: absolute;
+    z-index: 1;
+    border-radius: 2px;
+  }
+
+  .rhap_progress-indicator {
+    z-index: 3;
+    width: 15px;
+    height: 15px;
+    top: -5px;
+    margin-left: -10px;
+    box-shadow: rgba(0, 0, 0, 0.5) 0 0 5px !important;
+  }
+
+  .rhap_additional-controls {
+    display: none;
+  }
+
+  .rhap_play-pause-button {
+    width: unset;
+    height: unset;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 50%;
+    padding: 7px;
+  }
+
+  .rhap_controls-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: unset;
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+
+  .rhap_main-controls-button {
+    margin: 0;
+  }
+
+  ${props => props.dropShadow && 'box-shadow: var(--drop-shadow);'}
+`;
+
+export const AudioPlayerWithEncryptedFile = (props: {
+  src: string;
+  contentType: string;
+  messageId: string;
+}) => {
+  const { messageId, contentType, src } = props;
+  const dispatch = getAppDispatch();
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const { urlToLoad } = useEncryptedFileFetch(src, contentType, false);
+  const player = useRef<H5AudioPlayer | null>(null);
+
+  const autoPlaySetting = useSelector(getAudioAutoplay);
+  const messageProps = useSelector(getSortedMessagesOfSelectedConversation);
+  const nextMessageToPlayId = useSelector(getNextMessageToPlayId);
+  const multiSelectMode = useIsMessageSelectionMode();
+  const selected = useMessageSelected(messageId);
+  const direction = useMessageDirection(messageId);
+  const iconColor =
+    direction === 'incoming'
+      ? 'var(--message-bubble-incoming-text-color)'
+      : 'var(--message-bubble-outgoing-text-color)';
+  const dataTestId: SessionDataTestId = 'audio-player';
+
+  const triggerPlayNextMessageIfNeeded = (endedMessageId: string) => {
+    const justEndedMessageIndex = messageProps.findIndex(
+      m => m.propsForMessage.id === endedMessageId
+    );
+    if (justEndedMessageIndex === -1) {
+      // make sure that even with switching convo or stuff, the next message to play is unset
+      dispatch(setNextMessageToPlayId(undefined));
+
+      return;
+    }
+
+    const isLastMessage = justEndedMessageIndex === 0;
+
+    // to prevent autoplaying as soon as a message is received.
+    if (isLastMessage) {
+      dispatch(setNextMessageToPlayId(undefined));
+      return;
+    }
+
+    // justEndedMessageIndex cannot be -1 nor 0, so it is >= 1
+    const nextMessageIndex = justEndedMessageIndex - 1;
+    // stop auto-playing when the audio messages change author.
+    const prevAuthorNumber = messageProps[justEndedMessageIndex].propsForMessage.sender;
+    const nextAuthorNumber = messageProps[nextMessageIndex].propsForMessage.sender;
+    const differentAuthor = prevAuthorNumber !== nextAuthorNumber;
+    if (differentAuthor) {
+      dispatch(setNextMessageToPlayId(undefined));
+    } else {
+      dispatch(setNextMessageToPlayId(messageProps[nextMessageIndex].propsForMessage.id));
+    }
+  };
+
+  const onEnded = () => {
+    // if audio autoplay is enabled, call method to start playing
+    // the next playable message
+    if (autoPlaySetting === true && messageId) {
+      triggerPlayNextMessageIfNeeded(messageId);
+    }
+  };
+
+  useEffect(() => {
+    // Updates datatestId once rendered
+    if (
+      player.current?.audio.current &&
+      player.current?.container.current &&
+      player.current.container.current.dataset.testId !== dataTestId
+    ) {
+      // NOTE we can't assign the value using dataset.testId because the result is data-test-id not data-testid which is our convention
+      player.current.container.current.setAttribute('data-testid', dataTestId);
+      // The library hardcodes tabIndex={0} on the container, override it so only the buttons inside are tabbable
+      player.current.container.current.tabIndex = -1;
+      player.current.container.current.setAttribute('data-attachmentindex', '0');
+    }
+
+    player.current?.progressBar.current?.addEventListener('mousedown', e => {
+      if (e.button === 0) {
+        closeContextMenus();
+
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }, [dataTestId, player]);
+
+  useEffect(() => {
+    // updates playback speed to value selected in context menu
+    if (
+      player.current?.audio.current &&
+      player.current?.audio.current?.playbackRate !== playbackSpeed
+    ) {
+      player.current.audio.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed, player]);
+
+  useEffect(() => {
+    if (messageId !== undefined && messageId === nextMessageToPlayId) {
+      void player.current?.audio.current?.play();
+    }
+  }, [messageId, nextMessageToPlayId, player]);
+
+  const onChangeSpeed = () => {
+    setPlaybackSpeed(playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1);
+  };
+
+  const onKeyDownSpeed = createButtonOnKeyDownForClickEventHandler(onChangeSpeed, false);
+
+  return (
+    <StyledH5AudioPlayer
+      src={urlToLoad}
+      preload="metadata"
+      style={{ pointerEvents: multiSelectMode ? 'none' : 'inherit' }}
+      layout="stacked"
+      showSkipControls={false}
+      autoPlay={false}
+      autoPlayAfterSrcChange={false}
+      showJumpControls={false}
+      showDownloadProgress={false}
+      listenInterval={100}
+      onEnded={onEnded}
+      ref={player}
+      customControlsSection={[
+        // Note: we need to keep all of those in the customControlSections (and not split them in customProgressBarSection)
+        // so that keyboard navigation works as expected
+        RHAP_UI.MAIN_CONTROLS,
+        <StyledSpeedButton key="togglePlaybackSpeed" onKeyDown={onKeyDownSpeed}>
+          <SessionButton
+            text={`${playbackSpeed}x`}
+            onClick={onChangeSpeed}
+            buttonType={SessionButtonType.Simple}
+          />
+        </StyledSpeedButton>,
+        RHAP_UI.CURRENT_LEFT_TIME,
+        RHAP_UI.PROGRESS_BAR,
+      ]}
+      customProgressBarSection={[]}
+      customIcons={{
+        play: (
+          <LucideIcon // already wrapped by h5 into a button
+            unicode={LUCIDE_ICONS_UNICODE.PLAY}
+            iconSize="medium"
+            iconColor={iconColor}
+          />
+        ),
+        pause: (
+          <LucideIcon // already wrapped by h5 into a button
+            unicode={LUCIDE_ICONS_UNICODE.PAUSE}
+            iconSize="medium"
+            iconColor={iconColor}
+          />
+        ),
+      }}
+      dropShadow={selected}
+    />
+  );
+};

@@ -1,0 +1,19 @@
+.module-conversation-list-item {
+  background: var(--conversation-tab-background-color);
+}
+.module-conversation-list-item:hover,
+.module-conversation-list-item:focus {
+  background: var(--conversation-tab-background-hover-color) !important;
+}
+
+.module-conversation-list-item__header__date,
+.module-conversation-list-item__header__date--has-unread {
+  flex-grow: 1 !important;
+  text-align: end !important;
+  padding-inline-start: var(--margins-xs);
+}
+
+.module-conversation-list-item__header__name {
+  flex-grow: 0;
+  padding-inline-end: 5px;
+}

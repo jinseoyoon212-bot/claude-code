@@ -1,0 +1,62 @@
+@keyframes toShadow {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.25;
+  }
+}
+
+@keyframes fromShadow {
+  from {
+    opacity: 0.25;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.session-conversation {
+  position: relative;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  width: var(--main-panel-content-width);
+  height: 100%;
+
+  .selection-mode {
+    .messages-container > *:not(.message-selected) {
+      animation: toShadow var(--default-duration);
+      opacity: 0.3;
+    }
+  }
+}
+
+.conversation-content {
+  display: flex;
+  flex-grow: 1;
+  flex-direction: column;
+  position: relative;
+  outline: none;
+  height: inherit;
+
+  &-left {
+    flex-grow: 1;
+  }
+
+  .conversation-messages {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    width: 100%;
+    height: 0;
+    overflow-y: auto;
+    background-color: inherit;
+    outline: none;
+    position: relative;
+    background-color: var(--background-secondary-color);
+    border-top: var(--default-borders);
+  }
+}

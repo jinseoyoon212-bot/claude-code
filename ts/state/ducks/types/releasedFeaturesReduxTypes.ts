@@ -1,0 +1,199 @@
+import type { ProMessageFeature } from '../../../models/proMessageFeature';
+import type {
+  ProAccessVariant,
+  ProPaymentProvider,
+  ProStatus,
+} from '../../../session/apis/pro_backend_api/types';
+import { DURATION } from '../../../session/constants';
+
+type SessionBaseBooleanFeatureFlags = {
+  replaceLocalizedStringsWithKeys: boolean;
+  disableOnionRequests: boolean;
+  disableImageProcessor: boolean;
+  disableLocalAttachmentEncryption: boolean;
+  useTestNet: boolean;
+  useTestProBackend: boolean;
+  useClosedGroupV2QAButtons: boolean;
+  alwaysShowRemainingChars: boolean;
+  showPopoverAnchors: boolean;
+  debugInputCommands: boolean;
+  proAvailable: boolean;
+  proGroupsAvailable: boolean;
+  canToggleGiphy: boolean;
+  mockCurrentUserHasProCancelled: boolean;
+  mockCurrentUserHasProInGracePeriod: boolean;
+  mockProRecoverButtonAlwaysSucceed: boolean;
+  mockProRecoverButtonAlwaysFail: boolean;
+  mockProBackendLoading: boolean;
+  mockProBackendError: boolean;
+  mockProBackendSuccess: boolean;
+  fsTTL30s: boolean;
+  debugForceSeedNodeFailure: boolean;
+  // Backdates the persisted next-revocation-poll instant at launch so the startup gate polls now. The QA
+  // backend serves the production 24h `retry_in`, which otherwise puts a client's second poll a day out.
+  forceProRevocationRefresh: boolean;
+};
+
+export type SessionDebugBooleanFeatureFlags = {
+  debugLogging: boolean;
+  debugLibsessionDumps: boolean;
+  debugBuiltSnodeRequests: boolean;
+  debugSwarmPolling: boolean;
+  debugServerRequests: boolean;
+  debugNonSnodeRequests: boolean;
+  debugOnionPaths: boolean;
+  debugSnodePool: boolean;
+  debugOnionRequests: boolean;
+  debugInsecureNodeFetch: boolean;
+  debugOnlineState: boolean;
+  debugKeyboardShortcuts: boolean;
+  debugFocusScope: boolean;
+  debugFocusTrap: boolean;
+};
+
+export type SessionBooleanFeatureFlags = SessionBaseBooleanFeatureFlags &
+  SessionDebugBooleanFeatureFlags;
+
+// ISO8601 duration format
+export enum MockProAccessExpiryOptions {
+  P7D = 0,
+  P29D = 1,
+  P30D = 2,
+  P30DT1S = 3,
+  P90D = 4,
+  P300D = 5,
+  P365D = 6,
+  // The following are test cases from the PRD
+  P24DT1M = 7,
+  PT24H1M = 8,
+  PT23H59M = 9,
+  PT33M = 10,
+  PT1M = 11,
+  PT10S = 12,
+}
+
+/**
+ * What a mocked run should hold for a Pro PROOF, independent of what the plan's status says.
+ *
+ * Separate from `mockProCurrentStatus` because the two answer different questions and are allowed to
+ * disagree: the status is DISPLAY ("what state is the plan in"), the proof is ACCESS ("what may this
+ * device do"). One lever driving both made the state where they differ — a plan reading active with no
+ * usable proof, which is where messages get silently truncated — impossible to reach from a test.
+ *
+ * `null` means no override: use whatever proof the client actually holds.
+ */
+export const MockProProofOptions = {
+  Valid: 'valid',
+  None: 'none',
+} as const;
+export type MockProProofOptions = (typeof MockProProofOptions)[keyof typeof MockProProofOptions];
+
+/**
+ * Whether the store's own quick-refund window is still open, which decides between the store-refund
+ * route and the Session-support one.
+ *
+ * `null` means no override: the window is read from the payment's own `platformRefundExpiryTsMs`.
+ *
+ * Tri-state rather than a boolean because this used to be `mockCurrentUserHasProPlatformRefundExpired`,
+ * whose *unset* state forced the window open — it short-circuited the real expiry comparison, in every
+ * build, so a released client never consulted the payment at all. A mock's absence has to mean "defer",
+ * which a two-state flag on an env-presence check cannot express.
+ */
+export const MockProPlatformRefundWindowOptions = {
+  Open: 'open',
+  Closed: 'closed',
+} as const;
+export type MockProPlatformRefundWindowOptions =
+  (typeof MockProPlatformRefundWindowOptions)[keyof typeof MockProPlatformRefundWindowOptions];
+
+export type SessionDataFeatureFlags = {
+  useLocalDevNet: string | null;
+  mockMessageProFeatures: Array<ProMessageFeature> | null;
+  mockProCurrentStatus: ProStatus | null;
+  mockProProof: MockProProofOptions | null;
+  mockProPlatformRefundWindow: MockProPlatformRefundWindowOptions | null;
+  mockProPaymentProvider: ProPaymentProvider | null;
+  mockProAccessVariant: ProAccessVariant | null;
+  mockProAccessExpiry: MockProAccessExpiryOptions | null;
+  mockProLongerMessagesSent: number | null;
+  mockProPinnedConversations: number | null;
+  mockProBadgesSent: number | null;
+  mockProGroupsUpgraded: number | null;
+  mockNetworkPageNodeCount: number | null;
+  fakeAvatarPickerColor: string | null; // defaults to defaultAvatarPickerColor
+  // Absolute path to an image the test-integration avatar picker returns instead of the generated
+  // solid colour. The only way a test can supply an animated avatar, or any specific content.
+  fakeAvatarPickerFile: string | null;
+};
+
+export type SessionBooleanFeatureFlagKeys = keyof SessionBooleanFeatureFlags;
+export type SessionDataFeatureFlagKeys = keyof SessionDataFeatureFlags;
+
+/**
+ * Check if the given flag is a Feature flag.
+ * @note debug flags are not included in this check
+ * @note data flags are not included in this check
+ */
+export const isSessionFeatureFlag = (flag: unknown): flag is SessionBooleanFeatureFlagKeys => {
+  const strFlag = flag as string;
+  return (
+    !strFlag.startsWith('debug') && Object.keys(window.sessionBooleanFeatureFlags).includes(strFlag)
+  );
+};
+
+export const getFeatureFlag = <T extends SessionBooleanFeatureFlagKeys>(flag: T) =>
+  !!window?.sessionBooleanFeatureFlags?.[flag];
+
+/**
+ * NOTE: this is the same as getFeatureFlag but should only be used in react in a hook-safe context.
+ * This is so if we move feature flags into redux we can update this hook's behaviour
+ */
+export const getFeatureFlagMemo = <T extends SessionBooleanFeatureFlagKeys>(flag: T) =>
+  getFeatureFlag<T>(flag);
+
+export const setFeatureFlag = <T extends SessionBooleanFeatureFlagKeys>(
+  flag: T,
+  value: boolean
+) => {
+  if (window?.sessionBooleanFeatureFlags && flag in window.sessionBooleanFeatureFlags) {
+    window.sessionBooleanFeatureFlags[flag] = value;
+  }
+};
+
+/**
+ * Check if the given flag is a Feature flag with data.
+ * @note debug flags are not included in this check
+ * @note boolean flags are not included in this check
+ */
+export const isSessionDataFeatureFlag = (flag: unknown): flag is SessionDataFeatureFlagKeys => {
+  const strFlag = flag as string;
+  return (
+    !strFlag.startsWith('debug') && Object.keys(window.sessionDataFeatureFlags).includes(strFlag)
+  );
+};
+
+export const getDataFeatureFlag = <T extends SessionDataFeatureFlagKeys>(
+  flag: T
+): SessionDataFeatureFlags[T] | null => window?.sessionDataFeatureFlags?.[flag] ?? null;
+
+/**
+ * NOTE: this is the same as getFeatureFlag but should only be used in react in a hook-safe context.
+ * This is so if we move feature flags into redux we can update this hook's behaviour
+ */
+export const getDataFeatureFlagMemo = <T extends SessionDataFeatureFlagKeys>(
+  flag: T
+): SessionDataFeatureFlags[T] | null => getDataFeatureFlag<T>(flag);
+
+export const setDataFeatureFlag = <T extends SessionDataFeatureFlagKeys>(
+  flag: T,
+  value: SessionDataFeatureFlags[T]
+) => {
+  if (window?.sessionDataFeatureFlags && flag in window.sessionDataFeatureFlags) {
+    window.sessionDataFeatureFlags[flag] = value;
+  }
+};
+
+/**
+ * 1 second in milliseconds
+ */
+export const FEATURE_RELEASE_CHECK_INTERVAL = 1 * DURATION.SECONDS;

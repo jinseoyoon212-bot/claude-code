@@ -1,0 +1,393 @@
+import { isEmpty, isEqual } from 'lodash';
+import { useEffect, useMemo, useState } from 'react';
+import styled from 'styled-components';
+import { getAppDispatch } from '../../state/dispatch';
+import { useMessageReactsPropsById } from '../../hooks/useParamSelector';
+import { isUsAnySogsFromCache } from '../../session/apis/open_group_api/sogsv3/knownBlindedkeys';
+import { UserUtils } from '../../session/utils';
+import { updateReactClearAllModal, updateReactListModal } from '../../state/ducks/modalDialog';
+import {
+  useSelectedConversationKey,
+  useSelectedIsPublic,
+} from '../../state/selectors/selectedConversation';
+import { SortedReactionList } from '../../types/Reaction';
+import { nativeEmojiData } from '../../util/emoji';
+import { Reactions } from '../../util/reactions';
+import { Avatar, AvatarSize } from '../avatar/Avatar';
+import { Flex } from '../basic/Flex';
+import { SessionButton, SessionButtonColor, SessionButtonType } from '../basic/SessionButton';
+import { ContactName } from '../conversation/ContactName/ContactName';
+import { MessageReactions } from '../conversation/message/message-content/MessageReactions';
+import { Localizer } from '../basic/Localizer';
+import { LUCIDE_ICONS_UNICODE } from '../icon/lucide';
+import { SessionLucideIconButton } from '../icon/SessionIconButton';
+import { StyledSessionIconButton } from '../icon/SessionIconButtonStyled';
+import { SessionWrapperModal } from '../SessionWrapperModal';
+import { tr } from '../../localization/localeTools';
+import { useWeAreCommunityAdminOrModerator } from '../../state/selectors/conversations';
+
+const StyledReactListContainer = styled(Flex)`
+  width: 100%;
+`;
+
+const StyledReactionsContainer = styled.div`
+  background-color: var(--modal-background-content-color);
+  border-bottom: var(--default-borders);
+  width: 100%;
+  overflow-x: auto;
+  // the reactions row adds its own 4px, so the first pill lines up with the senders below
+  padding: 12px 12px 0;
+`;
+
+const StyledSendersContainer = styled(Flex)`
+  width: 100%;
+  min-height: 200px;
+  height: 100%;
+  max-height: 496px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+`;
+
+const StyledContactContainer = styled.span`
+  text-overflow: ellipsis;
+  overflow: hidden;
+`;
+
+const StyledReactionBar = styled(Flex)`
+  width: 100%;
+  margin: 12px 0 20px;
+  font-family: var(--font-default);
+
+  p {
+    color: var(--text-secondary-color);
+    margin: 0;
+
+    span:nth-child(1) {
+      margin-inline-end: 8px;
+      color: var(--text-primary-color);
+      white-space: nowrap;
+    }
+
+    span:nth-child(2) {
+      margin-inline-end: 8px;
+    }
+  }
+
+  .session-button {
+    font-weight: 400;
+    padding: 0px;
+  }
+`;
+
+const StyledReactionSender = styled(Flex)`
+  width: 100%;
+  margin-bottom: 12px;
+
+  .module-conversation__user__profile-name {
+    color: var(--text-primary-color);
+    font-weight: normal;
+  }
+
+  ${StyledSessionIconButton} {
+    // Lucide's X glyph is inset in its box; this puts the glyph on the list's edge
+    margin-inline-end: calc(-1 * var(--margins-xs));
+  }
+`;
+
+type ReactionSendersProps = {
+  messageId: string;
+  currentReact: string;
+  senders: Array<string>;
+  me: string;
+  conversationId: string;
+};
+
+const ReactionSenders = (props: ReactionSendersProps) => {
+  const { messageId, currentReact, senders, me, conversationId } = props;
+  const dispatch = getAppDispatch();
+
+  const handleRemoveReaction = async () => {
+    await Reactions.sendMessageReaction(messageId, currentReact);
+
+    if (senders.length <= 1) {
+      dispatch(updateReactListModal(null));
+    }
+  };
+
+  return (
+    <>
+      {senders.map((sender: string) => (
+        <StyledReactionSender
+          key={`${messageId}-${sender}`}
+          $container={true}
+          $justifyContent={'space-between'}
+          $alignItems={'center'}
+        >
+          <Flex
+            $container={true}
+            $alignItems={'center'}
+            style={{ overflow: 'hidden' }}
+            $flexGap="var(--margins-sm)"
+          >
+            <Avatar size={AvatarSize.XS} pubkey={sender} onAvatarClick={undefined} />
+            {sender === me ? (
+              tr('you')
+            ) : (
+              <StyledContactContainer>
+                <ContactName
+                  pubkey={sender}
+                  module="module-conversation__user"
+                  conversationId={conversationId}
+                  contactNameContext="react-list-modal"
+                />
+              </StyledContactContainer>
+            )}
+          </Flex>
+          {sender === me && (
+            <SessionLucideIconButton
+              unicode={LUCIDE_ICONS_UNICODE.X}
+              iconColor="var(--chat-buttons-icon-color)"
+              iconSize="medium"
+              onClick={() => {
+                void handleRemoveReaction();
+              }}
+            />
+          )}
+        </StyledReactionSender>
+      ))}
+    </>
+  );
+};
+
+const StyledCountText = styled.p`
+  color: var(--text-secondary-color);
+  text-align: center;
+  margin: 16px auto 0;
+
+  span {
+    color: var(--text-primary);
+  }
+`;
+
+const CountText = ({ count, emoji }: { count: number; emoji: string }) => {
+  return (
+    <StyledCountText>
+      <Localizer token="emojiReactsCountOthers" count={count} emoji={emoji} />
+    </StyledCountText>
+  );
+};
+
+type Props = {
+  reaction: string;
+  messageId: string;
+};
+
+const handleSenders = (senders: Array<string>, me: string) => {
+  let updatedSenders = [...senders];
+  const blindedMe = updatedSenders.filter(isUsAnySogsFromCache);
+
+  let meIndex = -1;
+  if (blindedMe && blindedMe[0]) {
+    meIndex = updatedSenders.indexOf(blindedMe[0]);
+  } else {
+    meIndex = updatedSenders.indexOf(me);
+  }
+  if (meIndex >= 0) {
+    updatedSenders.splice(meIndex, 1);
+    updatedSenders = [me, ...updatedSenders];
+  }
+
+  return updatedSenders;
+};
+
+export const ReactListModal = (props: Props) => {
+  const { reaction, messageId } = props;
+
+  const dispatch = getAppDispatch();
+  const [reactions, setReactions] = useState<SortedReactionList>([]);
+
+  const [currentReact, setCurrentReact] = useState('');
+  const [reactAriaLabel, setReactAriaLabel] = useState<string | undefined>();
+  const [count, setCount] = useState<number | null>(null);
+  const [senders, setSenders] = useState<Array<string>>([]);
+
+  const msgProps = useMessageReactsPropsById(messageId);
+  const isPublic = useSelectedIsPublic();
+  const selectedConvoKey = useSelectedConversationKey();
+  const weAreCommunityAdminOrModerator = useWeAreCommunityAdminOrModerator(selectedConvoKey);
+  const me = UserUtils.getOurPubKeyStrFromCache();
+
+  const reactionsMap = useMemo(() => {
+    return (reactions && Object.fromEntries(reactions)) || {};
+  }, [reactions]);
+  const reactionsCount = reactionsMap[currentReact]?.count;
+
+  if (
+    !reactionsMap?.[currentReact] &&
+    reactions?.length &&
+    reactions[0][0] &&
+    currentReact !== reactions[0][0]
+  ) {
+    setCurrentReact(reactions[0][0]);
+  }
+
+  // TODO we should break down this useEffect, it is hard to read.
+  useEffect(() => {
+    if (currentReact === '' && currentReact !== reaction) {
+      setReactAriaLabel(
+        nativeEmojiData?.ariaLabels ? nativeEmojiData.ariaLabels[reaction] : undefined
+      );
+      setCurrentReact(reaction);
+    }
+
+    if (msgProps?.sortedReacts && !isEqual(reactions, msgProps?.sortedReacts)) {
+      setReactions(msgProps?.sortedReacts);
+    }
+
+    if (
+      reactions &&
+      reactions.length > 0 &&
+      ((msgProps?.sortedReacts && msgProps.sortedReacts.length === 0) ||
+        msgProps?.sortedReacts === undefined)
+    ) {
+      setReactions([]);
+    }
+
+    let _senders =
+      reactionsMap && reactionsMap[currentReact] && reactionsMap[currentReact].senders
+        ? reactionsMap[currentReact].senders
+        : null;
+
+    if (_senders && !isEqual(senders, _senders)) {
+      if (_senders.length > 0) {
+        _senders = handleSenders(_senders, me);
+      }
+
+      // make sure to deep compare here otherwise we get stuck in a ever rendering look (only happens when we are one of the reactor)
+      if (!isEqual(_senders, senders)) {
+        setSenders(_senders);
+      }
+    }
+
+    if (senders.length > 0 && (!reactionsMap[currentReact]?.senders || isEmpty(_senders))) {
+      setSenders([]);
+    }
+
+    if (reactionsCount && count !== reactionsCount) {
+      setCount(reactionsMap[currentReact].count);
+    }
+  }, [
+    count,
+    currentReact,
+    me,
+    reaction,
+    reactionsCount,
+    msgProps?.sortedReacts,
+    reactionsMap,
+    senders,
+    reactions,
+  ]);
+
+  if (!msgProps || !selectedConvoKey) {
+    return <></>;
+  }
+
+  const handleSelectedReaction = (emoji: string): boolean => {
+    return currentReact === emoji;
+  };
+
+  const handleReactionClick = (emoji: string) => {
+    setReactAriaLabel(nativeEmojiData?.ariaLabels ? nativeEmojiData.ariaLabels[emoji] : undefined);
+    setCurrentReact(emoji);
+  };
+
+  const handleClose = () => {
+    dispatch(updateReactListModal(null));
+  };
+
+  const handleClearReactions = () => {
+    dispatch(
+      updateReactClearAllModal({
+        reaction: currentReact,
+        messageId,
+      })
+    );
+  };
+  return (
+    <SessionWrapperModal
+      onClose={handleClose}
+      headerChildren={null}
+      modalId="reactListModal"
+      // the senders list scrolls itself, the body gutter would only widen the right side
+      removeScrollbarGutter={true}
+    >
+      <StyledReactListContainer
+        $container={true}
+        $flexDirection={'column'}
+        $alignItems={'flex-start'}
+      >
+        <StyledReactionsContainer>
+          <MessageReactions
+            messageId={messageId}
+            hasReactLimit={false}
+            inModal={true}
+            onSelected={handleSelectedReaction}
+            onEmojiClick={handleReactionClick}
+            noAvatar={true}
+          />
+        </StyledReactionsContainer>
+        {reactionsMap && currentReact ? (
+          <StyledSendersContainer
+            $container={true}
+            $flexDirection={'column'}
+            $alignItems={'flex-start'}
+          >
+            <StyledReactionBar
+              $container={true}
+              $justifyContent={'space-between'}
+              $alignItems={'center'}
+            >
+              <p>
+                <span role={'img'} aria-label={reactAriaLabel}>
+                  {currentReact}
+                </span>
+                {reactionsMap?.[currentReact]?.count ? (
+                  <>
+                    <span>&#8226;</span>
+                    <span>{reactionsMap[currentReact].count}</span>
+                  </>
+                ) : null}
+              </p>
+              {weAreCommunityAdminOrModerator && (
+                <SessionButton
+                  text={tr('clearAll')}
+                  buttonColor={SessionButtonColor.Danger}
+                  buttonType={SessionButtonType.Simple}
+                  onClick={handleClearReactions}
+                />
+              )}
+            </StyledReactionBar>
+            {senders && senders.length > 0 && (
+              <ReactionSenders
+                messageId={messageId}
+                currentReact={currentReact}
+                senders={senders}
+                me={me}
+                conversationId={selectedConvoKey}
+              />
+            )}
+            {isPublic && currentReact && count && count > senders.length && (
+              <CountText count={count - senders.length} emoji={currentReact} />
+            )}
+          </StyledSendersContainer>
+        ) : (
+          // The focus trap needs at least a button to  be always present (or crashes)
+          // But because of the complicated useEffect above, we don't have a button to focus on when that component is mounted.
+          // As a temporary hack, we add an invisible button here. The better fix is to break the useEffect above and move it to redux.
+          <button style={{ width: '0px', height: '0px' }} />
+        )}
+      </StyledReactListContainer>
+    </SessionWrapperModal>
+  );
+};

@@ -1,0 +1,127 @@
+import { forwardRef, type RefObject } from 'react';
+import { useSelector } from 'react-redux';
+
+import {
+  getSelectedCanWrite,
+  useSelectedCanAddAttachments,
+  useSelectedIsBlocked,
+} from '../../../state/selectors/selectedConversation';
+import { SessionLucideIconButton } from '../../icon/SessionIconButton';
+import { LUCIDE_ICONS_UNICODE } from '../../icon/lucide';
+import type { SessionIconSize } from '../../icon';
+import { useKeyboardShortcut } from '../../../hooks/useKeyboardShortcut';
+import { KbdShortcut } from '../../../util/keyboardShortcuts';
+import { useHasGiphyIntegrationEnabled } from '../../../state/selectors/settings';
+import { toggleGiphyIntegration } from '../../dialog/user-settings/actions/toggleGiphyIntegration';
+import { getFeatureFlag } from '../../../state/ducks/types/releasedFeaturesReduxTypes';
+
+type CompositionButtonProps = {
+  onClick: () => void;
+};
+
+const getSharedButtonProps = (disabled?: boolean) => ({
+  iconColor: disabled ? 'var(--disabled-color)' : 'var(--chat-buttons-icon-color)',
+  iconSize: 'large' satisfies SessionIconSize as SessionIconSize,
+  backgroundColor: 'var(--chat-buttons-background-color)',
+  padding: 'var(--margins-sm)',
+});
+
+export const AddStagedAttachmentButton = ({ onClick }: CompositionButtonProps) => {
+  const canAddAttachments = useSelectedCanAddAttachments();
+
+  const disabled = !canAddAttachments;
+
+  useKeyboardShortcut({
+    shortcut: KbdShortcut.conversationUploadAttachment,
+    handler: onClick,
+    disabled,
+  });
+  return (
+    <SessionLucideIconButton
+      unicode={LUCIDE_ICONS_UNICODE.PLUS}
+      onClick={onClick}
+      dataTestId="attachments-button"
+      disabled={disabled}
+      {...getSharedButtonProps(disabled)}
+    />
+  );
+};
+
+export const StartRecordingButton = ({ onClick }: CompositionButtonProps) => {
+  const canAddAttachments = useSelectedCanAddAttachments();
+
+  const disabled = !canAddAttachments;
+
+  return (
+    <SessionLucideIconButton
+      unicode={LUCIDE_ICONS_UNICODE.MIC}
+      onClick={onClick}
+      disabled={disabled}
+      dataTestId="microphone-button"
+      {...getSharedButtonProps(disabled)}
+    />
+  );
+};
+
+export const ToggleEmojiButton = forwardRef<HTMLButtonElement, CompositionButtonProps>(
+  (props, ref) => {
+    useKeyboardShortcut({
+      shortcut: KbdShortcut.conversationToggleEmojiPicker,
+      handler: props.onClick,
+    });
+    return (
+      <SessionLucideIconButton
+        unicode={LUCIDE_ICONS_UNICODE.SMILE_PLUS}
+        ref={ref}
+        onClick={props.onClick}
+        dataTestId="emoji-button"
+        {...getSharedButtonProps(false)}
+      />
+    );
+  }
+);
+
+export const SendMessageButton = ({ onClick }: CompositionButtonProps) => {
+  const disabled = useSelectedIsBlocked();
+  return (
+    <SessionLucideIconButton
+      unicode={LUCIDE_ICONS_UNICODE.ARROW_UP}
+      onClick={onClick}
+      disabled={disabled}
+      dataTestId="send-message-button"
+      {...getSharedButtonProps(disabled)}
+      backgroundColor={'var(--primary-color)'}
+      iconColor={'var(--background-primary-color)'}
+    />
+  );
+};
+
+export function ToggleGifButton(
+  props: CompositionButtonProps & { ref: RefObject<HTMLButtonElement | null> }
+) {
+  const hasGiphyIntegrationEnabled = useHasGiphyIntegrationEnabled();
+  const canAddAttachments = useSelectedCanAddAttachments();
+  const canWrite = useSelector(getSelectedCanWrite);
+
+  const canToggleGiphyIntegration = getFeatureFlag('canToggleGiphy');
+
+  if (!canAddAttachments || !canWrite || !canToggleGiphyIntegration) {
+    return null;
+  }
+
+  return (
+    <SessionLucideIconButton
+      unicode={LUCIDE_ICONS_UNICODE.IMAGE_PLAY}
+      {...getSharedButtonProps(false)}
+      onClick={
+        hasGiphyIntegrationEnabled
+          ? props.onClick
+          : () => {
+              void toggleGiphyIntegration(hasGiphyIntegrationEnabled, props.onClick);
+            }
+      }
+      dataTestId="gif-button"
+      ref={props.ref}
+    />
+  );
+}

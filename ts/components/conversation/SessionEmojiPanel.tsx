@@ -1,0 +1,144 @@
+import Picker from '@emoji-mart/react';
+import { type RefObject } from 'react';
+import styled from 'styled-components';
+
+import { usePrimaryColor } from '../../state/selectors/primaryColor';
+import { useIsDarkTheme, useTheme } from '../../state/theme/selectors/theme';
+import { COLORS, THEMES, ThemeStateType, type ColorsType } from '../../themes/constants/colors';
+import { FixedBaseEmoji } from '../../types/Reaction';
+import { i18nEmojiData } from '../../util/emoji';
+import { hexColorToRGB } from '../../util/hexColorToRGB';
+import { SessionFocusTrap } from '../SessionFocusTrap';
+
+export const StyledEmojiPanel = styled.div<{
+  $isModal: boolean;
+  $primaryColor: string;
+  $theme: ThemeStateType;
+  $panelBackgroundRGB: string;
+  $panelTextRGB: string;
+}>`
+  ${props => (!props.$isModal ? 'padding: var(--margins-lg);' : '')}
+  z-index: 5;
+
+  button:focus {
+    outline: none;
+  }
+
+  em-emoji-picker {
+    ${props => props.$panelBackgroundRGB && `background-color: rgb(${props.$panelBackgroundRGB})`};
+    border: var(--default-borders);
+    padding-bottom: var(--margins-sm);
+    --font-family: var(--font-default);
+    --emoji-font: 'NotoColorEmoji'; // Note: var(--emoji-font) doesn't go through shadow doms
+    --font-size: var(--font-size-sm);
+    --shadow: none;
+    --border-radius: 8px;
+    --color-border: var(--borders-color);
+    --color-border-over: var(--borders-color);
+    --background-rgb: ${props => props.$panelBackgroundRGB};
+    --rgb-background: ${props => props.$panelBackgroundRGB};
+    --rgb-color: ${props => props.$panelTextRGB};
+    --rgb-input: ${props => props.$panelBackgroundRGB};
+    --rgb-accent: ${props => props.$primaryColor};
+
+    ${props =>
+      !props.$isModal &&
+      `
+      &:after {
+        content: '';
+        position: absolute;
+        top: calc(100% - 40px);
+        left: calc(100% - 106px);
+        width: 22px;
+        height: 22px;
+        transform: rotate(45deg);
+        border-radius: 3px;
+        transform: scaleY(1.4) rotate(45deg);
+        border: 0.7px solid var(--borders-color);
+        clip-path: polygon(100% 100%, 7.2px 100%, 100% 7.2px);
+        ${props.$panelBackgroundRGB && `background-color: rgb(${props.$panelBackgroundRGB})`};
+
+        [dir='rtl'] & {
+          left: 75px;
+        }
+      }
+    `};
+  }
+`;
+
+type Props = {
+  ref?: RefObject<HTMLDivElement | null>;
+  onEmojiClicked: (emoji: FixedBaseEmoji) => void;
+  isModal?: boolean;
+  onClose?: () => void;
+  show: boolean;
+};
+
+export const SessionEmojiPanel = (props: Props) => {
+  return props.show ? <EmojiPanel {...props} /> : null;
+};
+
+const EmojiPanel = ({ ref, onEmojiClicked, isModal = false, onClose }: Props) => {
+  const _primaryColor = usePrimaryColor();
+  const theme = useTheme();
+  const isDarkTheme = useIsDarkTheme();
+
+  let panelBackgroundRGB = hexColorToRGB(THEMES.CLASSIC_DARK.COLOR1);
+  let panelTextRGB = hexColorToRGB(THEMES.CLASSIC_DARK.COLOR6);
+
+  switch (theme) {
+    case 'ocean-dark':
+      panelBackgroundRGB = hexColorToRGB(THEMES.OCEAN_DARK.COLOR1);
+      panelTextRGB = hexColorToRGB(THEMES.OCEAN_DARK.COLOR7!);
+      break;
+    case 'ocean-light':
+      panelBackgroundRGB = hexColorToRGB(THEMES.OCEAN_LIGHT.COLOR7!);
+      panelTextRGB = hexColorToRGB(THEMES.OCEAN_LIGHT.COLOR1);
+      break;
+    case 'classic-light':
+      panelBackgroundRGB = hexColorToRGB(THEMES.CLASSIC_LIGHT.COLOR6);
+      panelTextRGB = hexColorToRGB(THEMES.CLASSIC_LIGHT.COLOR0);
+      break;
+    case 'classic-dark':
+    default:
+      panelBackgroundRGB = hexColorToRGB(THEMES.CLASSIC_DARK.COLOR1);
+      panelTextRGB = hexColorToRGB(THEMES.CLASSIC_DARK.COLOR6);
+  }
+
+  const primaryColor = !isDarkTheme
+    ? panelTextRGB
+    : hexColorToRGB(
+        _primaryColor
+          ? COLORS.PRIMARY[`${_primaryColor.toUpperCase() as keyof ColorsType['PRIMARY']}`]
+          : COLORS.PRIMARY.GREEN
+      );
+
+  return (
+    <SessionFocusTrap
+      focusTrapId="SessionEmojiPanel"
+      clickOutsideDeactivates={true}
+      allowNoTabbableNodes={true}
+      onDeactivate={onClose}
+    >
+      <StyledEmojiPanel
+        $isModal={isModal}
+        $primaryColor={primaryColor}
+        $theme={theme}
+        $panelBackgroundRGB={panelBackgroundRGB}
+        $panelTextRGB={panelTextRGB}
+        ref={ref}
+      >
+        <Picker
+          theme={isDarkTheme ? 'dark' : 'light'}
+          i18n={i18nEmojiData}
+          onEmojiSelect={onEmojiClicked}
+          onClose={onClose}
+          title=""
+          showPreview={true}
+          skinTonePosition={'preview'}
+          autoFocus={true}
+        />
+      </StyledEmojiPanel>
+    </SessionFocusTrap>
+  );
+};

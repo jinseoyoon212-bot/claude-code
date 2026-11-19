@@ -1,0 +1,142 @@
+import { type SessionDataTestId } from 'react';
+import styled from 'styled-components';
+
+import { Avatar, AvatarSize } from '../../avatar/Avatar';
+import { Flex } from '../../basic/Flex';
+import { useProBadgeOnClickCb } from '../../menuAndSettingsHooks/useProBadgeOnClickCb';
+import { useCurrentUserHasExpiredPro } from '../../../hooks/useHasPro';
+import { ProIconButton } from '../../buttons/ProButton';
+import { AvatarQrCodeButton } from '../../buttons/avatar/AvatarQrCodeButton';
+import { createButtonOnKeyDownForClickEventHandler } from '../../../util/keyboardShortcuts';
+import { SpacerSM } from '../../basic/Text';
+
+type ProfileAvatarProps = {
+  avatarPath: string | null;
+  newAvatarObjectUrl?: string | null;
+  conversationId: string;
+  onAvatarClick: () => void; // on click on the avatar itself
+  onPlusAvatarClick: (() => void) | null; // if null, plus icon won't be shown
+  avatarSize: AvatarSize;
+  dataTestId: SessionDataTestId;
+};
+
+export const ProfileAvatar = (props: ProfileAvatarProps) => {
+  const {
+    newAvatarObjectUrl,
+    avatarPath,
+    conversationId,
+    avatarSize,
+    onAvatarClick,
+    onPlusAvatarClick,
+    dataTestId,
+  } = props;
+  return (
+    <Avatar
+      forcedAvatarPath={newAvatarObjectUrl || avatarPath}
+      size={avatarSize}
+      pubkey={conversationId}
+      onAvatarClick={onAvatarClick}
+      onPlusAvatarClick={onPlusAvatarClick ?? undefined}
+      dataTestId={dataTestId}
+      tabIndex={0}
+    />
+  );
+};
+
+type ProfileHeaderProps = Omit<ProfileAvatarProps, 'onAvatarClick' | 'avatarSize'> & {
+  onQRClick: (() => void) | null;
+  enlargedImage: boolean;
+  toggleEnlargedImage: () => void;
+};
+
+const StyledAvatarCenterInner = styled.div`
+  position: relative;
+`;
+
+export const ProfileHeader = (props: ProfileHeaderProps) => {
+  const {
+    avatarPath,
+    conversationId,
+    onPlusAvatarClick,
+    onQRClick,
+    dataTestId,
+    enlargedImage,
+    toggleEnlargedImage,
+  } = props;
+
+  const avatarSize = enlargedImage ? AvatarSize.HUGE : AvatarSize.XL;
+
+  return (
+    <div>
+      {/* just some padding for the focus-visible */}
+      <SpacerSM />
+      <StyledAvatarCenterInner>
+        <ProfileAvatar
+          avatarPath={avatarPath}
+          conversationId={conversationId}
+          onAvatarClick={toggleEnlargedImage}
+          onPlusAvatarClick={onPlusAvatarClick}
+          avatarSize={avatarSize}
+          dataTestId={dataTestId}
+        />
+        <AvatarQrCodeButton avatarSize={avatarSize} onQRClick={onQRClick} />
+      </StyledAvatarCenterInner>
+    </div>
+  );
+};
+
+// We have a transparent border to match the dimensions of the SessionInput
+const StyledProfileName = styled(Flex)`
+  padding: 8px;
+  border: 1px solid var(--transparent-color);
+  gap: var(--margins-xs);
+
+  .session-icon-button {
+    padding: 0px;
+  }
+`;
+
+const StyledName = styled.div`
+  font-size: var(--font-size-xl);
+  line-height: 1.4;
+  font-weight: 700;
+  font-size: var(--font-size-h4);
+  margin: 0;
+  text-align: center;
+  padding: 0px;
+  cursor: pointer;
+`;
+
+export const ProfileName = (props: { profileName: string; onClick: () => void }) => {
+  const { profileName, onClick } = props;
+
+  const currentUserHasExpiredPro = useCurrentUserHasExpiredPro();
+
+  const showPro = useProBadgeOnClickCb({
+    context: 'show-our-profile-dialog',
+    args: { providedCb: onClick },
+  });
+  const onKeyDown = createButtonOnKeyDownForClickEventHandler(onClick);
+
+  return (
+    <StyledProfileName $container={true} $justifyContent="center" $alignItems="center">
+      <StyledName
+        data-testid="your-profile-name"
+        onClick={onClick}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+      >
+        {profileName}
+        {showPro.show ? (
+          <ProIconButton
+            iconSize={'medium'}
+            dataTestId="pro-badge-profile-name"
+            onClick={showPro.cb}
+            style={{ display: 'inline-flex', marginInlineStart: 'var(--margins-sm)' }}
+            noColors={currentUserHasExpiredPro}
+          />
+        ) : null}
+      </StyledName>
+    </StyledProfileName>
+  );
+};

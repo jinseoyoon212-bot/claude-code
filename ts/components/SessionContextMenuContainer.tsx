@@ -1,0 +1,63 @@
+import styled from 'styled-components';
+
+export const SessionContextMenuContainer = styled.div.attrs({
+  // custom props
+})`
+  .contexify {
+    --contexify-activeItem-bgColor: var(--text-primary-color);
+    --contexify-activeItem-color: var(--background-primary-color);
+    // be sure it is more than the one set for the More Information screen of messages
+    z-index: 30;
+    min-width: 200px;
+    box-shadow: 0px 0px 10px var(--context-menu-shadow-color) !important;
+    background-color: var(--background-primary-color);
+
+    &.contexify_theme-dark {
+      background-color: var(--background-primary-color);
+    }
+
+    .contexify_item {
+      background: var(--background-primary-color);
+    }
+
+    .contexify_item.danger > .contexify_itemContent {
+      color: var(--danger-color);
+    }
+
+    .contexify_item.danger:not(.contexify_item-disabled):hover > .contexify_itemContent {
+      background: var(--danger-color);
+      color: var(--black-color) !important;
+    }
+
+    .contexify_item:not(.contexify_item-disabled):hover > .contexify_itemContent {
+      background: var(--contexify-activeItem-bgColor);
+      color: var(--contexify-activeItem-color);
+    }
+    .contexify_itemContent {
+      transition: var(--default-duration);
+      color: var(--text-primary-color);
+    }
+
+    &.contexify_submenu {
+      top: -28px !important; // height of an item element
+    }
+
+    .contexify_submenu-arrow {
+      line-height: 16px; // center the arrow for submenu
+    }
+  }
+`;
+
+export const SessionContextMenuContainerItemsCentered = styled(SessionContextMenuContainer)`
+  .contexify {
+    .contexify_item {
+      width: 100%;
+      place-items: center;
+    }
+
+    .contexify_itemContent {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+`;

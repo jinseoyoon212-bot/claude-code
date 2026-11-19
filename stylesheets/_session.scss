@@ -1,0 +1,104 @@
+#root {
+  height: 100%;
+}
+.subtle {
+  opacity: $session-subtle-factor;
+}
+
+.soft {
+  opacity: 0.4;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.fullwidth {
+  width: 100%;
+}
+
+.break-word {
+  word-break: break-all;
+}
+
+input,
+textarea,
+div[role='textbox'] {
+  caret-color: var(--text-primary-color);
+}
+
+* {
+  user-select: none;
+
+  .text-selectable,
+  input,
+  textarea {
+    a {
+      word-break: break-all;
+    }
+  }
+}
+
+::selection {
+  background: var(--text-selection-color);
+}
+
+.session-icon-button {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transform: translateZ(0);
+}
+
+/* CONVERSATION AND MESSAGES */
+
+.module-message--incoming {
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+.module-message--outgoing {
+  margin-inline-end: 0;
+  margin-inline-start: auto;
+}
+
+.module-message__container {
+  position: relative;
+  display: inline-block;
+  min-width: 30px;
+  // To limit messages with things forcing them wider, like long attachment names.
+  width: 100%;
+  align-items: center;
+  border-radius: var(--border-radius-message-box);
+}
+
+label {
+  user-select: none;
+}
+
+.title-wrapper {
+  position: relative;
+}
+
+.hidden {
+  display: none;
+  visibility: hidden;
+}
+
+.conversation-loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -40px 0 0 -40px;
+
+  & > div {
+    display: block;
+  }
+}
+
+.messages li {
+  transition: var(--default-duration) !important;
+}
+
+input {
+  user-select: text;
+}

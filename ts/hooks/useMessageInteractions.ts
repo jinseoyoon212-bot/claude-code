@@ -1,0 +1,167 @@
+import { type MouseEvent } from 'react';
+import { ItemParams } from 'react-contexify';
+import { MessageInteraction } from '../interactions';
+import { replyToMessage } from '../interactions/conversationInteractions';
+import { pushUnblockToSend } from '../session/utils/Toast';
+import { getAppDispatch } from '../state/dispatch';
+import { toggleSelectedMessageId } from '../state/ducks/conversations';
+import {
+  useIsMessageSelectionMode,
+  useSelectedConversationKey,
+  useSelectedIsBlocked,
+} from '../state/selectors/selectedConversation';
+import {
+  useMessageAttachments,
+  useMessageBody,
+  useMessageCommunityInvitationFullUrl,
+  useMessageIsCommunityInvitation,
+  useMessageIsControlMessage,
+  useMessageIsDeleted,
+  useMessageIsUnsupported,
+  useMessageIsOnline,
+  useMessageSender,
+  useMessageServerTimestamp,
+  useMessageTimestamp,
+} from '../state/selectors';
+import { saveAttachmentToDisk } from '../util/attachment/attachmentsUtil';
+import { Reactions } from '../util/reactions';
+
+export function useMessageSaveAttachment(messageId?: string) {
+  const convoId = useSelectedConversationKey();
+  const attachments = useMessageAttachments(messageId);
+  const timestamp = useMessageTimestamp(messageId);
+  const serverTimestamp = useMessageServerTimestamp(messageId);
+  const sender = useMessageSender(messageId);
+
+  const cannotSave =
+    !messageId ||
+    !convoId ||
+    !sender ||
+    !attachments?.length ||
+    !attachments.every(m => !m.pending && m.path);
+
+  return cannotSave
+    ? null
+    : (e: ItemParams, attachmentIndex: number | null) => {
+        e.event.stopPropagation();
+        if (
+          attachmentIndex === null ||
+          attachmentIndex > attachments.length ||
+          attachmentIndex < 0
+        ) {
+          return;
+        }
+        const messageTimestamp = timestamp || serverTimestamp || 0;
+
+        void saveAttachmentToDisk({
+          attachment: attachments[attachmentIndex],
+          messageTimestamp,
+          messageSender: sender,
+          conversationId: convoId,
+          index: attachmentIndex,
+        });
+      };
+}
+
+export function useMessageCopyText(messageId?: string) {
+  const text = useMessageBody(messageId);
+  const fullUrl = useMessageCommunityInvitationFullUrl(messageId);
+
+  // Note: we don't want to show "Copy" if this is an invitation, see `useMessageCopyCommunityInvitationUrl`
+  const canCopy = messageId && !fullUrl;
+
+  return canCopy
+    ? () => {
+        const selection = window.getSelection();
+        const selectedText = selection?.toString().trim();
+
+        // NOTE: the copy action should copy selected text (if any) then fallback to the whole message
+        MessageInteraction.copyBodyToClipboard(selectedText || text);
+      }
+    : null;
+}
+
+export function useMessageCopyCommunityInvitationUrl(messageId?: string) {
+  const fullUrl = useMessageCommunityInvitationFullUrl(messageId);
+
+  const cannotCopyUrl = !messageId || !fullUrl;
+
+  return cannotCopyUrl
+    ? null
+    : () => {
+        window.log.info('Copying community invitation url', fullUrl);
+        MessageInteraction.copyBodyToClipboard(fullUrl);
+      };
+}
+
+export function useMessageReply(messageId?: string) {
+  const isSelectedBlocked = useSelectedIsBlocked();
+  const isControlMessage = useMessageIsControlMessage(messageId);
+  const msgIsOnline = useMessageIsOnline(messageId);
+  // ios and android do not support replying to a community invitation
+  const isCommunityInvitation = useMessageIsCommunityInvitation(messageId);
+  const isUnsupported = useMessageIsUnsupported(messageId);
+
+  const cannotReply =
+    !messageId || !msgIsOnline || isControlMessage || isCommunityInvitation || isUnsupported;
+
+  return cannotReply
+    ? null
+    : () => {
+        if (isSelectedBlocked) {
+          pushUnblockToSend();
+          return;
+        }
+        void replyToMessage(messageId);
+      };
+}
+
+export function useMessageReact(messageId?: string) {
+  const isControlMessage = useMessageIsControlMessage(messageId);
+  const isDeleted = useMessageIsDeleted(messageId);
+  const isUnsupported = useMessageIsUnsupported(messageId);
+  const cannotReact = !messageId || isControlMessage || isDeleted || isUnsupported;
+
+  return cannotReact
+    ? null
+    : async (emoji: string) => {
+        await Reactions.sendMessageReaction(messageId, emoji);
+      };
+}
+
+/**
+ * Cb to invoke when a manual click to "select" in the msg context menu is done.
+ * i.e. starts the Multi selection mode
+ * @see `useSelectMessageViaClick`
+ */
+export function useSelectMessageViaMenuCb(messageId?: string | null) {
+  const dispatch = getAppDispatch();
+  const multiSelectMode = useIsMessageSelectionMode();
+
+  if (!messageId || multiSelectMode) {
+    return null;
+  }
+
+  return () => {
+    dispatch(toggleSelectedMessageId(messageId));
+  };
+}
+
+/**
+ * Cb to invite when we are in multi select mode and a message is clicked
+ */
+export function useSelectMessageViaClick(messageId?: string | null) {
+  const dispatch = getAppDispatch();
+  const multiSelectMode = useIsMessageSelectionMode();
+
+  // we can only select via click on msg once multi select mode is already on
+  if (!messageId || !multiSelectMode) {
+    return null;
+  }
+
+  return (event: MouseEvent<unknown>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dispatch(toggleSelectedMessageId(messageId));
+  };
+}

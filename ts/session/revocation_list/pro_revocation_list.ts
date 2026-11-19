@@ -1,0 +1,139 @@
+import { isArray, isNumber, isString } from 'lodash';
+import { SettingsKey } from '../../data/settings-key';
+import { Storage } from '../../util/storage';
+import {
+  ProRevocationItemsDBSchema,
+  type ProRevocationItemsDBType,
+} from '../apis/pro_backend_api/schemas';
+import { NetworkTime } from '../../util/NetworkTime';
+
+let initialFetchFromDBDone = false;
+let cachedProRevocationListTicket = 0;
+let cachedProRevocationListItems: ProRevocationItemsDBType = [];
+
+async function loadFromDbIfNeeded() {
+  if (initialFetchFromDBDone) {
+    // do nothing
+    return;
+  }
+
+  const ticketFromDb = Storage.get(SettingsKey.proRevocationListTicket);
+  cachedProRevocationListTicket = isNumber(ticketFromDb) ? ticketFromDb : 0;
+
+  const itemsFromDb = Storage.get(SettingsKey.proRevocationListItems);
+
+  const resetItems: ProRevocationItemsDBType = [];
+  if (!isString(itemsFromDb) || !itemsFromDb) {
+    await setListItems(resetItems, false);
+  } else {
+    try {
+      const parsedJsonItems = JSON.parse(itemsFromDb);
+      if (!isArray(parsedJsonItems)) {
+        await setListItems(resetItems, false);
+      } else {
+        const parsed = ProRevocationItemsDBSchema.safeParse(parsedJsonItems);
+
+        if (parsed.success) {
+          cachedProRevocationListItems = parsed.data;
+        } else {
+          window.log.error(
+            'failed to parse pro revocation list items from storage, resetting to []. error:',
+            parsed.error
+          );
+          await setListItems(resetItems, false);
+        }
+      }
+    } catch (e) {
+      window.log.warn(
+        'failed to parse pro revocation list items from storage, resetting to []. error:',
+        e.message
+      );
+      await setListItems(resetItems, false);
+    }
+  }
+
+  initialFetchFromDBDone = true;
+}
+
+function assertInitialFetchFromDBDone(ctx: string) {
+  if (!initialFetchFromDBDone) {
+    throw new Error(`ProRevocationCache.loadFromDbIfNeeded() was not called before ctx: ${ctx}.`);
+  }
+}
+
+function getTicket() {
+  assertInitialFetchFromDBDone('getTicket');
+
+  return cachedProRevocationListTicket;
+}
+
+async function setTicket(ticket: number) {
+  assertInitialFetchFromDBDone('setTicket');
+
+  cachedProRevocationListTicket = ticket;
+  await Storage.put(SettingsKey.proRevocationListTicket, ticket);
+}
+
+async function getListItems(): Promise<ProRevocationItemsDBType> {
+  assertInitialFetchFromDBDone('getListItems');
+
+  return cachedProRevocationListItems;
+}
+
+async function setListItems(items: ProRevocationItemsDBType, assertLoaded = true) {
+  if (assertLoaded) {
+    assertInitialFetchFromDBDone('setListItems');
+  }
+
+  await Storage.put(SettingsKey.proRevocationListItems, JSON.stringify(items));
+  cachedProRevocationListItems = items;
+}
+
+/**
+ * Clear the cache only (not what is stored in the database)
+ */
+function clear() {
+  cachedProRevocationListTicket = 0;
+  cachedProRevocationListItems = [];
+  initialFetchFromDBDone = false;
+}
+
+/**
+ * Returns true if the hash is effectively revoked.
+ * That is, if the hash is present in the revocation list,
+ * and has an `effectiveMs` that is in the past (network time).
+ */
+function isB64HashEffectivelyRevoked(revocationTagBase64: string) {
+  assertInitialFetchFromDBDone('isB64HashEffectivelyRevoked');
+
+  const found = cachedProRevocationListItems.find(m => m.revocationTagB64 === revocationTagBase64);
+
+  return !!found && NetworkTime.now() >= found.effectiveMs;
+}
+
+/**
+ * When a listed-but-not-yet-effective revocation starts to bite, or null if the hash is not listed or
+ * is already effective.
+ *
+ * Needed because a future-dated revocation changes the answer to "is this proof usable" with no event
+ * behind it: the list has already arrived, so nothing further will be fetched, and the instant simply
+ * passes. Anything holding a rendered copy of that answer has to arm a timer for it.
+ */
+function pendingRevocationMsForB64Hash(revocationTagBase64: string): number | null {
+  assertInitialFetchFromDBDone('pendingRevocationMsForB64Hash');
+
+  const found = cachedProRevocationListItems.find(m => m.revocationTagB64 === revocationTagBase64);
+
+  return found && found.effectiveMs > NetworkTime.now() ? found.effectiveMs : null;
+}
+
+export const ProRevocationCache = {
+  getTicket,
+  setTicket,
+  getListItems,
+  setListItems,
+  clear,
+  isB64HashEffectivelyRevoked,
+  pendingRevocationMsForB64Hash,
+  loadFromDbIfNeeded,
+};

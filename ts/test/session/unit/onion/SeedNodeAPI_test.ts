@@ -1,0 +1,90 @@
+import chai from 'chai';
+import chaiAsPromised from 'chai-as-promised';
+import { describe } from 'mocha';
+import Sinon from 'sinon';
+
+import { Onions } from '../../../../session/apis/snode_api';
+import { TestUtils } from '../../../test-utils';
+
+import { SnodePool } from '../../../../session/apis/snode_api/snodePool';
+
+import { Snode } from '../../../../data/types';
+import { SeedNodeAPI } from '../../../../session/apis/seed_node_api';
+import * as OnionPaths from '../../../../session/onions/onionPath';
+import { generateFakeSnodes, generateFakeSnodeWithDetails } from '../../../test-utils/utils';
+import type { SnodesFromSeed } from '../../../../session/apis/seed_node_api/types';
+
+chai.use(chaiAsPromised as any);
+chai.should();
+
+const { expect } = chai;
+
+const guard1ed = 'e3ec6fcc79e64c2af6a48a9865d4bf4b739ec7708d75f35acc3d478f9161534e';
+const guard2ed = 'e3ec6fcc79e64c2af6a48a9865d4bf4b739ec7708d75f35acc3d478f91615349';
+const guard3ed = 'e3ec6fcc79e64c2af6a48a9865d4bf4b739ec7708d75f35acc3d478f9161534a';
+
+const fakeSnodePool: Array<Snode> = [
+  ...generateFakeSnodes(12),
+  generateFakeSnodeWithDetails({ ed25519Pubkey: guard1ed, ip: null }),
+  generateFakeSnodeWithDetails({ ed25519Pubkey: guard2ed, ip: null }),
+  generateFakeSnodeWithDetails({ ed25519Pubkey: guard3ed, ip: null }),
+  ...generateFakeSnodes(3),
+];
+
+const fakeSnodePoolFromSeedNode: SnodesFromSeed = fakeSnodePool.map(m => {
+  return {
+    public_ip: m.ip,
+    storage_port: m.port,
+    pubkey_x25519: m.pubkey_x25519,
+    pubkey_ed25519: m.pubkey_ed25519,
+    requested_unlock_height: 0,
+  };
+});
+
+describe('SeedNodeAPI', () => {
+  // Initialize new stubbed cache
+
+  describe('getSnodeListFromSeednode', () => {
+    beforeEach(() => {
+      // Utils Stubs
+      OnionPaths.clearTestOnionPath();
+
+      TestUtils.stubWindowLog();
+
+      Onions.resetSnodeFailureCount();
+      OnionPaths.resetPathFailureCount();
+      SnodePool.resetState();
+    });
+
+    afterEach(() => {
+      Sinon.restore();
+    });
+
+    it('if the cached snode pool has less than 12 snodes, trigger a fetch from the seed nodes with retries', async () => {
+      const fetchSnodePoolFromSeedNodeRetryable = Sinon.stub(
+        SeedNodeAPI,
+        'fetchSnodePoolFromSeedNodeRetryable'
+      )
+        .onFirstCall()
+        .throws()
+        .onSecondCall()
+        .resolves(fakeSnodePoolFromSeedNode);
+
+      Sinon.stub(SeedNodeAPI, 'getMinTimeout').returns(20);
+
+      // run the command
+      const fetched = await SeedNodeAPI.fetchSnodePoolFromSeedNodeWithRetries(['seednode1']);
+
+      const sortedFetch = fetched.sort((a, b) => (a.pubkey_ed25519 > b.pubkey_ed25519 ? -1 : 1));
+      const sortedFakeSnodePool = fakeSnodePool.sort((a, b) =>
+        a.pubkey_ed25519 > b.pubkey_ed25519 ? -1 : 1
+      );
+      expect(sortedFetch).to.deep.equal(sortedFakeSnodePool);
+
+      expect(
+        fetchSnodePoolFromSeedNodeRetryable.callCount,
+        'fetchSnodePoolFromSeedNodeRetryable called twice as the first one failed'
+      ).to.be.eq(2);
+    });
+  });
+});

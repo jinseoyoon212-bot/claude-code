@@ -1,0 +1,124 @@
+import { isEmpty } from 'lodash';
+
+import styled from 'styled-components';
+import {
+  useSelectedIsGroupOrCommunity,
+  useSelectedIsPublic,
+} from '../../../../../state/selectors/selectedConversation';
+import { MIME } from '../../../../../types';
+import { GoogleChrome } from '../../../../../util';
+import { MessageBody } from '../MessageBody';
+import { QuoteProps } from './Quote';
+import { tr } from '../../../../../localization/localeTools';
+import { MessageDeletedType } from '../../../../../models/messageType';
+import { collapseString } from '../../../../../shared/string_utils';
+
+const StyledQuoteText = styled.div<{ $isIncoming: boolean }>`
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+
+  font-size: 15px;
+  line-height: 18px;
+  text-align: start;
+
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+
+  color: ${props =>
+    props.$isIncoming
+      ? 'var(--message-bubble-incoming-text-color)'
+      : 'var(--message-bubble-outgoing-text-color)'};
+  a {
+    color: ${props =>
+      props.$isIncoming
+        ? 'var(--color-received-message-text)'
+        : 'var(--message-bubble-outgoing-text-color)'};
+  }
+`;
+
+function getTypeLabel({
+  contentType,
+  isVoiceMessage,
+  fileName,
+}: {
+  contentType: MIME.MIMEType;
+  isVoiceMessage: boolean;
+  /**
+   * The name of the file, if any. Only used for documents
+   */
+  fileName?: string;
+}): string | undefined {
+  if (GoogleChrome.isVideoTypeSupported(contentType)) {
+    return tr('video');
+  }
+  if (GoogleChrome.isImageTypeSupported(contentType)) {
+    return tr('image');
+  }
+  if (MIME.isAudio(contentType) && isVoiceMessage) {
+    return tr('messageVoice');
+  }
+  if (MIME.isAudio(contentType)) {
+    return tr('audio');
+  }
+  if (!fileName) {
+    return tr('document');
+  }
+  return getShortenedFilename(fileName);
+}
+
+export function getShortenedFilename(fileName: string) {
+  if (!fileName) {
+    return '';
+  }
+  const charsAround = 15;
+
+  return collapseString(fileName, charsAround, charsAround, true);
+}
+
+export const QuoteText = (
+  props: Pick<
+    QuoteProps,
+    'text' | 'attachment' | 'isIncoming' | 'referencedMessageNotFound' | 'isDeleted'
+  >
+) => {
+  const { text, attachment, isIncoming, referencedMessageNotFound, isDeleted } = props;
+
+  const isGroup = useSelectedIsGroupOrCommunity();
+  const isPublic = useSelectedIsPublic();
+
+  if (!referencedMessageNotFound && attachment && !isEmpty(attachment)) {
+    const { contentType, isVoiceMessage, fileName } = attachment;
+
+    const typeLabel = getTypeLabel({ contentType, fileName, isVoiceMessage });
+    if (typeLabel && !text) {
+      return <div style={{ WebkitLineClamp: 1 }}>{typeLabel}</div>;
+    }
+  }
+
+  const firstLine = text?.split('\n')[0];
+  const firstLineWithMore =
+    firstLine && firstLine.length !== text?.length ? `${firstLine}…` : firstLine;
+
+  const textOrFallbacks =
+    isDeleted === MessageDeletedType.deletedGlobally
+      ? tr('deleteMessageDeletedGlobally')
+      : isDeleted === MessageDeletedType.deletedLocally
+        ? tr('deleteMessageDeletedLocally')
+        : firstLineWithMore || tr('messageErrorOriginal');
+
+  return (
+    <StyledQuoteText $isIncoming={isIncoming} dir="auto" data-testid="quote-text">
+      <MessageBody
+        text={textOrFallbacks}
+        disableRichContent={true}
+        disableJumbomoji={true}
+        isGroup={isGroup}
+        isPublic={isPublic}
+      />
+    </StyledQuoteText>
+  );
+};

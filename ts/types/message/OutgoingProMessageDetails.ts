@@ -1,0 +1,80 @@
+/* eslint-disable no-bitwise */
+import { isEmpty } from 'lodash';
+import { base64_variants, from_base64, from_hex } from 'libsodium-wrappers-sumo';
+import type { ProConfig } from 'libsession_util_nodejs';
+import { SignalService } from '../../protobuf';
+import { bigIntToLong } from '../Bigint';
+import { getDataFeatureFlag } from '../../state/ducks/types/releasedFeaturesReduxTypes';
+import { ProFeatures, ProMessageFeature } from '../../models/proMessageFeature';
+
+export class OutgoingProMessageDetails {
+  public readonly proConfig?: ProConfig;
+  public readonly proProfileBitset: bigint;
+  public readonly proMessageBitset: bigint;
+
+  constructor(args: {
+    proConfig?: ProConfig;
+    proProfileBitset?: bigint;
+    proMessageBitset?: bigint;
+  }) {
+    this.proConfig = args.proConfig;
+
+    this.proProfileBitset = args.proProfileBitset || 0n;
+    this.proMessageBitset = args.proMessageBitset || 0n;
+
+    const mockMessageProFeatures = getDataFeatureFlag('mockMessageProFeatures');
+    if (mockMessageProFeatures?.length) {
+      if (mockMessageProFeatures.includes(ProMessageFeature.PRO_INCREASED_MESSAGE_LENGTH)) {
+        this.proMessageBitset = ProFeatures.addProFeature(
+          this.proMessageBitset,
+          ProMessageFeature.PRO_INCREASED_MESSAGE_LENGTH,
+          'proMessage'
+        );
+      }
+      if (mockMessageProFeatures.includes(ProMessageFeature.PRO_BADGE)) {
+        this.proProfileBitset = ProFeatures.addProFeature(
+          this.proProfileBitset,
+          ProMessageFeature.PRO_BADGE,
+          'proProfile'
+        );
+      }
+      if (mockMessageProFeatures.includes(ProMessageFeature.PRO_ANIMATED_DISPLAY_PICTURE)) {
+        this.proProfileBitset = ProFeatures.addProFeature(
+          this.proProfileBitset,
+          ProMessageFeature.PRO_ANIMATED_DISPLAY_PICTURE,
+          'proProfile'
+        );
+      }
+    }
+  }
+
+  public toProtobufDetails(): SignalService.ProMessage | null {
+    const hasOneBitsetSet = !!(this.proProfileBitset || this.proMessageBitset);
+    if (!hasOneBitsetSet || !this.proConfig || !this.proConfig.proProof) {
+      if (!hasOneBitsetSet && !isEmpty(this.proConfig?.proProof)) {
+        window.log.debug(
+          'OutgoingProMessageDetails: proof is not empty but bitsets are so not including pro proof.'
+        );
+      }
+      return null;
+    }
+    const { expiryMs, revocationTagB64, rotatingPubkeyHex, signatureHex } = this.proConfig.proProof;
+
+    return new SignalService.ProMessage({
+      profileBitset: bigIntToLong(this.proProfileBitset),
+      messageBitset: bigIntToLong(this.proMessageBitset),
+      proof: {
+        // The proof expiry travels as whole seconds on the wire (what libsession signs over and
+        // parses via `as_sys_seconds`); our JS domain keeps it in ms, so convert back down here.
+        expiryUnixTs: Math.floor(expiryMs / 1000),
+        revocationTag: from_base64(revocationTagB64, base64_variants.ORIGINAL),
+        rotatingPublicKey: from_hex(rotatingPubkeyHex),
+        sig: from_hex(signatureHex),
+      },
+    });
+  }
+}
+
+export type WithOutgoingProMessageDetails = {
+  outgoingProMessageDetails: OutgoingProMessageDetails | null;
+};

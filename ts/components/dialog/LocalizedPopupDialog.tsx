@@ -1,0 +1,95 @@
+import { isEmpty } from 'lodash';
+import { Dispatch } from 'react';
+import styled from 'styled-components';
+import { getAppDispatch } from '../../state/dispatch';
+import {
+  type LocalizedPopupDialogState,
+  updateLocalizedPopupDialog,
+} from '../../state/ducks/modalDialog';
+import {
+  ModalActionsContainer,
+  ModalBasicHeader,
+  SessionWrapperModal,
+} from '../SessionWrapperModal';
+import { SessionButton, SessionButtonType } from '../basic/SessionButton';
+import { tr } from '../../localization/localeTools';
+import { Localizer } from '../basic/Localizer';
+import { ModalDescription } from './shared/ModalDescriptionContainer';
+
+const StyledScrollDescriptionContainer = styled.div`
+  max-height: 150px;
+  overflow-y: auto;
+  text-align: center;
+`;
+
+export function LocalizedPopupDialog(props: LocalizedPopupDialogState) {
+  const dispatch = getAppDispatch();
+
+  function onClose() {
+    dispatch(updateLocalizedPopupDialog(null));
+  }
+
+  if (
+    !props ||
+    isEmpty(props) ||
+    !props.title ||
+    !props.description ||
+    !props.title.token ||
+    !props.description.token ||
+    (props.overrideButtons && !props.overrideButtons.length)
+  ) {
+    return null;
+  }
+
+  return (
+    <SessionWrapperModal
+      modalId="localizedPopupDialog"
+      headerChildren={
+        <ModalBasicHeader title={<Localizer {...props.title} />} showExitIcon={true} />
+      }
+      buttonChildren={
+        <ModalActionsContainer buttonType={SessionButtonType.Simple}>
+          {props.overrideButtons ? (
+            props.overrideButtons.map(
+              ({ label, buttonType, onClick, closeAfterClick, dataTestId }) => (
+                <SessionButton
+                  key={label.token}
+                  buttonType={buttonType || SessionButtonType.Simple}
+                  onClick={async () => {
+                    await onClick?.();
+                    if (closeAfterClick) {
+                      onClose();
+                    }
+                  }}
+                  dataTestId={dataTestId}
+                >
+                  <Localizer {...label} />
+                </SessionButton>
+              )
+            )
+          ) : (
+            <SessionButton
+              buttonType={SessionButtonType.Simple}
+              onClick={onClose}
+              dataTestId="session-confirm-ok-button"
+            >
+              {tr('okay')}
+            </SessionButton>
+          )}
+        </ModalActionsContainer>
+      }
+      onClose={onClose}
+    >
+      <StyledScrollDescriptionContainer>
+        <ModalDescription localizerProps={props.description} dataTestId="modal-description" />
+      </StyledScrollDescriptionContainer>
+    </SessionWrapperModal>
+  );
+}
+
+export const showLocalizedPopupDialog = (
+  props: LocalizedPopupDialogState,
+  dispatch: Dispatch<any>
+) => {
+  dispatch(updateLocalizedPopupDialog(props));
+};
