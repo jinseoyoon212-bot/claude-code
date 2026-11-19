@@ -12,6 +12,8 @@
 import sodium from 'libsodium-wrappers-sumo';
 import { initSqliteWasm, wipeSqliteStorage } from '../shims/sqlcipher';
 import { sqlNode } from '../../ts/node/sql';
+import { writeFileSync } from 'fs';
+import { libsessionReady } from '../libsession';
 
 const ctx: any = globalThis;
 
@@ -21,7 +23,12 @@ ctx.onmessage = async (e: MessageEvent) => {
     case 'init': {
       try {
         await sodium.ready;
+        // some migrations rebuild libsession config dumps
+        await libsessionReady;
         await initSqliteWasm();
+        // sql.ts stats the db file to know when the account was created. The real file lives in
+        // OPFS (owned by SQLite), so expose a placeholder in the virtual fs.
+        writeFileSync('/sql/db.sqlite', '');
         await sqlNode.initializeSql({ configDir: '/', key: msg.key, passwordAttempt: false });
         ctx.postMessage({ type: 'init-done' });
       } catch (err) {

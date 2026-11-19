@@ -31,6 +31,11 @@ function gitCommit() {
   }
 }
 
+const LIBSESSION_WASM_DIR = path.join(
+  path.dirname(require.resolve('@session-foundation/libsession-wasm')),
+  '.'
+);
+
 const isProd = process.env.NODE_ENV === 'production';
 
 /**
@@ -70,6 +75,9 @@ const sharedAliases = {
   'fs/promises$': path.join(WEB, 'shims/fs.ts'),
   sharp$: path.join(WEB, 'shims/empty.ts'),
   'node-fetch$': path.join(WEB, 'shims/node-fetch.ts'),
+  'abort-controller$': path.join(WEB, 'shims/abort-controller.ts'),
+  'libsession-wasm-glue$': path.join(LIBSESSION_WASM_DIR, 'libsession-wasm.js'),
+  'libsession-wasm-binary$': path.join(LIBSESSION_WASM_DIR, 'libsession-wasm.wasm'),
   https$: path.join(WEB, 'shims/https.ts'),
   http$: path.join(WEB, 'shims/https.ts'),
   tls$: path.join(WEB, 'shims/https.ts'),
@@ -178,15 +186,10 @@ module.exports = {
   },
   plugins: [
     new ReplaceFilesPlugin(),
+    // the native addon is replaced by the WASM adapter everywhere (page, sql worker, libsession worker)
     new webpack.NormalModuleReplacementPlugin(/^libsession_util_nodejs$/, resource => {
-      const issuer = resource.contextInfo?.issuer || '';
-      const isLibsessionWorker =
-        /webworker[\\/]workers[\\/]node[\\/]libsession/.test(issuer) ||
-        /web[\\/]libsession[\\/]/.test(issuer);
       // eslint-disable-next-line no-param-reassign
-      resource.request = isLibsessionWorker
-        ? path.join(WEB, 'libsession/index.ts')
-        : path.join(WEB, 'libsession/renderer.ts');
+      resource.request = path.join(WEB, 'libsession/index.ts');
     }),
     new webpack.ProvidePlugin({
       process: [path.join(WEB, 'shims/process.ts'), 'default'],
