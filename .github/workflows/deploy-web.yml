@@ -1,0 +1,51 @@
+name: Deploy Session Web to GitHub Pages
+
+# Builds the browser version of Session (web/) and publishes it in the `session/` folder of the
+# gh-pages branch. Other files already on gh-pages (the site root) are kept untouched.
+#   -> https://<owner>.github.io/<repo>/session/
+
+on:
+  push:
+    branches: [Session-web-version, ccr-0e41d845-j2twfo]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-session-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # --ignore-scripts: the web build doesn't need Electron, sqlcipher or the native libsession addon
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build web version
+        run: pnpm build:web
+        env:
+          # Optional: URL of a running web/relay/server.js, needed to reach the Session network.
+          # Set it in Settings > Secrets and variables > Actions > Variables.
+          SESSION_WEB_RELAY_URL: ${{ vars.SESSION_WEB_RELAY_URL }}
+
+      - name: Publish to gh-pages/session
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: dist-web
+          destination_dir: session
+          keep_files: true
+          commit_message: 'Deploy Session Web'

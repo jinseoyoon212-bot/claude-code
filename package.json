@@ -68,7 +68,10 @@
     "worker:image_processor": "webpack --config=./image_processor.worker.config.js",
     "prepare": "husky",
     "print-deps": "node -v",
-    "watch": "pnpm build:setup && concurrently -n TS,BABEL,SASS,SVG,UTIL,LIBSESSION,IMAGE -c green,blue,blue,blue,blue,blue,blue \"tsc --sourceMap --inlineSources --watch\" \"pnpm build-compile --watch\" \"pnpm build:sass --watch\" \"pnpm build:svg --watch\" \"pnpm worker:utils --watch\" \"pnpm worker:libsession --watch\" \"pnpm worker:image_processor --watch\""
+    "watch": "pnpm build:setup && concurrently -n TS,BABEL,SASS,SVG,UTIL,LIBSESSION,IMAGE -c green,blue,blue,blue,blue,blue,blue \"tsc --sourceMap --inlineSources --watch\" \"pnpm build-compile --watch\" \"pnpm build:sass --watch\" \"pnpm build:svg --watch\" \"pnpm worker:utils --watch\" \"pnpm worker:libsession --watch\" \"pnpm worker:image_processor --watch\"",
+    "build:web": "pnpm build:protobuf && cross-env NODE_ENV=production webpack --config web/webpack.config.js",
+    "build:web:dev": "pnpm build:protobuf && cross-env NODE_ENV=development webpack --config web/webpack.config.js",
+    "start:web": "cross-env NODE_ENV=development webpack serve --config web/webpack.config.js"
   },
   "dependencies": {
     "@emoji-mart/data": "https://github.com/session-foundation/session-emoji-mart/releases/download/v5.6.0/emoji-mart-data-v1.2.1.tgz",
@@ -231,7 +234,8 @@
     "url": "^0.11.4",
     "util": "^0.12.5",
     "webpack": "5.103.0",
-    "webpack-cli": "6.0.1"
+    "webpack-cli": "6.0.1",
+    "webpack-dev-server": "^6.1.0"
   },
   "engines": {
     "node": "24.22.1"

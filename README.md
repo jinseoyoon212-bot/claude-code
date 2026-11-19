@@ -1,3 +1,6 @@
+> **Session Web (unofficial)** — this fork runs Session Desktop in the browser.
+> See [`web/README.md`](web/README.md) for how it works, how to build/deploy it and what works today.
+
 # Session Desktop
 
 [Download at getsession.org](https://getsession.org/download)
