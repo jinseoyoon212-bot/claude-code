@@ -71,3 +71,4 @@ build/copyTests.js
 test_output
 
 .env
+/dist-web
