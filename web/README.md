@@ -27,9 +27,8 @@ Git 연결로 배포할 때 설정:
 
 저장소에 `.tool-versions`를 두지 마세요. Cloudflare가 asdf로 Node를 설치하려다 `node plugin is not installed`로 실패합니다 (Node 버전은 `.nvmrc`로 고정).
 
-GitHub Pages로도 배포하려면 `.github/workflows/deploy-web.yml`이 `gh-pages/session/`에 올립니다.
- GitHub Actions(`.github/workflows/deploy-web.yml`)가
-`gh-pages` 브랜치의 `session/` 폴더로 배포합니다 → `https://<owner>.github.io/<repo>/session/`.
+`gh-pages` 브랜치에 빌드 결과를 올리는 워크플로는 두지 않습니다. Cloudflare가 그 브랜치를 소스로 착각해 빌드하다 실패하기 때문입니다 (`No package.json found`).
+ 현재 배포는 Cloudflare Pages (`https://session-relay.pages.dev`)입니다.
 
 ## 구조
 
@@ -59,7 +58,7 @@ ALLOWED_ORIGINS=https://<owner>.github.io PORT=8787 node web/relay/server.js
 ```
 
 relay 주소는 빌드할 때 넣습니다: `SESSION_WEB_RELAY_URL=https://relay.example.com pnpm build:web`
-(GitHub Actions에서는 저장소 Variables의 `SESSION_WEB_RELAY_URL`).
+(Cloudflare Pages에서는 Settings > Variables and Secrets의 `SESSION_WEB_RELAY_URL`).
 relay가 없으면 앱은 오프라인 상태(왼쪽 아래 빨간 점)로 동작합니다.
 
 ## 현재 상태
