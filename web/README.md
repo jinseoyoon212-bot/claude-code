@@ -12,7 +12,23 @@ pnpm build:web                     # -> dist-web/ (정적 파일)
 pnpm start:web                     # 개발 서버 http://localhost:8080
 ```
 
-`dist-web/`는 아무 정적 호스팅에 올리면 됩니다. GitHub Actions(`.github/workflows/deploy-web.yml`)가
+`dist-web/`는 아무 정적 호스팅에 올리면 됩니다.
+
+### Cloudflare Pages
+
+Git 연결로 배포할 때 설정:
+
+| 항목                    | 값                                                                      |
+| ----------------------- | ----------------------------------------------------------------------- |
+| Production branch       | `ccr-0e41d845-j2twfo`                                                    |
+| Build command           | `pnpm install --frozen-lockfile --ignore-scripts && pnpm build:web`      |
+| Build output directory  | `dist-web`                                                               |
+| 환경변수                | `NODE_VERSION=24.22.1`, (선택) `SESSION_WEB_RELAY_URL=https://<relay>`    |
+
+저장소에 `.tool-versions`를 두지 마세요. Cloudflare가 asdf로 Node를 설치하려다 `node plugin is not installed`로 실패합니다 (Node 버전은 `.nvmrc`로 고정).
+
+GitHub Pages로도 배포하려면 `.github/workflows/deploy-web.yml`이 `gh-pages/session/`에 올립니다.
+ GitHub Actions(`.github/workflows/deploy-web.yml`)가
 `gh-pages` 브랜치의 `session/` 폴더로 배포합니다 → `https://<owner>.github.io/<repo>/session/`.
 
 ## 구조
