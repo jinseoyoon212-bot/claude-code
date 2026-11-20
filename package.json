@@ -71,7 +71,8 @@
     "watch": "pnpm build:setup && concurrently -n TS,BABEL,SASS,SVG,UTIL,LIBSESSION,IMAGE -c green,blue,blue,blue,blue,blue,blue \"tsc --sourceMap --inlineSources --watch\" \"pnpm build-compile --watch\" \"pnpm build:sass --watch\" \"pnpm build:svg --watch\" \"pnpm worker:utils --watch\" \"pnpm worker:libsession --watch\" \"pnpm worker:image_processor --watch\"",
     "build:web": "pnpm build:protobuf && cross-env NODE_ENV=production webpack --config web/webpack.config.js",
     "build:web:dev": "pnpm build:protobuf && cross-env NODE_ENV=development webpack --config web/webpack.config.js",
-    "start:web": "cross-env NODE_ENV=development webpack serve --config web/webpack.config.js"
+    "start:web": "cross-env NODE_ENV=development webpack serve --config web/webpack.config.js",
+    "test:web": "tsx web/test/messages.test.ts"
   },
   "dependencies": {
     "@emoji-mart/data": "https://github.com/session-foundation/session-emoji-mart/releases/download/v5.6.0/emoji-mart-data-v1.2.1.tgz",

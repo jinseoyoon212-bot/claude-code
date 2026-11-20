@@ -10,11 +10,14 @@
  * Status:
  *  - UserConfig, Contacts, UserGroups, ConvoInfoVolatile: implemented
  *  - Blinding, Utilities: implemented
- *  - MultiEncrypt: multi(de|en)crypt, attachments, 1o1 encrypt/decrypt implemented
- *  - MetaGroup (new closed groups), Pro: not available yet, calls throw a clear error
+ *  - MultiEncrypt: multi(de|en)crypt, attachments, 1o1 / group / community message encryption
+ *    (see messages.ts)
+ *  - MetaGroup (new closed groups), Pro: see their sections below
  */
 /* eslint-disable max-classes-per-file */
 /* eslint-disable class-methods-use-this */
+import { makeMessageCrypto } from './messages';
+
 export { CONSTANTS } from './constants';
 
 type Wasm = any;
@@ -41,6 +44,13 @@ function w(): Wasm {
     throw new Error('libsession WASM is not loaded (yet)');
   }
   return wasm;
+}
+
+type MessageCrypto = ReturnType<typeof makeMessageCrypto>;
+let messageCryptoInstance: MessageCrypto | undefined;
+function messageCrypto() {
+  messageCryptoInstance ??= makeMessageCrypto(w);
+  return messageCryptoInstance;
 }
 
 class NotAvailableOnWebError extends Error {
@@ -881,32 +891,43 @@ export class MultiEncryptWrapperNode {
     };
   }
 
-  public static encryptFor1o1(): never {
-    throw new NotAvailableOnWebError('Sending 1-1 messages');
+  public static encryptFor1o1(items: Parameters<MessageCrypto['encryptFor1o1']>[0]) {
+    return messageCrypto().encryptFor1o1(items);
   }
 
-  public static encryptForCommunityInbox(): never {
-    throw new NotAvailableOnWebError('Community inbox messages');
+  public static encryptForCommunityInbox(
+    items: Parameters<MessageCrypto['encryptForCommunityInbox']>[0]
+  ) {
+    return messageCrypto().encryptForCommunityInbox(items);
   }
 
-  public static encryptForCommunity(): never {
-    throw new NotAvailableOnWebError('Sending community messages');
+  public static encryptForCommunity(items: Parameters<MessageCrypto['encryptForCommunity']>[0]) {
+    return messageCrypto().encryptForCommunity(items);
   }
 
-  public static encryptForGroup(): never {
-    throw new NotAvailableOnWebError('Sending group messages');
+  public static encryptForGroup(items: Parameters<MessageCrypto['encryptForGroup']>[0]) {
+    return messageCrypto().encryptForGroup(items);
   }
 
-  public static decryptForCommunity(): never {
-    throw new NotAvailableOnWebError('Reading community messages');
+  public static decryptForCommunity(
+    items: Parameters<MessageCrypto['decryptForCommunity']>[0],
+    opts: Parameters<MessageCrypto['decryptForCommunity']>[1]
+  ) {
+    return messageCrypto().decryptForCommunity(items, opts);
   }
 
-  public static decryptFor1o1(): never {
-    throw new NotAvailableOnWebError('Reading 1-1 messages');
+  public static decryptFor1o1(
+    items: Parameters<MessageCrypto['decryptFor1o1']>[0],
+    opts: Parameters<MessageCrypto['decryptFor1o1']>[1]
+  ) {
+    return messageCrypto().decryptFor1o1(items, opts);
   }
 
-  public static decryptForGroup(): never {
-    throw new NotAvailableOnWebError('Reading group messages');
+  public static decryptForGroup(
+    items: Parameters<MessageCrypto['decryptForGroup']>[0],
+    opts: Parameters<MessageCrypto['decryptForGroup']>[1]
+  ) {
+    return messageCrypto().decryptForGroup(items, opts);
   }
 }
 
