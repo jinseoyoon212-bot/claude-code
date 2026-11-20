@@ -1,0 +1,3 @@
+# only the relay is needed to build the relay image
+*
+!web/relay/server.js
