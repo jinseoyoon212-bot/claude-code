@@ -543,36 +543,54 @@ func _build_set() -> void:
 		var bz := rng.randf_range(5.8, 9.0) * (1.0 if rng.randf() < 0.5 else -1.0)
 		place("hw/%s.gltf" % nm, Vector3(rng.randf_range(22, 34), 0.0, bz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
 
-	# ===== 숲: 스테이지마다 다른 나무 =====
-	var clusters := ["trees_A_large", "trees_B_large", "trees_A_medium", "trees_B_medium", "trees_A_small", "trees_B_small"]
-	for i in 30:
-		var x := lerpf(-62.0, 62.0, i / 29.0) + rng.randf_range(-2.0, 2.0)
-		var z := -rng.randf_range(17.0, 25.0)
+	# ===== 숲: Quaternius Stylized Nature MegaKit (CC0) 나무·덤불·풀·꽃·바위. 스테이지마다 나무 종류와 색조가 달라진다 =====
+	var commons := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5"]
+	var pines := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"]
+	var twisted := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"]
+	var deads := ["DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4"]
+	var qtint := tint if tint != "dark" else "gloom"
+	for i in 44:   # 뒤쪽(-z)의 숲
+		var x := lerpf(-62.0, 62.0, i / 43.0) + rng.randf_range(-2.0, 2.0)
 		if absf(x) > 52.0:
 			continue
-		var sc := rng.randf_range(5.0, 6.5)
+		var z := -rng.randf_range(15.0, 26.0)
+		var nm := ""
+		var sc := rng.randf_range(1.0, 1.5)
 		match envn:
-			"fire":
-				var pine := ["tree_pine_orange_large", "tree_pine_orange_medium", "tree_pine_orange_small", "tree_dead_medium"]
-				place("hw/%s.gltf" % pine[i % pine.size()], Vector3(x, 0, z), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
 			"dark":
-				var dead := ["tree_dead_large", "tree_dead_medium", "tree_dead_small"]
-				place("hw/%s.gltf" % dead[i % dead.size()], Vector3(x, 0, z), rng.randf_range(0, 360), rng.randf_range(1.0, 1.5))
+				nm = deads[i % deads.size()]
+			"fire":
+				nm = deads[i % deads.size()] if i % 3 == 0 else pines[i % pines.size()]
+			"ice":
+				nm = pines[i % pines.size()]
 			_:
-				place("hex/%s.gltf" % clusters[i % clusters.size()], Vector3(x, 0, z), rng.randf_range(0, 360), sc, tint)
+				nm = commons[i % commons.size()] if i % 3 != 0 else pines[i % pines.size()]
+		if i % 11 == 5 and envn != "dark":   # 군데군데 거대한 뒤틀린 고목
+			nm = twisted[(i / 11) % twisted.size()]
+			sc = rng.randf_range(0.55, 0.75)
+		place("qn/%s.gltf" % nm, Vector3(x, 0, z), rng.randf_range(0, 360), sc, qtint)
 	for i in 18:   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
 		var x2 := rng.randf_range(-33, 33)
 		var z2 := rng.randf_range(12.5, 16.0) * (1.0 if rng.randf() < 0.35 else -1.0)
-		var single := "tree_single_A" if i % 2 == 0 else "tree_single_B"
-		if envn == "dark":
-			place("hw/tree_dead_small.gltf", Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(1.0, 1.4))
-		elif envn == "fire":
-			place("hw/tree_pine_orange_small.gltf", Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(0.8, 1.1))
-		else:
-			place("hex/%s.gltf" % single, Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(4.0, 5.5), tint)
+		var nm2: String = deads[i % deads.size()] if envn == "dark" else (pines[i % pines.size()] if (i % 2 == 0 or envn == "ice") else commons[i % commons.size()])
+		place("qn/%s.gltf" % nm2, Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(0.7, 1.1), qtint)
 	for i in 22:   # 바위
-		var rk := "rock_single_%s" % ["A", "B", "C", "D", "E"][i % 5]
-		place("hex/%s.gltf" % rk, Vector3(rng.randf_range(-32, 32), 0, rng.randf_range(9.5, 16.5) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(6.0, 10.0), tint)
+		var rk := "Rock_Medium_%d" % (1 + i % 3)
+		place("qn/%s.gltf" % rk, Vector3(rng.randf_range(-32, 32), 0, rng.randf_range(9.5, 16.5) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.8), tint)
+	for i in 26:   # 덤불
+		var bn := "Bush_Common_Flowers" if (i % 3 == 0 and (envn == "day" or envn == "night")) else "Bush_Common"
+		place("qn/%s.gltf" % bn, Vector3(rng.randf_range(-36, 30), 0, rng.randf_range(7.5, 17.0) * (1.0 if rng.randf() < 0.3 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
+	var tufts := ["Grass_Common_Tall", "Grass_Common_Short", "Grass_Wispy_Tall"]
+	for i in 70:   # 길 가장자리 풀
+		var gz := rng.randf_range(6.2, 15.0) * (1.0 if rng.randf() < 0.4 else -1.0)
+		place("qn/%s.gltf" % tufts[i % tufts.size()], Vector3(rng.randf_range(-38, 30), 0, gz), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
+	if envn == "day" or envn == "night" or envn == "ice":   # 꽃과 버섯
+		for i in 26:
+			var fn := "Flower_3_Group" if i % 2 == 0 else "Flower_4_Group"
+			place("qn/%s.gltf" % fn, Vector3(rng.randf_range(-36, 28), 0, rng.randf_range(6.5, 14.0) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.5), qtint)
+	for i in 10:
+		var mn2 := "Mushroom_Common" if i % 2 == 0 else "Mushroom_Laetiporus"
+		place("qn/%s.gltf" % mn2, Vector3(rng.randf_range(-34, 30), 0, rng.randf_range(6.5, 12.0) * (1.0 if rng.randf() < 0.5 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.2, 2.2), qtint)
 
 	# ===== 먼 배경: 언덕과 산, 구름 =====
 	var hills := ["hills_A", "hills_B", "hills_C", "hills_A_trees"]
