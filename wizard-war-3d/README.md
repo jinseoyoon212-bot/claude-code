@@ -68,4 +68,5 @@
 - 배경·건물·나무·수정 등 모든 환경 모델: KayKit Medieval Hexagon / Halloween Bits / Dungeon Remastered, OpenGameArt LowPoly Crystals — 모두 CC0 (`models/env/SOURCES.md`)
 - 아이콘: game-icons.net — CC BY 3.0 (`icons/CREDITS.txt`)
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)
-- 폰트: Noto Sans KR, Gowun Batang — SIL OFL (`fonts/OFL.txt`), 완성형 한글 2350자 + 게임 텍스트로 서브셋
+- 폰트: Hahmlet(SIL OFL, `fonts/OFL-Hahmlet.txt`)을 전 화면에 굵기만 달리해 사용 — 빛의계승자체의 날카롭고 가는 명조 느낌에 가장 가까운 무료 글꼴. 빠진 글자는 Noto Sans KR(`fonts/NotoSansKR.ttf`)로 대신. (빛의계승자체는 게임 탑재 금지 라이선스라 쓰지 않음)
+- 숲·덤불·풀·꽃·바위 3D 모델: Quaternius Stylized Nature MegaKit (CC0) — `models/env/qn/LICENSE-Quaternius-StylizedNature.txt`

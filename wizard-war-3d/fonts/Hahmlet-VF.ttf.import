@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://b747yybxr3135"
-path="res://.godot/imported/GowunBatang-Bold.ttf-5d04b93a9e1bb875266089100a1aec55.fontdata"
+uid="uid://oetmyqmowjdh"
+path="res://.godot/imported/Hahmlet-VF.ttf-892071238e7e8200f504fe559af5059f.fontdata"
 
 [deps]
 
-source_file="res://fonts/GowunBatang-Bold.ttf"
-dest_files=["res://.godot/imported/GowunBatang-Bold.ttf-5d04b93a9e1bb875266089100a1aec55.fontdata"]
+source_file="res://fonts/Hahmlet-VF.ttf"
+dest_files=["res://.godot/imported/Hahmlet-VF.ttf-892071238e7e8200f504fe559af5059f.fontdata"]
 
 [params]
 

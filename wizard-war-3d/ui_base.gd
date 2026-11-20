@@ -42,15 +42,24 @@ const ICON_NAMES := ["attack", "shield", "nova", "summon", "chain", "frost", "he
 	"snow", "speed", "moon", "infinity", "back", "retry", "cancel", "upgrade", "exit", "equip"]
 
 
+func _hahmlet(base: Font, tag: int, w: int) -> Font:
+	var fv := FontVariation.new()
+	fv.base_font = base
+	fv.variation_opentype = {tag: w}
+	return fv
+
+
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	f_body = load("res://fonts/NotoSansKR.ttf")
-	var fv := FontVariation.new()
-	fv.base_font = f_body
-	fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800}
-	f_bold = fv
-	f_disp = load("res://fonts/GowunBatang-Bold.ttf")
+	# 모든 글자는 Hahmlet(OFL, 날카롭고 가는 고전 명조 느낌) 한 가지 글꼴의 굵기만 달리해서 쓴다.
+	# 빛의계승자체는 게임에 넣는 것을 라이선스가 금지해서 가장 비슷한 느낌의 무료 글꼴을 썼다. 빠진 글자는 Noto Sans KR로 대신한다.
+	var base: FontFile = load("res://fonts/Hahmlet-VF.ttf")
+	base.fallbacks = [load("res://fonts/NotoSansKR.ttf")]
+	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
+	f_body = _hahmlet(base, wght, 420)
+	f_bold = _hahmlet(base, wght, 660)
+	f_disp = _hahmlet(base, wght, 560)
 	for n in ICON_NAMES:
 		icons[n] = load("res://icons/%s.svg" % n)
 	icons["judge"] = icons["nova"]   # 아스트라 유디키움 버튼은 별빛 아이콘
