@@ -110,6 +110,72 @@ function toDecodedPro(pro: any) {
   };
 }
 
+/**
+ * `encrypt_for_multiple_simple` of libsession-util, which the official WASM can't do: its
+ * `MultiEncryptW.multiEncrypt` has no nonce argument and always fails with "nonce must be 24 bytes".
+ *
+ * For each recipient (32 bytes X25519 pubkey) the message is encrypted with XChaCha20-Poly1305,
+ * under a key derived from the X25519 shared secret and the sender / recipient keys (blake2b keyed
+ * with the domain). All of them are returned in a bencoded dict `{ "#": nonce, "e": [ciphertexts] }`.
+ * It is decrypted by `multiDecryptEd25519` (that one works in the WASM).
+ */
+export function multiEncrypt({
+  ed25519SecretKey,
+  domain,
+  messages,
+  recipients,
+}: {
+  ed25519SecretKey: Uint8Array;
+  domain: string;
+  messages: Array<Uint8Array>;
+  recipients: Array<Uint8Array>;
+}): Uint8Array {
+  if (ed25519SecretKey.length !== 64) {
+    throw new Error('Ed25519 secret key is not the expected 64 bytes');
+  }
+  if (messages.length !== 1 && messages.length !== recipients.length) {
+    throw new Error('encrypt_for_multiple requires either 1 or recipients.size() messages');
+  }
+  recipients.forEach(r => {
+    if (r.length !== 32) {
+      throw new Error('encrypt_for_multiple requires 32-byte recipients pubkeys');
+    }
+  });
+
+  const xPriv = sodium.crypto_sign_ed25519_sk_to_curve25519(ed25519SecretKey);
+  const xPub = sodium.crypto_sign_ed25519_pk_to_curve25519(ed25519SecretKey.subarray(32));
+  const nonce = sodium.randombytes_buf(24);
+  const domainKey = new TextEncoder().encode(domain).subarray(0, 64);
+
+  const encrypted = recipients.map((recipient, i) => {
+    const shared = sodium.crypto_scalarmult(xPriv, recipient);
+    // encrypting: S = sender, R = recipient
+    const key = sodium.crypto_generichash(32, concatBytes(shared, xPub, recipient), domainKey);
+    const message = messages.length === 1 ? messages[0] : messages[i];
+    return sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(message, null, null, nonce, key);
+  });
+
+  const text = new TextEncoder();
+  const bt = (bytes: Uint8Array) => concatBytes(text.encode(`${bytes.length}:`), bytes);
+  return concatBytes(
+    text.encode('d1:#'),
+    bt(nonce),
+    text.encode('1:el'),
+    ...encrypted.map(bt),
+    text.encode('ee')
+  );
+}
+
+function concatBytes(...parts: Array<Uint8Array>) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let pos = 0;
+  parts.forEach(p => {
+    out.set(p, pos);
+    pos += p.length;
+  });
+  return out;
+}
+
 export function makeMessageCrypto(w: () => Wasm) {
   const sessionIdFromEdPubkey = (edPubkeyHex: string) =>
     `05${w().SessionCryptoPrimitivesW.cryptoSignEd25519PkToCurve25519(edPubkeyHex)}`;

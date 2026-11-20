@@ -17,7 +17,7 @@
 /* eslint-disable max-classes-per-file */
 /* eslint-disable class-methods-use-this */
 import sodium from 'libsodium-wrappers-sumo';
-import { makeMessageCrypto } from './messages';
+import { makeMessageCrypto, multiEncrypt as multiEncryptJs } from './messages';
 import { createMetaGroupWrapperClass } from './metagroup';
 
 export { CONSTANTS } from './constants';
@@ -830,27 +830,8 @@ export class UtilitiesWrapperNode {
 }
 
 export class MultiEncryptWrapperNode {
-  public static multiEncrypt(opts: {
-    ed25519SecretKey: Uint8Array;
-    domain: string;
-    messages: Array<Uint8Array>;
-    recipients: Array<Uint8Array>;
-  }) {
-    const messages = stringVector(opts.messages.map(toHex));
-    const recipients = stringVector(opts.recipients.map(toHex));
-    try {
-      return fromHex(
-        w().MultiEncryptW.multiEncrypt(
-          toHex(opts.ed25519SecretKey),
-          opts.domain,
-          messages,
-          recipients
-        )
-      );
-    } finally {
-      messages.delete();
-      recipients.delete();
-    }
+  public static multiEncrypt(opts: Parameters<typeof multiEncryptJs>[0]) {
+    return multiEncryptJs(opts);
   }
 
   public static multiDecryptEd25519(opts: {

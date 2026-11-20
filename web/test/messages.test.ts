@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import sodium from 'libsodium-wrappers-sumo';
 import { SessionProtos } from '../../ts/protobuf/compiled';
-import { makeMessageCrypto, toHex, fromHex, padMessage, unpadMessage } from '../libsession/messages';
+import { makeMessageCrypto, toHex, fromHex, padMessage, unpadMessage, multiEncrypt } from '../libsession/messages';
 import { runImageFormatTests } from './imageFormat.test';
 import { runMetaGroupTests } from './metagroup.test';
 
@@ -23,7 +23,7 @@ async function main() {
   const newUser = () => {
     const seed = fromHex(P.randombytesBuf(32));
     const kp = JSON.parse(P.cryptoSignSeedKeypair(toHex(seed)));
-    return { seed, edPk: kp.publicKeyHex as string, sessionId: `05${P.cryptoSignEd25519PkToCurve25519(kp.publicKeyHex)}` };
+    return { seed, sk: fromHex(kp.privateKeyHex), edPk: kp.publicKeyHex as string, sessionId: `05${P.cryptoSignEd25519PkToCurve25519(kp.publicKeyHex)}` };
   };
   const content = (body: string) =>
     SessionProtos.Content.encode({ dataMessage: { body } }).finish();
@@ -78,6 +78,29 @@ async function main() {
       { proBackendPubkeyHex: PRO_PK, ed25519PrivateKeyHex: toHex(alice.seed) });
     assert.equal(dec.decodedEnvelope.sessionId, alice.sessionId);
     assert.equal(bodyOf(dec.decodedEnvelope.contentPlaintextUnpadded), 'note');
+  });
+
+  test('multiEncrypt (kick messages): each recipient reads its own, others cannot', () => {
+    const domain = 'SessionGroupKickedMessage';
+    const r1 = newUser();
+    const r2 = newUser();
+    const outsider = newUser();
+    const x = (u: { edPk: string }) => fromHex(P.cryptoSignEd25519PkToCurve25519(u.edPk));
+    const encoded = multiEncrypt({
+      ed25519SecretKey: alice.sk,
+      domain,
+      messages: [new TextEncoder().encode('for r1'), new TextEncoder().encode('for r2')],
+      recipients: [x(r1), x(r2)],
+    });
+    const decrypt = (u: { sk: Uint8Array }, d = domain) =>
+      wasm.MultiEncryptW.multiDecryptEd25519(toHex(encoded), toHex(u.sk), alice.edPk, d);
+    assert.equal(new TextDecoder().decode(fromHex(decrypt(r1))), 'for r1');
+    assert.equal(new TextDecoder().decode(fromHex(decrypt(r2))), 'for r2');
+    assert.ok(!decrypt(outsider), 'a non recipient cannot read');
+    assert.ok(!decrypt(r1, 'AnotherDomain'), 'the domain is part of the key');
+    // a single message for everybody
+    const one = multiEncrypt({ ed25519SecretKey: alice.sk, domain, messages: [new TextEncoder().encode('same')], recipients: [x(r1), x(r2)] });
+    assert.equal(new TextDecoder().decode(fromHex(wasm.MultiEncryptW.multiDecryptEd25519(toHex(one), toHex(r2.sk), alice.edPk, domain))), 'same');
   });
 
   test('group (03) alice -> members, wrong key is rejected', () => {
