@@ -17,10 +17,23 @@ const http = require('http');
 const https = require('https');
 
 const PORT = Number(process.env.PORT || 8787);
+/** Tolerate common typos: trailing slash, path, upper case, missing scheme ("foo.pages.dev"). */
+function normalizeOrigin(raw) {
+  if (raw === '*') {
+    return raw;
+  }
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).origin;
+  } catch (e) {
+    return raw;
+  }
+}
+
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*')
-  .split(',')
+  .split(/[,\s]+/)
   .map(s => s.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(normalizeOrigin);
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // attachments go to the file server directly
 const TIMEOUT_MS = 30_000;
 
