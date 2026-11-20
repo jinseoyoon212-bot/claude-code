@@ -7,6 +7,7 @@
  * Only the functions the renderer actually uses are implemented (attachments, avatars, OS helpers).
  */
 /* eslint-disable no-restricted-syntax */
+import { Buffer } from 'buffer';
 
 const DB_NAME = 'session-web-fs';
 const STORE = 'files';
@@ -98,7 +99,7 @@ function decode(bytes: Uint8Array, options?: any) {
   if (encoding) {
     return new TextDecoder().decode(bytes);
   }
-  const { Buffer } = require('buffer');
+  // the app checks `isBuffer()` on what it reads, like with Node's fs
   return Buffer.from(bytes);
 }
 
