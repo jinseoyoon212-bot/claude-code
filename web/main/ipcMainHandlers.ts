@@ -7,6 +7,7 @@
 import type { MainEvent, MainHandlers } from '../shims/electron';
 import { removeSync } from 'fs';
 import { loadLocalizedDictionary } from '../../ts/node/locale';
+import { downloadLogs } from './logCapture';
 
 const USER_CONFIG_KEY = 'session-web:userConfig';
 
@@ -139,7 +140,7 @@ export function makeMainHandlers(): MainHandlers {
       'close-about': () => undefined,
       'ready-for-updates': () => undefined,
       'media-access': () => undefined,
-      'export-logs': () => undefined,
+      'export-logs': () => downloadLogs(),
       'update-badge-count': (_e, count: number) => {
         document.title = count > 0 ? `(${count}) Session Web` : 'Session Web';
       },
