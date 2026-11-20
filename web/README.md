@@ -63,17 +63,34 @@ relay가 없으면 앱은 오프라인 상태(왼쪽 아래 빨간 점)로 동�
 
 ## 현재 상태
 
-| 기능                                                | 상태 |
-| --------------------------------------------------- | ---- |
-| 앱 부팅, DB 스키마/마이그레이션 (SQLite WASM)          | ✅   |
-| 계정 생성, 새로고침 후 유지 (OPFS + IndexedDB)         | ✅   |
-| libsession: 프로필/연락처/그룹목록/대화상태 설정, 블라인딩 | ✅   |
-| Session 네트워크 요청 (relay 경유)                    | ✅ 클라이언트 라우팅 · ⚠️ 실제 노드 연결은 relay 배포 후 확인 필요 |
-| 1:1 메시지 암호화/복호화 (`encryptFor1o1`, `decryptFor1o1`) | ❌ WASM 매핑 필요 |
-| 그룹(MetaGroup), 커뮤니티 메시지, Session Pro          | ❌   |
-| 이미지 처리(아바타/첨부 리사이즈)                      | ❌ OffscreenCanvas로 구현 필요 |
-| DB 비밀번호, 저장 데이터 암호화                         | ❌ (OPFS는 평문 저장) |
-| 통화(WebRTC)                                         | 미확인 |
+범례: ✅ 실제 환경에서 확인 · 🧪 단위/브라우저 테스트로만 확인 (`pnpm test:web`) · ❌ 미지원
+
+| 기능 | 상태 | 비고 |
+| --- | --- | --- |
+| 앱 부팅, DB 스키마/마이그레이션 (SQLite WASM) | ✅ | |
+| 계정 생성, 새로고침 후 유지 (OPFS + IndexedDB) | ✅ | |
+| Session 네트워크 연결 (relay 경유, 초록 점) | ✅ | relay 필요 |
+| libsession: 프로필/연락처/그룹 목록/대화 상태, 블라인딩 | ✅ | |
+| 1:1 메시지 암호화/복호화 | 🧪 | 공식 WASM의 `encodeFor1o1`/`decodeEnvelope1o1` 그대로 사용. 왕복 테스트 통과, 실제 상대와 주고받는 것은 미확인 |
+| 노트투셀프(동기화) 메시지 | 🧪 | 위와 동일 경로 |
+| 커뮤니티(SOGS) 메시지 암·복호화, 커뮤니티 DM 암호화 | 🧪 | 공식 WASM이 구현하지 않아 `web/libsession/messages.ts`에서 직접 구현 |
+| 이미지 처리 (아바타, 썸네일, 업로드 용량 맞추기) | 🧪 | Chromium에서 확인. 애니메이션 GIF/WebP는 재인코딩 불가 → 원본 유지 + 정지 이미지 대체본 |
+| 새 그룹(03) 만들기/참여/메시지 | ❌ | 아래 "그룹이 안 되는 이유" |
+| Session Pro | ❌ | 결제가 앱스토어 기반이라 웹에서 구매 불가. Pro 서명은 보내지 않고, 받은 Pro 정보는 검증하지 않음 |
+| 첨부파일 | 🧪 | 가상 파일시스템(IndexedDB). 업로드/다운로드 흐름은 미확인 |
+| DB 비밀번호, 저장 데이터 암호화 | ❌ | OPFS는 평문 저장 |
+| 통화(WebRTC) | 미확인 | |
+
+### 그룹이 안 되는 이유
+
+그룹 암호화(`encryptForGroup`/`decryptForGroup`)는 구현되어 있지만, 그룹 설정을 관리하는 `MetaGroupWrapperNode`는
+공식 `@session-foundation/libsession-wasm` 0.0.14에 필요한 기능이 빠져 있어 만들 수 없습니다 (실험으로 확인):
+
+- 저장해 둔 그룹 상태를 복원하지 못함: `new MetaGroupW(..., dump)`가 새 그룹의 빈 덤프도 `bt_deserialize_invalid_type`로 거부
+- 그룹 정보/멤버 설정의 `confirmPushed`가 없음 → `needsPush`가 계속 true라서 같은 설정을 반복 전송하게 됨
+- `needsRekey`, 멤버 프로필 갱신 시각, `pushForRecovery`, 멤버 쪽 서브계정 서명이 없음
+
+JS로 흉내 내면 실제 그룹에 잘못된 설정을 올릴 수 있어서, 새 WASM이 나올 때까지 "미지원" 오류를 보여 줍니다.
 
 ## upstream 업데이트
 
