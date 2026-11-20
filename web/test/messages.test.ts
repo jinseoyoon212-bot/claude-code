@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import sodium from 'libsodium-wrappers-sumo';
 import { SessionProtos } from '../../ts/protobuf/compiled';
 import { makeMessageCrypto, toHex, fromHex, padMessage, unpadMessage } from '../libsession/messages';
+import { runImageFormatTests } from './imageFormat.test';
 
 const require = createRequire(import.meta.url);
 const PRO_PK = '479ffca8bcec7b4a0f0f7afe48b8a6d15635a8c7ff15ad16add05752c19414d4';
@@ -127,6 +128,7 @@ async function main() {
     assert.ok(encryptedData[0].length > 160);
   });
 
+  passed += runImageFormatTests();
   console.log(`\n${passed} passed`);
 }
 

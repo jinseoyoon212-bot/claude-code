@@ -973,9 +973,21 @@ export class ProWrapperNode {
   }
 }
 
+/**
+ * Closed groups (03) are not available yet. The official libsession WASM (0.0.14) lacks what the
+ * app relies on for them, so a faithful port isn't possible without risking corrupt group state on
+ * the network:
+ *  - a group's saved state can't be restored (`new MetaGroupW(..., dump)` fails, even for a fresh group)
+ *  - no `confirmPushed` for group info / members (`needsPush` would stay true forever)
+ *  - no `needsRekey`, no member `profileUpdatedAt`, no `pushForRecovery`, no member-side
+ *    subaccount signing from stored auth data
+ * Message encryption for groups is ready (see messages.ts); the wrapper needs a newer WASM build.
+ */
 export class MetaGroupWrapperNode {
   constructor() {
-    throw new NotAvailableOnWebError('Groups');
+    throw new NotAvailableOnWebError(
+      'Closed groups (the official libsession WASM cannot restore or confirm group state yet)'
+    );
   }
 }
 
