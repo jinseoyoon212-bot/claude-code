@@ -76,6 +76,9 @@ const sharedAliases = {
   sharp$: path.join(WEB, 'shims/empty.ts'),
   'node-fetch$': path.join(WEB, 'shims/node-fetch.ts'),
   'abort-controller$': path.join(WEB, 'shims/abort-controller.ts'),
+  // bytebuffer has a Node (Buffer based) and a browser (ArrayBuffer based) implementation which
+  // differ (e.g. `.buffer.length`). The app is written against the Node one, like on desktop.
+  bytebuffer$: path.join(path.dirname(require.resolve('bytebuffer/package.json')), 'dist/bytebuffer-node.js'),
   'libsession-wasm-glue$': path.join(LIBSESSION_WASM_DIR, 'libsession-wasm.js'),
   'libsession-wasm-binary$': path.join(LIBSESSION_WASM_DIR, 'libsession-wasm.wasm'),
   https$: path.join(WEB, 'shims/https.ts'),
