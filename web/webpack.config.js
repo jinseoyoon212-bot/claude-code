@@ -154,6 +154,10 @@ module.exports = {
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.json', '.svg'],
+    // Prefer the CommonJS entry like Node does on desktop. Some packages ship an ESM `module` build
+    // next to a CJS `main` and are `require()`d by CJS code (e.g. react-contexify -> clsx@1), which
+    // then gets a module namespace object instead of the function.
+    mainFields: ['browser', 'main', 'module'],
     alias: sharedAliases,
     fallback: fallbacks,
   },

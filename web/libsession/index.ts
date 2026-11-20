@@ -12,11 +12,13 @@
  *  - Blinding, Utilities: implemented
  *  - MultiEncrypt: multi(de|en)crypt, attachments, 1o1 / group / community message encryption
  *    (see messages.ts)
- *  - MetaGroup (new closed groups), Pro: see their sections below
+ *  - MetaGroup (closed groups): metagroup.ts. Pro: not available (see ProWrapperNode)
  */
 /* eslint-disable max-classes-per-file */
 /* eslint-disable class-methods-use-this */
+import sodium from 'libsodium-wrappers-sumo';
 import { makeMessageCrypto } from './messages';
+import { createMetaGroupWrapperClass } from './metagroup';
 
 export { CONSTANTS } from './constants';
 
@@ -33,6 +35,7 @@ export const libsessionReady: Promise<void> = (async () => {
   const { default: createLibsession } = await import('libsession-wasm-glue');
   // @ts-ignore resolved to a URL by webpack (asset/resource)
   const { default: wasmUrl } = await import('libsession-wasm-binary');
+  await sodium.ready;
   wasm = await createLibsession({
     locateFile: () => wasmUrl,
     getRandomValue: () => crypto.getRandomValues(new Uint32Array(1))[0],
@@ -973,22 +976,7 @@ export class ProWrapperNode {
   }
 }
 
-/**
- * Closed groups (03) are not available yet. The official libsession WASM (0.0.14) lacks what the
- * app relies on for them, so a faithful port isn't possible without risking corrupt group state on
- * the network:
- *  - a group's saved state can't be restored (`new MetaGroupW(..., dump)` fails, even for a fresh group)
- *  - no `confirmPushed` for group info / members (`needsPush` would stay true forever)
- *  - no `needsRekey`, no member `profileUpdatedAt`, no `pushForRecovery`, no member-side
- *    subaccount signing from stored auth data
- * Message encryption for groups is ready (see messages.ts); the wrapper needs a newer WASM build.
- */
-export class MetaGroupWrapperNode {
-  constructor() {
-    throw new NotAvailableOnWebError(
-      'Closed groups (the official libsession WASM cannot restore or confirm group state yet)'
-    );
-  }
-}
+/** Closed groups (03). See metagroup.ts for how the gaps of the official WASM are covered. */
+export const MetaGroupWrapperNode = createMetaGroupWrapperClass(w);
 
 export const BaseConfigWrapperNode = BaseConfigWrapperWeb;

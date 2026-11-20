@@ -75,22 +75,28 @@ relay가 없으면 앱은 오프라인 상태(왼쪽 아래 빨간 점)로 동�
 | 노트투셀프(동기화) 메시지 | 🧪 | 위와 동일 경로 |
 | 커뮤니티(SOGS) 메시지 암·복호화, 커뮤니티 DM 암호화 | 🧪 | 공식 WASM이 구현하지 않아 `web/libsession/messages.ts`에서 직접 구현 |
 | 이미지 처리 (아바타, 썸네일, 업로드 용량 맞추기) | 🧪 | Chromium에서 확인. 애니메이션 GIF/WebP는 재인코딩 불가 → 원본 유지 + 정지 이미지 대체본 |
-| 새 그룹(03) 만들기/참여/메시지 | ❌ | 아래 "그룹이 안 되는 이유" |
+| 새 그룹(03): 만들기, 초대, 이름 변경, 멤버 제거(재키), 그룹 메시지, 보조 키, 서브계정 서명 | 🧪 | 관리자 1명+멤버 3명 시뮬레이션과, 저장→복원 80단계 퍼즈 테스트 통과. 실제 Session 앱과의 호환은 미확인 (아래 "그룹 구현 방식") |
 | Session Pro | ❌ | 결제가 앱스토어 기반이라 웹에서 구매 불가. Pro 서명은 보내지 않고, 받은 Pro 정보는 검증하지 않음 |
 | 첨부파일 | 🧪 | 가상 파일시스템(IndexedDB). 업로드/다운로드 흐름은 미확인 |
 | DB 비밀번호, 저장 데이터 암호화 | ❌ | OPFS는 평문 저장 |
 | 통화(WebRTC) | 미확인 | |
 
-### 그룹이 안 되는 이유
+### 그룹 구현 방식
 
-그룹 암호화(`encryptForGroup`/`decryptForGroup`)는 구현되어 있지만, 그룹 설정을 관리하는 `MetaGroupWrapperNode`는
-공식 `@session-foundation/libsession-wasm` 0.0.14에 필요한 기능이 빠져 있어 만들 수 없습니다 (실험으로 확인):
+공식 `@session-foundation/libsession-wasm` 0.0.14의 `MetaGroupW`에는 앱이 의존하는 기능이 빠져 있습니다 (실험으로 확인):
+저장한 상태 복원(`new MetaGroupW(..., dump)`가 빈 덤프도 거부), 푸시 확인(`confirmPushed`), 암호화 키 읽기,
+`needsRekey`, 멤버 쪽 서브계정 서명, 멤버 프로필 갱신 시각.
 
-- 저장해 둔 그룹 상태를 복원하지 못함: `new MetaGroupW(..., dump)`가 새 그룹의 빈 덤프도 `bt_deserialize_invalid_type`로 거부
-- 그룹 정보/멤버 설정의 `confirmPushed`가 없음 → `needsPush`가 계속 true라서 같은 설정을 반복 전송하게 됨
-- `needsRekey`, 멤버 프로필 갱신 시각, `pushForRecovery`, 멤버 쪽 서브계정 서명이 없음
+그래서 `web/libsession/metagroup.ts`가 **이벤트 기록(event sourcing)** 으로 이를 메웁니다:
 
-JS로 흉내 내면 실제 그룹에 잘못된 설정을 올릴 수 있어서, 새 WASM이 나올 때까지 "미지원" 오류를 보여 줍니다.
+- 상태에 영향을 준 것(받은 키 메시지, 병합한 설정 메시지, 내가 한 변경)을 순서대로 기록하고, WASM 객체는 이 기록에서 언제든 다시 만들 수 있는 값으로 취급합니다.
+- **복원**: 저장하는 것은 libsession 덤프가 아니라 이 기록. 불러올 때 기록을 재생합니다.
+- **푸시 확인**: 푸시한 스냅샷이 그보다 오래된 것들을 대체하고(네트워크가 준 해시와 함께), WASM을 다시 만들어 활성/오래된 해시가 맞게 합니다.
+- 암호화 키는 키 설정 덤프(bencode)에서 libsession과 같은 규칙으로 읽습니다.
+- 멤버 쪽 서브계정 서명은 libsession의 `swarm_subaccount_sign`을 JS로 옮겼고, 표준 Ed25519 검증으로 테스트합니다.
+
+원본과 다른 점: `keysNeedsRekey()`는 항상 false, 멤버 프로필 갱신 시각은 로컬에서만 추적(동기화 설정에는 안 들어감), `memberResetAllSendingState()`는 할 일이 없음.
+이 설정 메시지들은 같은 libsession C++ 코드가 만든 실제 형식이라 선로 호환은 기대할 수 있지만, 진짜 Session 앱과 주고받는 확인은 아직 못 했습니다.
 
 ## upstream 업데이트
 
