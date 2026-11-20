@@ -55,7 +55,7 @@ GitHub Pages로도 배포하려면 `.github/workflows/deploy-web.yml`이 `gh-pag
 
 ```bash
 ALLOWED_ORIGINS=https://<owner>.github.io PORT=8787 node web/relay/server.js
-# 또는: docker build -t session-relay web/relay && docker run -p 8787:8787 session-relay
+# 또는 (저장소 루트에서): docker build -f web/relay/Dockerfile -t session-relay . && docker run -p 8787:8787 session-relay
 ```
 
 relay 주소는 빌드할 때 넣습니다: `SESSION_WEB_RELAY_URL=https://relay.example.com pnpm build:web`
