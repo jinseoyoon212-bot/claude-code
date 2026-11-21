@@ -8,6 +8,7 @@
  *   4. run web/preload.ts (port of preload.js) and ts/mains/main_renderer.tsx (unchanged)
  */
 import '../stylesheets/manifest.scss';
+import './styles/liquid-glass.scss';
 import { ipcRenderer } from 'electron';
 import { initWebFs } from 'fs';
 import { getDefaultSQLKey, initLocale, makeMainHandlers } from './main/ipcMainHandlers';

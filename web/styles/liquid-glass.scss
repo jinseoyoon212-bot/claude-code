@@ -1,0 +1,462 @@
+/**
+ * Liquid Glass skin for Session Web.
+ *
+ * Visual-only layer: translucent frosted surfaces, specular highlights, ambient light and smooth
+ * motion. It is loaded after the upstream stylesheets and only overrides presentation
+ * (background / border / shadow / transition / animation). No layout, behaviour or markup changes.
+ *
+ * The upstream theme colors (--background-*, --primary-color, --text-*) are reused through
+ * color-mix(), so every theme (classic/ocean, dark/light, any primary color) is still respected.
+ */
+
+:root {
+  --lg-blur: 28px;
+  --lg-blur-strong: 44px;
+  --lg-saturate: 170%;
+  --lg-radius: 18px;
+  --lg-radius-sm: 12px;
+  --lg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lg-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --lg-fast: 160ms;
+  --lg-med: 280ms;
+  --lg-slow: 520ms;
+
+  --lg-glass: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 52%, transparent);
+  --lg-glass-soft: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 34%, transparent);
+  --lg-glass-strong: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 72%, transparent);
+  --lg-tint: color-mix(in srgb, var(--text-primary-color, #fff) 7%, transparent);
+  --lg-tint-hover: color-mix(in srgb, var(--text-primary-color, #fff) 12%, transparent);
+  --lg-edge: color-mix(in srgb, var(--text-primary-color, #fff) 20%, transparent);
+  --lg-edge-faint: color-mix(in srgb, var(--text-primary-color, #fff) 9%, transparent);
+  --lg-accent: var(--primary-color, #31f196);
+  /* the theme's original surface colors, captured here (on :root) before body re-maps them below */
+  --lg-bg1: var(--background-primary-color, #1b1b1b);
+  --lg-bg2: var(--background-secondary-color, #000);
+  --lg-bg3: var(--background-tertiary-color, #232323);
+  --lg-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.18);
+  --lg-highlight: inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 14%, transparent);
+}
+
+/* ---------- surfaces: make the theme's panel colors translucent ----------
+ * Almost every panel of the app is painted with these variables (and none of them is used as a text
+ * color), so re-mapping them on <body> turns all panels into glass at once. Variables derived from
+ * them at :root (e.g. outgoing bubble text) keep their original values. */
+
+body {
+  --background-primary-color: var(--lg-glass);
+  --background-secondary-color: color-mix(in srgb, var(--lg-bg2) 18%, transparent);
+  --background-tertiary-color: color-mix(in srgb, var(--lg-bg3) 55%, transparent);
+  --modal-background-content-color: transparent;
+  --conversation-tab-background-color: transparent;
+  --conversation-tab-background-unread-color: var(--lg-tint);
+  --conversation-tab-background-hover-color: var(--lg-tint-hover);
+  --conversation-tab-background-selected-color: color-mix(
+    in srgb,
+    var(--lg-accent) 20%,
+    var(--lg-tint-hover)
+  );
+  --search-bar-background-color: var(--lg-tint);
+  --suggestions-background-color: var(--lg-glass-strong);
+  --suggestions-background-hover-color: var(--lg-tint-hover);
+  --toast-background-color: var(--lg-glass-strong);
+  --message-bubble-incoming-background-color: var(--lg-glass);
+  --emoji-reaction-bar-background-color: var(--lg-glass-strong);
+}
+
+/* ---------- ambient light behind everything ---------- */
+
+html,
+body {
+  background: var(--lg-bg2) !important;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* three soft light sources that slowly drift, so the glass always has something to refract */
+body::before {
+  inset: 0;
+  opacity: 1;
+  background:
+    radial-gradient(
+      60vmax 50vmax at 12% 8%,
+      color-mix(in srgb, var(--lg-accent) 62%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      50vmax 46vmax at 88% 92%,
+      color-mix(in srgb, #3d7bff 55%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      44vmax 40vmax at 58% 14%,
+      color-mix(in srgb, #8b5cff 50%, transparent),
+      transparent 70%
+    );
+  background-size: 130% 130%;
+  animation: lg-drift-a 28s ease-in-out infinite alternate;
+}
+
+body::after {
+  width: 36vmax;
+  height: 36vmax;
+  left: 30vw;
+  top: 40vh;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.45;
+  background: radial-gradient(circle, color-mix(in srgb, var(--lg-accent) 70%, #ff7ad9), transparent 68%);
+  animation: lg-drift-c 36s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* app content sits above the ambient light and lets it show through */
+#root,
+.inbox.index {
+  position: relative;
+  z-index: 1;
+}
+
+.inbox.index,
+:root body .inbox.index > div {
+  background-color: transparent !important;
+}
+
+/* ---------- left pane: icon rail + conversation list ---------- */
+
+:root body [data-testid='leftpane-section-container'] {
+  background: var(--lg-glass-soft) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  border-inline-end: 1px solid var(--lg-edge-faint) !important;
+  box-shadow: inset -1px 0 0 var(--lg-edge-faint);
+}
+
+:root body .module-conversation-list-item {
+  margin: 3px 8px;
+  border-radius: var(--lg-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background var(--lg-med) var(--lg-ease), transform var(--lg-med) var(--lg-ease),
+    border-color var(--lg-med) var(--lg-ease), box-shadow var(--lg-med) var(--lg-ease);
+  animation: lg-rise var(--lg-slow) var(--lg-ease) both;
+}
+
+:root body .module-conversation-list-item:hover,
+:root body .module-conversation-list-item:focus {
+  background: var(--lg-tint-hover) !important;
+  border-color: var(--lg-edge-faint);
+  box-shadow: var(--lg-highlight);
+  transform: translateX(2px);
+}
+
+:root body .module-conversation-list-item:active {
+  transform: scale(0.985);
+}
+
+/* ---------- conversation view ---------- */
+
+:root body .session-conversation {
+  background: transparent !important;
+}
+
+:root body .conversation-header {
+  background: var(--lg-glass) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  border-bottom: 1px solid var(--lg-edge-faint) !important;
+  box-shadow: var(--lg-highlight);
+  position: relative;
+  z-index: 3;
+}
+
+:root body .conversation-content,
+:root body .conversation-messages,
+:root body [data-testid='messages-container'] {
+  background: transparent !important;
+}
+
+/* message bubbles: the painted element is the parent of .module-message__text */
+:root body div:has(> .module-message__text) {
+  position: relative;
+  border-radius: var(--lg-radius) !important;
+  border: 1px solid color-mix(in srgb, #fff 22%, transparent);
+  box-shadow: var(--lg-shadow), var(--lg-highlight);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  transition: transform var(--lg-med) var(--lg-ease), box-shadow var(--lg-med) var(--lg-ease);
+}
+
+/* specular sheen across the top of every bubble */
+:root body div:has(> .module-message__text)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 26%, transparent) 0%,
+    color-mix(in srgb, #fff 6%, transparent) 38%,
+    transparent 60%
+  );
+}
+
+:root body div:has(> .module-message__text):hover {
+  transform: translateY(-1px);
+}
+
+:root body .module-message--incoming,
+:root body .module-message--outgoing,
+:root body [data-testid='message-container'] {
+  animation: lg-message-in var(--lg-med) var(--lg-ease) both;
+}
+
+/* composer */
+:root body [data-testid='message-input-text-area'] {
+  background: var(--lg-tint) !important;
+  border-radius: 22px;
+  border: 1px solid var(--lg-edge-faint);
+  box-shadow: var(--lg-highlight);
+  transition: border-color var(--lg-med) var(--lg-ease), background var(--lg-med) var(--lg-ease),
+    box-shadow var(--lg-med) var(--lg-ease);
+}
+
+:root body [data-testid='message-input-text-area']:focus {
+  border-color: color-mix(in srgb, var(--lg-accent) 70%, transparent);
+  box-shadow: var(--lg-highlight), 0 0 0 4px color-mix(in srgb, var(--lg-accent) 22%, transparent);
+  outline: none;
+}
+
+/* ---------- modals ---------- */
+
+:root body .modal {
+  background: color-mix(in srgb, #000 38%, transparent) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+  animation: lg-fade var(--lg-med) var(--lg-ease) both;
+}
+
+:root body .modal > div {
+  background: var(--lg-glass-strong) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur-strong)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur-strong)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-edge) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), var(--lg-highlight) !important;
+  animation: lg-pop var(--lg-slow) var(--lg-ease-spring) both;
+}
+
+/* ---------- context menus, tooltips, toasts ---------- */
+
+:root body .contexify,
+:root body .session-id-tooltip {
+  --contexify-activeItem-bgColor: var(--lg-tint-hover);
+  --contexify-activeItem-color: var(--text-primary-color);
+  background: var(--lg-glass-strong) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-edge) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--lg-shadow), var(--lg-highlight) !important;
+  overflow: hidden;
+  animation: lg-pop var(--lg-med) var(--lg-ease) both;
+  transform-origin: top left;
+}
+
+:root body .contexify .contexify_item {
+  background: transparent !important;
+}
+
+:root body .contexify .contexify_itemContent {
+  border-radius: 8px;
+  transition: background var(--lg-fast) var(--lg-ease), color var(--lg-fast) var(--lg-ease);
+}
+
+/* buttons paint their icons with the original (opaque) surface color */
+:root body button {
+  --background-primary-color: var(--lg-bg1);
+}
+
+:root body .session-toast,
+:root body [data-testid='session-toast'] {
+  background: var(--lg-glass-strong) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-edge) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--lg-shadow), var(--lg-highlight);
+  animation: lg-toast-in var(--lg-slow) var(--lg-ease-spring) both;
+}
+
+/* ---------- buttons & inputs (all of them, by role/tag so styled-components classes don't matter) ---------- */
+
+:root body button,
+:root body [role='button'] {
+  transition: background var(--lg-med) var(--lg-ease), transform var(--lg-fast) var(--lg-ease),
+    box-shadow var(--lg-med) var(--lg-ease), border-color var(--lg-med) var(--lg-ease),
+    color var(--lg-med) var(--lg-ease), opacity var(--lg-med) var(--lg-ease);
+}
+
+:root body button:active:not(:disabled),
+:root body [role='button']:active {
+  transform: scale(0.95);
+}
+
+:root body [data-testid='new-conversation-button'] {
+  border-radius: 14px !important;
+  background: var(--lg-tint) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--lg-highlight);
+}
+
+:root body [data-testid='new-conversation-button']:hover {
+  background: color-mix(in srgb, var(--lg-accent) 22%, transparent) !important;
+  box-shadow: var(--lg-highlight), 0 0 24px -4px color-mix(in srgb, var(--lg-accent) 55%, transparent);
+}
+
+:root body input[type='text'],
+:root body input[type='search'],
+:root body input[type='password'],
+:root body textarea,
+:root body [data-testid='search-input'] {
+  border-radius: 14px;
+  transition: border-color var(--lg-med) var(--lg-ease), box-shadow var(--lg-med) var(--lg-ease),
+    background var(--lg-med) var(--lg-ease);
+}
+
+/* avatars & images get a soft glass rim */
+:root body .module-avatar,
+:root body [data-testid^='avatar'] {
+  transition: transform var(--lg-med) var(--lg-ease-spring);
+}
+
+/* ---------- scrollbars ---------- */
+
+:root body ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:root body ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root body ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-primary-color, #fff) 22%, transparent);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background var(--lg-med) var(--lg-ease);
+}
+
+:root body ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-primary-color, #fff) 38%, transparent);
+  background-clip: padding-box;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes lg-drift-a {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 100%;
+  }
+}
+
+@keyframes lg-drift-c {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-10vmax, 22vmax, 0) scale(1.2);
+  }
+}
+
+@keyframes lg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lg-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lg-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lg-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- fallbacks ---------- */
+
+/* no backdrop-filter: use more opaque surfaces so text stays readable */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --lg-glass: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 92%, transparent);
+    --lg-glass-soft: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 88%, transparent);
+    --lg-glass-strong: color-mix(in srgb, var(--background-primary-color, #1b1b1b) 96%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after {
+    animation: none;
+  }
+
+  :root body *,
+  :root body *::before,
+  :root body *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
