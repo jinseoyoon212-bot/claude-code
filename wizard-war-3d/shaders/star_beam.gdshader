@@ -12,21 +12,7 @@ uniform vec3 edge_col : source_color = vec3(0.32, 0.5, 1.0);
 
 varying vec3 wp;
 
-float hash(vec3 p) {
-	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
-	p *= 17.0;
-	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-
-float vnoise(vec3 x) {
-	vec3 i = floor(x);
-	vec3 f = fract(x);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(mix(hash(i + vec3(0, 0, 0)), hash(i + vec3(1, 0, 0)), f.x),
-				   mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
-			   mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
-				   mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
+uniform sampler2D noise_a : filter_linear_mipmap, repeat_enable;
 
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -35,7 +21,7 @@ void vertex() {
 void fragment() {
 	float fr = clamp(abs(dot(normalize(NORMAL), normalize(VIEW))), 0.0, 1.0);
 	float body = pow(fr, 1.2);
-	float n = 0.6 * vnoise(vec3(UV.x * 18.0, wp.y * 0.07 - TIME * 1.6, TIME * 0.4)) + 0.4 * vnoise(vec3(UV.x * 40.0, wp.y * 0.2 - TIME * 3.0, 1.0));
+	float n = 0.6 * texture(noise_a, vec2(UV.x * 3.0, wp.y * 0.012 - TIME * 0.12)).g + 0.4 * texture(noise_a, vec2(UV.x * 7.0, wp.y * 0.03 - TIME * 0.2)).b;
 	float band = pow(0.5 + 0.5 * sin(wp.y * 0.32 - TIME * 7.0), 8.0) * rings;
 	float vfade = (1.0 - smoothstep(top_y * 0.6, top_y, wp.y)) * smoothstep(-2.0, 1.0, wp.y);
 	float a = body * (0.5 + 0.9 * n) + band * 0.5 * body;

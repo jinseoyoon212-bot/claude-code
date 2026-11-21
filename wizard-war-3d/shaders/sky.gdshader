@@ -12,6 +12,7 @@ uniform float cloud_cover : hint_range(0.0, 1.0) = 0.5;
 uniform vec3 cloud_lit : source_color = vec3(1.0, 0.97, 0.92);
 uniform vec3 cloud_shade : source_color = vec3(0.55, 0.6, 0.72);
 uniform float stars : hint_range(0.0, 1.0) = 0.0;
+uniform sampler2D noise_a : filter_linear_mipmap, repeat_enable;
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -19,22 +20,8 @@ float hash21(vec2 p) {
 	return fract(p.x * p.y);
 }
 
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x), mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-
-float fbm(vec2 p) {
-	float a = 0.5;
-	float s = 0.0;
-	for (int i = 0; i < 5; i++) {
-		s += a * vnoise(p);
-		p = p * 2.02 + vec2(7.3, 1.9);
-		a *= 0.5;
-	}
-	return s;
+float cloud_n(vec2 uv) {
+	return texture(noise_a, uv * 0.09).r * 0.62 + texture(noise_a, uv * 0.24 + 0.3).g * 0.28 + texture(noise_a, uv * 0.6).b * 0.1;
 }
 
 void sky() {
@@ -50,21 +37,18 @@ void sky() {
 	col = mix(col, low_col, smoothstep(0.0, -0.3, h));
 	// 별
 	if (stars > 0.0 && h > 0.0) {
-		vec3 q = dir * 220.0;
-		vec2 cell = floor(q.xz / (0.35 + abs(q.y) * 0.0) );
 		float rnd = hash21(floor(dir.xz / max(h, 0.15) * 90.0));
-		float tw = 0.6 + 0.4 * sin(TIME * (1.5 + rnd * 4.0) + rnd * 40.0);
-		col += vec3(0.85, 0.9, 1.0) * step(0.992, rnd) * tw * stars * smoothstep(0.0, 0.25, h);
+		col += vec3(0.85, 0.9, 1.0) * step(0.992, rnd) * (0.7 + 0.3 * fract(rnd * 311.0)) * stars * smoothstep(0.0, 0.25, h);
 	}
 	// 구름: 하늘을 평면으로 보고 노이즈를 입힌다
 	float cl = 0.0;
 	vec3 cc = cloud_lit;
 	if (h > 0.0) {
-		vec2 uv = dir.xz / (h + 0.22) * 0.9 + vec2(TIME * 0.006, TIME * 0.002);
-		float n = fbm(uv * 1.6);
+		vec2 uv = dir.xz / (h + 0.22) * 0.9;
+		float n = cloud_n(uv * 1.6);
 		float edge = 1.0 - cloud_cover;
 		cl = smoothstep(edge, edge + 0.22, n) * smoothstep(0.0, 0.14, h);
-		float n2 = fbm((uv + sd.xz * 0.06) * 1.6);   // 태양 쪽으로 조금 옮겨 뽑아 밝고 어두운 면을 만든다
+		float n2 = cloud_n((uv + sd.xz * 0.06) * 1.6);   // 태양 쪽으로 조금 옮겨 뽑아 밝고 어두운 면을 만든다
 		float lit = clamp(0.55 + (n - n2) * 4.0, 0.0, 1.0);
 		cc = mix(cloud_shade, cloud_lit, lit);
 		cc += sun_col * pow(max(cs, 0.0), 8.0) * 0.5 * sun_power;     // 태양 가장자리 구름이 은은히 빛난다

@@ -71,6 +71,7 @@ var sun_e0 := 1.0
 var amb0 := 0.6
 var bg0 := 1.0
 var rng := RandomNumberGenerator.new()
+const Main_NOISE := preload("res://textures/noise_a.png")
 
 static var prewarmed := false
 
@@ -101,6 +102,7 @@ static func prewarm(m) -> void:
 	cy.mesh = cm
 	var cmat := ShaderMaterial.new()
 	cmat.shader = load("res://shaders/star_beam.gdshader")
+	cmat.set_shader_parameter("noise_a", Main_NOISE)
 	cy.material_override = cmat
 	holder.add_child(cy)
 	m.get_tree().create_timer(0.8).timeout.connect(holder.queue_free)
@@ -188,6 +190,7 @@ func _beam_material(core: Color, edge: Color, inten: float, top_y: float) -> Sha
 	m.set_shader_parameter("edge_col", Vector3(edge.r, edge.g, edge.b))
 	m.set_shader_parameter("intensity", inten)
 	m.set_shader_parameter("top_y", top_y)
+	m.set_shader_parameter("noise_a", Main_NOISE)
 	return m
 
 

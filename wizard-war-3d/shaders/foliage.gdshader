@@ -1,6 +1,5 @@
-// 나뭇잎·풀·덤불·꽃: 바람에 흔들리고(높을수록 크게), 빛이 잎을 투과하고(BACKLIGHT), 잎 색이 군데군데 다르다.
 shader_type spatial;
-render_mode cull_disabled, diffuse_burley;
+render_mode cull_disabled, diffuse_lambert, specular_disabled;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform float alpha_cut = 0.45;
@@ -10,21 +9,9 @@ uniform float sway_h = 0.06;                   // 높이당 흔들림 크기
 uniform vec3 tint : source_color = vec3(1.0, 1.0, 1.0);
 uniform float trans = 0.55;                    // 빛이 비치는 정도
 uniform float variation = 0.18;                // 위치에 따른 색 변화
+uniform sampler2D noise_a : filter_linear_mipmap, repeat_enable;
 
 varying vec3 wpos;
-
-float hash21(vec2 p) {
-	p = fract(p * vec2(123.34, 456.21));
-	p += dot(p, p + 45.32);
-	return fract(p.x * p.y);
-}
-
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x), mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
-}
 
 void vertex() {
 	vec3 w0 = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -43,12 +30,10 @@ void fragment() {
 	if (t.a < alpha_cut) {
 		discard;
 	}
-	float v = vnoise(wpos.xz * 0.22);
+	float v = texture(noise_a, wpos.xz * 0.02).g;
 	vec3 c = t.rgb * tint * (1.0 - variation + variation * 2.0 * v);
-	c = mix(c, c * vec3(1.12, 1.02, 0.82), smoothstep(0.55, 0.9, vnoise(wpos.xz * 0.11 + 9.0)) * 0.5);   // 군데군데 누렇게
+	c = mix(c, c * vec3(1.12, 1.02, 0.82), smoothstep(0.55, 0.9, texture(noise_a, wpos.xz * 0.011 + 0.4).b) * 0.5);   // 군데군데 누렇게
 	c = mix(c, vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.14);   // 너무 쨍한 색을 가라앉힌다
 	ALBEDO = c;
 	ROUGHNESS = 0.8;
-	SPECULAR = 0.2;
-	BACKLIGHT = c * trans;
 }

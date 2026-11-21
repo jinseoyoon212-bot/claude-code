@@ -40,6 +40,8 @@ const SKYS := {
 	"ice": {"cover": 0.6, "lit": Color(0.96, 0.98, 1.0), "shade": Color(0.62, 0.72, 0.88), "stars": 0.0, "sun_col": Color(0.92, 0.96, 1.0), "sun_size": 0.007, "sun_power": 0.9, "ray": Color(0.85, 0.92, 1.0)},
 	"dark": {"cover": 0.7, "lit": Color(0.72, 0.42, 0.88), "shade": Color(0.1, 0.05, 0.18), "stars": 0.5, "sun_col": Color(0.85, 0.6, 1.0), "sun_size": 0.012, "sun_power": 0.8, "ray": Color(0.7, 0.45, 0.95)},
 }
+const NOISE_A := preload("res://textures/noise_a.png")   # 끊김 없이 이어지는 노이즈 (땅·하늘·잎·안개가 함께 쓴다: 셰이더에서 계산하지 않고 읽어서 빠르다)
+const NOISE_B := preload("res://textures/noise_b.png")   # 세포 무늬 (자갈·갈라진 땅)
 var gfx := 2                     # 그래픽 품질 0 낮음 / 1 보통 / 2 높음 (Save.settings.gfx)
 var KINDS := {}
 var scenes := {}
@@ -399,8 +401,23 @@ func _tint_mat(key: String) -> StandardMaterial3D:
 	return tint_mats[key]
 
 
-func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "") -> Node3D:
+var batching := false
+var batches := {}                # "모델|색조|구역" -> 놓을 위치 목록 (한꺼번에 그리려고 모은다)
+var batch_meshes := {}           # 모델 경로 -> [{mesh, rel(모델 안 위치), shadow}]
+const SHADOW_MODELS := ["tree", "Tree", "Pine", "building", "wall", "tower", "castle", "crypt", "arch_gate", "mountain", "pillar"]   # 이름에 이 글자가 들어간 것만 그림자를 드리운다
+
+
+func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "", solo := false) -> Node3D:
 	## 모델 하나를 월드에 놓는다. tint 를 주면 반투명 색을 덧씌워 분위기를 바꾼다 (얼음/어둠/불꽃).
+	## 장면을 만드는 동안(batching)에는 같은 모델을 구역별로 모아 한 번에 그린다 (그리기 호출이 크게 줄어든다).
+	if batching and not solo:
+		var cell := "%d|%d" % [floori(pos.x / 70.0), floori(pos.z / 90.0)]
+		var near_shadow := pos.z > -13.0   # 뒤쪽 숲(멀리 있는 것)은 그림자를 드리우지 않는다: 그림자는 화면 가까이 있는 것만 그려도 충분하다
+		var key := "%s|%s|%s|%d" % [path, tint, cell, 1 if near_shadow else 0]
+		if not batches.has(key):
+			batches[key] = {"path": path, "tint": tint, "xf": [], "near": near_shadow}
+		batches[key].xf.append(Transform3D(Basis(Vector3.UP, deg_to_rad(rot_deg)).scaled(Vector3.ONE * scl), pos))
+		return null
 	var n: Node3D = env_scene(path).instantiate()
 	n.position = pos
 	n.rotation_degrees.y = rot_deg
@@ -413,6 +430,58 @@ func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "") -
 		for mi in n.find_children("*", "MeshInstance3D", true, false):
 			mi.material_overlay = m
 	return n
+
+
+func _model_meshes(path: String) -> Array:
+	## 모델 한 번만 열어서 메시들과 모델 안에서의 위치를 뽑아 둔다. 잎 재질은 바람 셰이더로 바꾼 사본을 쓴다.
+	if batch_meshes.has(path):
+		return batch_meshes[path]
+	var out: Array = []
+	var root_n: Node3D = env_scene(path).instantiate()
+	var nm := path.get_file().get_basename()
+	var shadow := false
+	for k in SHADOW_MODELS:
+		if nm.contains(k):
+			shadow = true
+	if nm.begins_with("Bush") or nm.begins_with("Grass") or nm.begins_with("Flower") or nm.begins_with("Mushroom") or nm.begins_with("Fern") or nm.begins_with("Plant") or nm.begins_with("Rock"):
+		shadow = false
+	for mi in root_n.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null:
+			continue
+		var rel := Transform3D.IDENTITY
+		var cur: Node = mi
+		while cur != null and cur != root_n:
+			if cur is Node3D:
+				rel = (cur as Node3D).transform * rel
+			cur = cur.get_parent()
+		var mesh: Mesh = mi.mesh
+		if gfx >= 1 and path.begins_with("qn/"):
+			mesh = _foliage_mesh(mesh, nm)
+		out.append({"mesh": mesh, "rel": rel, "shadow": shadow})
+	root_n.queue_free()
+	batch_meshes[path] = out
+	return out
+
+
+func _flush_batches() -> void:
+	for key in batches:
+		var b: Dictionary = batches[key]
+		var xfs: Array = b.xf
+		for part in _model_meshes(b.path):
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = part.mesh
+			mm.instance_count = xfs.size()
+			for i in xfs.size():
+				mm.set_instance_transform(i, (xfs[i] as Transform3D) * (part.rel as Transform3D))
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if (part.shadow and b.near) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if b.tint != "":
+				mmi.material_overlay = _tint_mat(b.tint)
+			add_child(mmi)
+	batches.clear()
+	batching = false
 
 
 func _build_world() -> void:
@@ -437,6 +506,7 @@ func _build_world() -> void:
 		ssm.set_shader_parameter("cloud_lit", Vector3(SK.lit.r, SK.lit.g, SK.lit.b))
 		ssm.set_shader_parameter("cloud_shade", Vector3(SK.shade.r, SK.shade.g, SK.shade.b))
 		ssm.set_shader_parameter("stars", SK.stars)
+		ssm.set_shader_parameter("noise_a", NOISE_A)
 		sky.sky_material = ssm
 		sky.radiance_size = Sky.RADIANCE_SIZE_32
 	else:
@@ -459,11 +529,8 @@ func _build_world() -> void:
 		e.fog_sky_affect = 0.0
 		e.fog_height = 2.5            # 낮은 곳일수록 안개가 짙다 (땅안개)
 		e.fog_height_density = 0.03
-		e.adjustment_enabled = true   # 색 보정: 대비·채도를 살짝 올려 선명하게
-		e.adjustment_contrast = 1.04
-		e.adjustment_saturation = 1.04
 		e.tonemap_exposure = 0.9
-	e.glow_enabled = true
+	e.glow_enabled = gfx != 1   # 번짐(블룸)은 화면 전체를 여러 번 흐리게 하는 효과라, 보통에서는 끈다
 	e.glow_intensity = 0.55 if gfx >= 1 else 0.5
 	e.glow_hdr_threshold = 1.0 if gfx >= 1 else 1.1
 	if gfx >= 1:
@@ -477,13 +544,15 @@ func _build_world() -> void:
 	sun.light_energy = E.sun_e
 	sun.rotation_degrees = Vector3(-52, -35, 0) if gfx == 0 else Vector3(-40, -33, 0)   # 해를 낮춰 긴 그림자를 만든다
 	sun.shadow_enabled = Save.settings.shadows
-	sun.directional_shadow_max_distance = 55.0 if gfx == 0 else 85.0
+	sun.directional_shadow_max_distance = 55.0 if gfx == 0 else 62.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS   # 그림자 구간을 4개에서 2개로: 같은 물체를 덜 반복해서 그린다
 	if gfx >= 1:
 		sun.shadow_blur = 1.4
 		sun.light_angular_distance = 0.4   # 그림자 가장자리가 멀수록 부드러워진다
-		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
-		RenderingServer.directional_shadow_atlas_set_size(4096 if (gfx >= 2 and not Save.touch_device) else 2048, true)
-		get_viewport().msaa_3d = Viewport.MSAA_4X if (gfx >= 2 and not Save.touch_device) else Viewport.MSAA_2X
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if gfx >= 2 else RenderingServer.SHADOW_QUALITY_HARD)   # 부드러운 그림자는 픽셀마다 그림자 지도를 여러 번 읽어서 비싸다
+		RenderingServer.directional_shadow_atlas_set_size(2048, true)
+		# 안티앨리어싱(MSAA)은 화면 크기에 비례해 아주 비싸다: 끄면 프레임 시간이 절반 아래로 줄어든다
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	add_child(sun)
 	if gfx >= 1:   # 반대편에서 오는 차갑고 약한 보조광: 그림자 쪽이 새까맣게 죽지 않고 윤곽이 산다
 		var fill := DirectionalLight3D.new()
@@ -504,6 +573,8 @@ func _build_world() -> void:
 		gmat.set_shader_parameter("path_col", Vector3(E.path.r, E.path.g, E.path.b))
 		var bc: Color = E.ground.lerp(Color(0.2, 0.17, 0.24), 0.75).darkened(0.25)
 		gmat.set_shader_parameter("blight_col", Vector3(bc.r, bc.g, bc.b))
+		gmat.set_shader_parameter("noise_a", NOISE_A)
+		gmat.set_shader_parameter("noise_b", NOISE_B)
 		gmat.set_shader_parameter("snow", 1.0 if stage.env == "ice" else 0.0)
 		gmat.set_shader_parameter("wet", 0.8 if stage.env in ["night", "dark"] else (0.3 if stage.env == "fire" else 0.0))
 		gmat.set_shader_parameter("cracks", 1.0 if stage.env in ["dark", "fire"] else 0.3)
@@ -576,7 +647,7 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 	rng.seed = 99 + stage_idx
 	var to_sun := (-sun.global_transform.basis.z).normalized()   # 빛이 오는 쪽(위)
 	var axis := Vector3.UP.cross(-to_sun)
-	for i in 9:
+	for i in 6:
 		var m := ShaderMaterial.new()
 		m.shader = load("res://shaders/star_beam.gdshader")
 		var rc: Color = SK.ray
@@ -585,6 +656,7 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 		m.set_shader_parameter("intensity", 0.5)
 		m.set_shader_parameter("rings", 0.0)
 		m.set_shader_parameter("top_y", 60.0)
+		m.set_shader_parameter("noise_a", NOISE_A)
 		m.set_shader_parameter("fade", rng.randf_range(0.18, 0.4))
 		var mi := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
@@ -606,13 +678,14 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 		var basis := Basis(Quaternion(Vector3.UP, up))
 		mi.transform = Transform3D(basis.scaled(Vector3(w, len, w)), foot + up * len * 0.5)
 		add_child(mi)
-	for i in 6:
+	for i in 4:
 		var mm := ShaderMaterial.new()
 		mm.shader = load("res://shaders/mist.gdshader")
 		var fc: Color = E.fog.lightened(0.15)
 		mm.set_shader_parameter("col", Vector3(fc.r, fc.g, fc.b))
 		mm.set_shader_parameter("density", 0.2 if stage.env != "day" else 0.12)
 		mm.set_shader_parameter("speed", rng.randf_range(0.02, 0.05))
+		mm.set_shader_parameter("noise_a", NOISE_A)
 		var mi2 := MeshInstance3D.new()
 		var pm := PlaneMesh.new()
 		pm.size = Vector2(70, 22)
@@ -621,25 +694,33 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 		mi2.position = Vector3(rng.randf_range(-40.0, 44.0), rng.randf_range(0.5, 1.4), -rng.randf_range(7.0, 20.0))
 		mi2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi2)
-	# 화면 마무리(비네팅·색 분리·필름 그레인): UI 아래에 깔린다
-	if not Save.touch_device:
-		var pl := CanvasLayer.new()
-		pl.layer = 0
-		add_child(pl)
-		var cr := ColorRect.new()
-		cr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var pmat := ShaderMaterial.new()
-		pmat.shader = load("res://shaders/post.gdshader")
-		cr.material = pmat
-		pl.add_child(cr)
+	# 화면 마무리(비네팅): 방사형 그라데이션 그림 한 장을 UI 아래에 깐다 (셰이더 계산 없음)
+	var pl := CanvasLayer.new()
+	pl.layer = 0
+	add_child(pl)
+	var gt := GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	gt.width = 128
+	gt.height = 128
+	var gr := Gradient.new()
+	gr.offsets = PackedFloat32Array([0.0, 0.62, 1.0])
+	gr.colors = PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.34)])
+	gt.gradient = gr
+	var tr := TextureRect.new()
+	tr.texture = gt
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pl.add_child(tr)
 
 
 var foliage_cache := {}
 
 
-func _apply_foliage(n: Node3D, nm: String) -> void:
-	## Quaternius 나무·풀의 잎 재질을 바람·투과광 셰이더로 바꾸고, 줄기 재질은 거칠기를 다듬는다.
+func _foliage_mesh(src_mesh: Mesh, nm: String) -> Mesh:
+	## Quaternius 나무·풀의 잎 재질을 바람·투과광 셰이더로 바꾼 메시 사본을 만든다 (줄기 재질은 거칠기만 다듬는다).
 	var wind := 1.0
 	var sway := 0.06
 	if nm.begins_with("Grass") or nm.begins_with("Flower") or nm.begins_with("Fern") or nm.begins_with("Plant"):
@@ -649,31 +730,38 @@ func _apply_foliage(n: Node3D, nm: String) -> void:
 		wind = 8.0
 	elif nm.begins_with("Mushroom") or nm.begins_with("Rock"):
 		wind = 0.0
-	for mi in n.find_children("*", "MeshInstance3D", true, false):
-		var mesh: Mesh = mi.mesh
-		if mesh == null:
+	var mesh: Mesh = src_mesh.duplicate()
+	for i in mesh.get_surface_count():
+		var src := mesh.surface_get_material(i)
+		if not (src is StandardMaterial3D):
 			continue
-		for i in mesh.get_surface_count():
-			var src := mesh.surface_get_material(i)
-			if not (src is StandardMaterial3D):
-				continue
-			var sm: StandardMaterial3D = src
-			if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and sm.albedo_texture != null:
-				var key := "%s|%.1f" % [sm.albedo_texture.resource_path, wind]
-				if not foliage_cache.has(key):
-					var fm := ShaderMaterial.new()
-					fm.shader = load("res://shaders/foliage.gdshader")
-					fm.set_shader_parameter("albedo_tex", sm.albedo_texture)
-					fm.set_shader_parameter("wind", wind)
-					fm.set_shader_parameter("sway_h", sway)
-					foliage_cache[key] = fm
-				mi.set_surface_override_material(i, foliage_cache[key])
-			else:
-				sm.roughness = 0.92
+		var sm: StandardMaterial3D = src
+		if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and sm.albedo_texture != null:
+			var key := "%s|%.1f" % [sm.albedo_texture.resource_path, wind]
+			if not foliage_cache.has(key):
+				var fm := ShaderMaterial.new()
+				fm.shader = load("res://shaders/foliage.gdshader")
+				fm.set_shader_parameter("albedo_tex", sm.albedo_texture)
+				fm.set_shader_parameter("noise_a", NOISE_A)
+				fm.set_shader_parameter("wind", wind)
+				fm.set_shader_parameter("sway_h", sway)
+				foliage_cache[key] = fm
+			mesh.surface_set_material(i, foliage_cache[key])
+		else:
+			sm.roughness = 0.92
+	return mesh
+
+
+func _apply_foliage(n: Node3D, nm: String) -> void:
+	## 하나씩 놓는 경우(구름 등 batching 밖)에 쓰는 버전
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh != null:
+			mi.mesh = _foliage_mesh(mi.mesh, nm)
 
 
 func _build_set() -> void:
 	## 전장의 모든 사물: KayKit(CC0) 모델로 배치. 스테이지마다 나무·색조가 달라진다.
+	batching = true
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7 + stage_idx
 	var envn: String = stage.env
@@ -726,13 +814,13 @@ func _build_set() -> void:
 		place("hw/%s.gltf" % nm, Vector3(rng.randf_range(22, 34), 0.0, bz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
 
 	# ===== 숲: Quaternius Stylized Nature MegaKit (CC0) 나무·덤불·풀·꽃·바위. 스테이지마다 나무 종류와 색조가 달라진다 =====
-	var commons := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5"]
-	var pines := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"]
-	var twisted := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"]
-	var deads := ["DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4"]
+	var commons := ["CommonTree_3", "CommonTree_4"]
+	var pines := ["Pine_2", "Pine_5"]
+	var twisted := ["TwistedTree_1"]
+	var deads := ["DeadTree_1", "DeadTree_3", "DeadTree_4"]
 	var qtint := tint if tint != "dark" else "gloom"
-	for i in 44:   # 뒤쪽(-z)의 숲
-		var x := lerpf(-62.0, 62.0, i / 43.0) + rng.randf_range(-2.0, 2.0)
+	for i in 38:   # 뒤쪽(-z)의 숲
+		var x := lerpf(-62.0, 62.0, i / 37.0) + rng.randf_range(-2.0, 2.0)
 		if absf(x) > 52.0:
 			continue
 		var z := -rng.randf_range(15.0, 26.0)
@@ -747,31 +835,33 @@ func _build_set() -> void:
 				nm = pines[i % pines.size()]
 			_:
 				nm = commons[i % commons.size()] if i % 3 != 0 else pines[i % pines.size()]
-		if i % 11 == 5 and envn != "dark":   # 군데군데 거대한 뒤틀린 고목
+		if i % 19 == 7 and envn != "dark":   # 군데군데 거대한 뒤틀린 고목
 			nm = twisted[(i / 11) % twisted.size()]
 			sc = rng.randf_range(0.55, 0.75)
 		place("qn/%s.gltf" % nm, Vector3(x, 0, z), rng.randf_range(0, 360), sc, qtint)
-	for i in 18:   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
+	for i in 14:   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
 		var x2 := rng.randf_range(-33, 33)
 		var z2 := rng.randf_range(12.5, 16.0) * (1.0 if rng.randf() < 0.35 else -1.0)
-		var nm2: String = deads[i % deads.size()] if envn == "dark" else (pines[i % pines.size()] if (i % 2 == 0 or envn == "ice") else commons[i % commons.size()])
+		var near_pines := ["Pine_1", "Pine_4"]
+		var near_commons := ["CommonTree_1", "CommonTree_3"]
+		var nm2: String = deads[i % deads.size()] if envn == "dark" else (near_pines[i % 2] if (i % 2 == 0 or envn == "ice") else near_commons[(i / 2) % 2])
 		place("qn/%s.gltf" % nm2, Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(0.7, 1.1), qtint)
-	for i in 22:   # 바위
+	for i in 16:   # 바위
 		var rk := "Rock_Medium_%d" % (1 + i % 3)
 		place("qn/%s.gltf" % rk, Vector3(rng.randf_range(-32, 32), 0, rng.randf_range(9.5, 16.5) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.8), tint)
-	for i in 26:   # 덤불
+	for i in 20:   # 덤불
 		var bn := "Bush_Common_Flowers" if (i % 3 == 0 and (envn == "day" or envn == "night")) else "Bush_Common"
 		place("qn/%s.gltf" % bn, Vector3(rng.randf_range(-36, 30), 0, rng.randf_range(7.5, 17.0) * (1.0 if rng.randf() < 0.3 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
 	var tufts := ["Grass_Common_Tall", "Grass_Common_Short", "Grass_Wispy_Tall"]
-	for i in 70:   # 길 가장자리 풀
+	for i in 52:   # 길 가장자리 풀
 		var gz := rng.randf_range(6.2, 15.0) * (1.0 if rng.randf() < 0.4 else -1.0)
 		place("qn/%s.gltf" % tufts[i % tufts.size()], Vector3(rng.randf_range(-38, 30), 0, gz), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
 	if envn == "day" or envn == "night" or envn == "ice":   # 꽃과 버섯
-		for i in 26:
-			var fn := "Flower_3_Group" if i % 2 == 0 else "Flower_4_Group"
+		for i in 18:
+			var fn := "Flower_3_Group"
 			place("qn/%s.gltf" % fn, Vector3(rng.randf_range(-36, 28), 0, rng.randf_range(6.5, 14.0) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.5), qtint)
-	for i in 10:
-		var mn2 := "Mushroom_Common" if i % 2 == 0 else "Mushroom_Laetiporus"
+	for i in 6:
+		var mn2 := "Mushroom_Common"
 		place("qn/%s.gltf" % mn2, Vector3(rng.randf_range(-34, 30), 0, rng.randf_range(6.5, 12.0) * (1.0 if rng.randf() < 0.5 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.2, 2.2), qtint)
 
 	# ===== 먼 배경: 언덕과 산, 구름 =====
@@ -786,9 +876,11 @@ func _build_set() -> void:
 	clouds.clear()
 	for i in 9:
 		var cn := "cloud_big" if i % 3 != 2 else "cloud_small"
-		var cl := place("hex/%s.gltf" % cn, Vector3(rng.randf_range(-100, 100), rng.randf_range(28, 42), -rng.randf_range(20, 70)), 0, rng.randf_range(6.0, 10.0), "dark" if envn == "dark" else ("fire" if envn == "fire" else ""))
+		var cl := place("hex/%s.gltf" % cn, Vector3(rng.randf_range(-100, 100), rng.randf_range(28, 42), -rng.randf_range(20, 70)), 0, rng.randf_range(6.0, 10.0), "dark" if envn == "dark" else ("fire" if envn == "fire" else ""), true)
 		cl.set_meta("speed", rng.randf_range(0.5, 1.4))
 		clouds.append(cl)
+
+	_flush_batches()
 
 	# 불꽃 스테이지: 곳곳에 타오르는 불
 	if envn == "fire":
@@ -1312,7 +1404,37 @@ func reinforce() -> void:
 	Sfx.play("levelup", 0.6)
 
 
+var perf_t := 0.0
+var perf_frames := 0
+var perf_done := false
+
+
+func _auto_quality(real_delta: float) -> void:
+	## 전투 시작 3~9초 동안 실제 프레임 속도를 재서, 너무 느리면 다음 전투부터 그래픽 품질을 한 단계 낮춘다.
+	if perf_done or state != "play" or paused or cine_active or gfx <= 0:
+		return
+	var age := Time.get_ticks_msec() / 1000.0 - perf_start
+	if perf_start < 0.0:
+		perf_start = Time.get_ticks_msec() / 1000.0
+		return
+	if age < 3.0:
+		return
+	perf_t += real_delta
+	perf_frames += 1
+	if age >= 9.0:
+		perf_done = true
+		var fps := float(perf_frames) / maxf(perf_t, 0.001)
+		if fps < 34.0:
+			Save.settings.gfx = gfx - 1
+			Save.save_data()
+			show_banner("성능을 위해 그래픽 품질을 낮췄습니다", "다음 전투부터 '%s' (설정에서 바꿀 수 있어요)" % ["낮음", "보통", "높음"][gfx - 1], 3.0)
+
+
+var perf_start := -1.0
+
+
 func _process(delta: float) -> void:
+	_auto_quality(delta)
 	# 시간 배율: 치트 속도 × 슬로모션
 	var ts := float(Save.cheats.speed) if (state == "play" and not cine_active) else 1.0
 	if Time.get_ticks_msec() < slowmo_until:
