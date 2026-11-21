@@ -262,10 +262,67 @@ body::after {
   border-radius: 0;
 }
 
-/* the emoji / mic / send buttons (absolutely placed over the right end of the row) */
+/* Composer geometry. The pill is 48px tall; the buttons inside it are 36px circles centered on it
+ * (6px of space above, below and at the end), and the + / gif buttons on the left are 40px circles
+ * with the same vertical center. Button padding is an inline style upstream, hence !important. */
+:root body div:has(> [data-testid='message-input-text-area']) {
+  min-height: 48px;
+}
+
 :root body div:has(> [data-testid='message-input-text-area']) + div {
-  inset-inline-end: 22px;
+  /* pill margin-inline-end (14px) + 6px */
+  inset-inline-end: 20px;
+  inset-block-end: calc(var(--margins-sm) + 6px);
+  gap: 4px;
   align-items: center;
+}
+
+:root body [data-testid='emoji-button'],
+:root body [data-testid='microphone-button'],
+:root body [data-testid='send-message-button'] {
+  box-sizing: border-box;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* emoji + mic are quiet icon buttons; only "send" is a filled accent circle */
+:root body [data-testid='emoji-button'],
+:root body [data-testid='microphone-button'] {
+  background: transparent !important;
+}
+
+:root body [data-testid='emoji-button']:hover:not(:disabled),
+:root body [data-testid='microphone-button']:hover:not(:disabled) {
+  background: var(--lg-tint-hover) !important;
+}
+
+:root body [data-testid='send-message-button'] {
+  box-shadow: var(--lg-rim), 0 4px 14px -4px color-mix(in srgb, var(--lg-accent) 70%, transparent);
+}
+
+:root body [data-testid='attachments-button'],
+:root body [data-testid='gif-button'] {
+  box-sizing: border-box;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* center on the 48px pill: (48 - 40) / 2 */
+  margin-bottom: 4px;
+  background: var(--lg-glass) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow: var(--lg-rim);
 }
 
 /* ---------- modals ---------- */
