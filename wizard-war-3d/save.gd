@@ -86,6 +86,7 @@ var warmed := false           # 이펙트 셰이더 미리 컴파일 여부
 var cheats := {"god": false, "one_hit": false, "no_cd": false, "speed": 1}
 var touch_ui := false        # true면 터치 버튼·조이스틱, false면 키보드·마우스용 단축키 바
 var touch_device := false    # 기기가 터치 위주(휴대폰·태블릿)인지
+var ultra_ok := false        # 울트라 리얼리스틱 품질을 쓸 수 있는 기기인지 (설치형 PC 게임만)
 var _last_mouse_ms := -10000
 var _pending_touch_ms := -1
 
@@ -107,6 +108,7 @@ func _detect_device() -> void:
 	else:
 		touch_device = OS.has_feature("mobile")
 	touch_ui = touch_device
+	ultra_ok = not OS.has_feature("web") and not OS.has_feature("mobile")
 
 
 func _input(ev: InputEvent) -> void:

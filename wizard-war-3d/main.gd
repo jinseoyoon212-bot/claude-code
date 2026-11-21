@@ -42,7 +42,21 @@ const SKYS := {
 }
 const NOISE_A := preload("res://textures/noise_a.png")   # 끊김 없이 이어지는 노이즈 (땅·하늘·잎·안개가 함께 쓴다: 셰이더에서 계산하지 않고 읽어서 빠르다)
 const NOISE_B := preload("res://textures/noise_b.png")   # 세포 무늬 (자갈·갈라진 땅)
-var gfx := 2                     # 그래픽 품질 0 낮음 / 1 보통 / 2 높음 (Save.settings.gfx)
+var gfx := 2                     # 그래픽 품질 0 낮음 / 1 보통 / 2 높음 / 3 울트라 (Save.settings.gfx)
+var ultra := false               # 울트라 리얼리스틱: Forward+ 렌더러 위에서만 켜진다 (실시간 반사·환경 차폐·간접광·체적 안개·4단계 그림자…)
+var ultra_failed := false        # 울트라를 골랐지만 이 컴퓨터가 고급 렌더러(Vulkan)를 쓸 수 없어 '높음'으로 실행 중
+
+
+func _is_forward_plus() -> bool:
+	return RenderingServer.get_rendering_device() != null   # Vulkan(RenderingDevice)를 쓰는 고급 렌더러에서만 있다
+
+
+func _relaunch_ultra() -> void:
+	## 울트라는 고급 렌더러가 필요하다: 같은 게임을 그 렌더러로 다시 실행하고 지금 게임은 끝낸다
+	var args := PackedStringArray(["--rendering-method", "forward_plus", "--rendering-driver", "vulkan", "--ultra-relaunch"])
+	args.append_array(OS.get_cmdline_args())
+	OS.create_process(OS.get_executable_path(), args)
+	get_tree().quit()
 var KINDS := {}
 var scenes := {}
 var units: Array = []
@@ -108,6 +122,18 @@ var world_env: Environment
 
 func _ready() -> void:
 	randomize()
+	gfx = clampi(int(Save.settings.gfx), 0, 3)
+	if gfx >= 3:
+		if not Save.ultra_ok:
+			gfx = 2
+		elif not _is_forward_plus():
+			if "--ultra-relaunch" in OS.get_cmdline_args():
+				gfx = 2          # 다시 실행했는데도 고급 렌더러가 안 켜졌다 = 이 컴퓨터는 지원하지 않는다
+				ultra_failed = true
+			else:
+				_relaunch_ultra()
+				return
+	ultra = gfx >= 3
 	stage = Save.stage(Save.current_stage)
 	endless = stage.id == "endless"
 	max_wave = stage.waves
@@ -378,6 +404,9 @@ func _torch(pos: Vector3, col: Color) -> void:
 	l.light_energy = 1.4
 	l.omni_range = 7.0
 	l.position = pos + Vector3(0, 2.6, 0)
+	if ultra:
+		l.shadow_enabled = true
+		l.light_volumetric_fog_energy = 1.3
 	add_child(l)
 	var p := _particles(pos + Vector3(0, 2.5, 0), col, 12, 0.6, 0.2, Vector3(0, 1.2, 0), false)
 	p.emission_sphere_radius = 0.08
@@ -410,6 +439,8 @@ const SHADOW_MODELS := ["tree", "Tree", "Pine", "building", "wall", "tower", "ca
 func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "", solo := false) -> Node3D:
 	## 모델 하나를 월드에 놓는다. tint 를 주면 반투명 색을 덧씌워 분위기를 바꾼다 (얼음/어둠/불꽃).
 	## 장면을 만드는 동안(batching)에는 같은 모델을 구역별로 모아 한 번에 그린다 (그리기 호출이 크게 줄어든다).
+	if ultra and path.begins_with("qn/") and ResourceLoader.exists("res://models/env/qn_hq/" + path.substr(3)):
+		path = "qn_hq/" + path.substr(3)     # 울트라: 2048 해상도 질감(줄기·바위)과 더 많은 종류의 나무
 	if batching and not solo:
 		var cell := "%d|%d" % [floori(pos.x / 70.0), floori(pos.z / 90.0)]
 		var near_shadow := pos.z > -13.0   # 뒤쪽 숲(멀리 있는 것)은 그림자를 드리우지 않는다: 그림자는 화면 가까이 있는 것만 그려도 충분하다
@@ -423,7 +454,7 @@ func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "", s
 	n.rotation_degrees.y = rot_deg
 	n.scale = Vector3.ONE * scl
 	add_child(n)
-	if gfx >= 1 and path.begins_with("qn/"):
+	if gfx >= 1 and path.begins_with("qn"):
 		_apply_foliage(n, path.get_file().get_basename())
 	if tint != "":
 		var m := _tint_mat(tint)
@@ -455,7 +486,7 @@ func _model_meshes(path: String) -> Array:
 				rel = (cur as Node3D).transform * rel
 			cur = cur.get_parent()
 		var mesh: Mesh = mi.mesh
-		if gfx >= 1 and path.begins_with("qn/"):
+		if gfx >= 1 and path.begins_with("qn"):
 			mesh = _foliage_mesh(mesh, nm)
 		out.append({"mesh": mesh, "rel": rel, "shadow": shadow})
 	root_n.queue_free()
@@ -476,7 +507,7 @@ func _flush_batches() -> void:
 				mm.set_instance_transform(i, (xfs[i] as Transform3D) * (part.rel as Transform3D))
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if (part.shadow and b.near) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ((part.shadow and b.near) or ultra) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			if b.tint != "":
 				mmi.material_overlay = _tint_mat(b.tint)
 			add_child(mmi)
@@ -484,9 +515,84 @@ func _flush_batches() -> void:
 	batching = false
 
 
+func _ultra_setup(e: Environment, env: WorldEnvironment, E: Dictionary, SK: Dictionary) -> void:
+	## 울트라 리얼리스틱 (Forward+ 렌더러 전용): 실시간 환경 차폐·간접광·반사·체적 안개와 빛줄기·피사계 심도·고품질 그림자·TAA
+	# 하늘이 곧 조명: 하늘 셰이더(해·구름)의 빛이 주변광과 반사광이 된다
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	e.ambient_light_sky_contribution = 1.0
+	e.ambient_light_energy = 1.0
+	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	e.sky.radiance_size = Sky.RADIANCE_SIZE_256
+	e.tonemap_mode = Environment.TONE_MAPPER_ACES
+	e.tonemap_white = 6.0
+	e.tonemap_exposure = 1.0
+	# 환경 차폐(SSAO): 구석·틈·나무 밑동이 자연스럽게 어두워진다
+	e.ssao_enabled = true
+	e.ssao_radius = 1.8
+	e.ssao_intensity = 2.2
+	e.ssao_power = 1.6
+	e.ssao_detail = 0.6
+	e.ssao_horizon = 0.06
+	e.ssao_sharpness = 0.98
+	e.ssao_light_affect = 0.25
+	e.ssao_ao_channel_affect = 0.3
+	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, true, 0.5, 2, 50, 300)
+	# 간접광(SSIL): 밝은 면에 맞은 빛이 주변으로 번진다
+	e.ssil_enabled = true
+	e.ssil_radius = 5.0
+	e.ssil_intensity = 1.1
+	e.ssil_sharpness = 0.98
+	e.ssil_normal_rejection = 1.0
+	RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_HIGH, true, 0.5, 4, 50, 300)
+	# 화면 공간 반사(SSR): 젖은 길의 웅덩이와 반들한 표면에 주변이 비친다
+	e.ssr_enabled = true
+	e.ssr_max_steps = 96
+	e.ssr_fade_in = 0.12
+	e.ssr_fade_out = 2.0
+	e.ssr_depth_tolerance = 0.25
+	# 체적 안개: 햇빛이 나무 사이로 새는 진짜 빛줄기(그림자가 있는 곳은 어두운 줄무늬가 된다)
+	e.fog_enabled = false
+	e.volumetric_fog_enabled = true
+	e.volumetric_fog_density = 0.012 if stage.env == "day" else (0.03 if stage.env in ["dark", "night"] else 0.02)
+	e.volumetric_fog_albedo = E.fog.lerp(Color.WHITE, 0.35)
+	e.volumetric_fog_emission = E.fog * 0.04
+	e.volumetric_fog_emission_energy = 0.8
+	e.volumetric_fog_gi_inject = 1.0
+	e.volumetric_fog_anisotropy = 0.7
+	e.volumetric_fog_length = 90.0
+	e.volumetric_fog_detail_spread = 2.2
+	e.volumetric_fog_ambient_inject = 0.5
+	e.volumetric_fog_sky_affect = 0.0
+	# 번짐(블룸)과 색 보정
+	e.glow_enabled = true
+	e.glow_intensity = 0.8
+	e.glow_strength = 1.0
+	e.glow_bloom = 0.1
+	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	e.glow_hdr_threshold = 1.0
+	e.glow_hdr_scale = 2.0
+	e.adjustment_enabled = true
+	e.adjustment_contrast = 1.08
+	e.adjustment_saturation = 1.1
+	# 카메라: 먼 곳은 살짝 흐리게(피사계 심도)
+	var ca := CameraAttributesPractical.new()
+	ca.dof_blur_far_enabled = true
+	ca.dof_blur_far_distance = 58.0
+	ca.dof_blur_far_transition = 46.0
+	ca.dof_blur_amount = 0.05
+	env.camera_attributes = ca
+	# 화면: TAA(시간축 안티앨리어싱) + 다중 샘플, 멀리서도 자글거리지 않는 이방성 필터, 자세한 메시(LOD) 유지
+	var vp := get_viewport()
+	vp.use_taa = true
+	vp.msaa_3d = Viewport.MSAA_2X
+	vp.mesh_lod_threshold = 0.4
+	vp.anisotropic_filtering_level = 4   # 16배
+	vp.positional_shadow_atlas_size = 4096
+	RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+
+
 func _build_world() -> void:
 	var E: Dictionary = ENVS[stage.env]
-	gfx = clampi(int(Save.settings.gfx), 0, 2)
 	var SK: Dictionary = SKYS[stage.env]
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -538,6 +644,8 @@ func _build_world() -> void:
 	env.environment = e
 	world_env = e
 	add_child(env)
+	if ultra:
+		_ultra_setup(e, env, E, SK)
 
 	sun = DirectionalLight3D.new()
 	sun.light_color = E.sun
@@ -546,7 +654,18 @@ func _build_world() -> void:
 	sun.shadow_enabled = Save.settings.shadows
 	sun.directional_shadow_max_distance = 55.0 if gfx == 0 else 62.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS   # 그림자 구간을 4개에서 2개로: 같은 물체를 덜 반복해서 그린다
-	if gfx >= 1:
+	if ultra:
+		# 그림자: 4구간·8192 그림자 지도·가장자리가 멀수록 부드러운 PCSS 느낌
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		sun.directional_shadow_max_distance = 140.0
+		sun.directional_shadow_blend_splits = true
+		sun.light_volumetric_fog_energy = 1.7
+		sun.light_angular_distance = 0.9
+		sun.shadow_blur = 1.0
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_ULTRA)
+		RenderingServer.directional_shadow_atlas_set_size(8192, true)
+		get_viewport().msaa_3d = Viewport.MSAA_2X
+	elif gfx >= 1:
 		sun.shadow_blur = 1.4
 		sun.light_angular_distance = 0.4   # 그림자 가장자리가 멀수록 부드러워진다
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW if gfx >= 2 else RenderingServer.SHADOW_QUALITY_HARD)   # 부드러운 그림자는 픽셀마다 그림자 지도를 여러 번 읽어서 비싸다
@@ -557,7 +676,7 @@ func _build_world() -> void:
 	if gfx >= 1:   # 반대편에서 오는 차갑고 약한 보조광: 그림자 쪽이 새까맣게 죽지 않고 윤곽이 산다
 		var fill := DirectionalLight3D.new()
 		fill.light_color = E.amb.lerp(Color(0.6, 0.75, 1.0), 0.5)
-		fill.light_energy = 0.32
+		fill.light_energy = 0.32 if not ultra else 0.12
 		fill.rotation_degrees = Vector3(-22, 150, 0)
 		fill.shadow_enabled = false
 		add_child(fill)
@@ -575,6 +694,7 @@ func _build_world() -> void:
 		gmat.set_shader_parameter("blight_col", Vector3(bc.r, bc.g, bc.b))
 		gmat.set_shader_parameter("noise_a", NOISE_A)
 		gmat.set_shader_parameter("noise_b", NOISE_B)
+		gmat.set_shader_parameter("bump", 1.0 if ultra else 0.55)
 		gmat.set_shader_parameter("snow", 1.0 if stage.env == "ice" else 0.0)
 		gmat.set_shader_parameter("wet", 0.8 if stage.env in ["night", "dark"] else (0.3 if stage.env == "fire" else 0.0))
 		gmat.set_shader_parameter("cracks", 1.0 if stage.env in ["dark", "fire"] else 0.3)
@@ -793,7 +913,16 @@ func _build_set() -> void:
 		place("hex/%s.gltf" % c[0], Vector3(c[1], 0, c[2]), c[3], c[4], "ice" if envn == "ice" else "")
 
 	# ===== 어둠의 진영 (오른쪽): 문·납골당·묘지·울타리 =====
-	place("hw/arch_gate.gltf", Vector3(35.6, 0, 0), 90, 1.9, "gloom")
+	# 포탈 문: 던전 석재(CC0)로 쌓은 아치 + 양옆 장식 기둥 + 돌 받침과 무너진 잔해
+	place("dg/wall_arched.glb", Vector3(36.0, 0, 0), 90, 2.4, "gloom")
+	for z in [-6.8, 6.8]:
+		place("dg/pillar_decorated.glb", Vector3(35.4, 0, z), 90, 2.3, "gloom")
+		place("dg/torch_mounted.glb", Vector3(35.0, 4.2, z * 0.62), 90, 2.4)
+	for z in [-3.6, 0.0, 3.6]:
+		place("dg/floor_tile_large.glb", Vector3(33.0, 0.06, z), 0, 1.0, "gloom")
+		place("dg/floor_tile_large.glb", Vector3(37.0, 0.06, z), 0, 1.0, "gloom")
+	place("dg/rubble_large.glb", Vector3(37.0, 0, -10.0), 25, 0.9, "gloom")
+	place("dg/rubble_large.glb", Vector3(36.5, 0, 10.5), 200, 0.8, "gloom")
 	place("hw/crypt.gltf", Vector3(47, 0, 0), -90, 1.8, "gloom")
 	place("hex/building_castle_red.gltf", Vector3(66, 0, 0), -90, 6.5, "dark")
 	for z in [-18.0, 18.0]:
@@ -814,13 +943,15 @@ func _build_set() -> void:
 		place("hw/%s.gltf" % nm, Vector3(rng.randf_range(22, 34), 0.0, bz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
 
 	# ===== 숲: Quaternius Stylized Nature MegaKit (CC0) 나무·덤불·풀·꽃·바위. 스테이지마다 나무 종류와 색조가 달라진다 =====
-	var commons := ["CommonTree_3", "CommonTree_4"]
-	var pines := ["Pine_2", "Pine_5"]
-	var twisted := ["TwistedTree_1"]
-	var deads := ["DeadTree_1", "DeadTree_3", "DeadTree_4"]
+	var dn := 1.8 if ultra else 1.0      # 울트라는 식물을 훨씬 빽빽하게
+	var commons := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5"] if ultra else ["CommonTree_3", "CommonTree_4"]
+	var pines := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"] if ultra else ["Pine_2", "Pine_5"]
+	var twisted := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"] if ultra else ["TwistedTree_1"]
+	var deads := ["DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4", "DeadTree_5"] if ultra else ["DeadTree_1", "DeadTree_3", "DeadTree_4"]
 	var qtint := tint if tint != "dark" else "gloom"
-	for i in 38:   # 뒤쪽(-z)의 숲
-		var x := lerpf(-62.0, 62.0, i / 37.0) + rng.randf_range(-2.0, 2.0)
+	var nforest := int(38 * dn)
+	for i in nforest:   # 뒤쪽(-z)의 숲
+		var x := lerpf(-62.0, 62.0, float(i) / float(nforest - 1)) + rng.randf_range(-2.0, 2.0)
 		if absf(x) > 52.0:
 			continue
 		var z := -rng.randf_range(15.0, 26.0)
@@ -839,30 +970,48 @@ func _build_set() -> void:
 			nm = twisted[(i / 11) % twisted.size()]
 			sc = rng.randf_range(0.55, 0.75)
 		place("qn/%s.gltf" % nm, Vector3(x, 0, z), rng.randf_range(0, 360), sc, qtint)
-	for i in 14:   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
+	for i in int(14 * dn):   # 카메라 반대편(+z) 가장자리와 길가 외톨이 나무
 		var x2 := rng.randf_range(-33, 33)
 		var z2 := rng.randf_range(12.5, 16.0) * (1.0 if rng.randf() < 0.35 else -1.0)
 		var near_pines := ["Pine_1", "Pine_4"]
 		var near_commons := ["CommonTree_1", "CommonTree_3"]
 		var nm2: String = deads[i % deads.size()] if envn == "dark" else (near_pines[i % 2] if (i % 2 == 0 or envn == "ice") else near_commons[(i / 2) % 2])
 		place("qn/%s.gltf" % nm2, Vector3(x2, 0, z2), rng.randf_range(0, 360), rng.randf_range(0.7, 1.1), qtint)
-	for i in 16:   # 바위
+	for i in int(16 * dn):   # 바위
 		var rk := "Rock_Medium_%d" % (1 + i % 3)
 		place("qn/%s.gltf" % rk, Vector3(rng.randf_range(-32, 32), 0, rng.randf_range(9.5, 16.5) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.8), tint)
-	for i in 20:   # 덤불
+	for i in int(20 * dn):   # 덤불
 		var bn := "Bush_Common_Flowers" if (i % 3 == 0 and (envn == "day" or envn == "night")) else "Bush_Common"
 		place("qn/%s.gltf" % bn, Vector3(rng.randf_range(-36, 30), 0, rng.randf_range(7.5, 17.0) * (1.0 if rng.randf() < 0.3 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
 	var tufts := ["Grass_Common_Tall", "Grass_Common_Short", "Grass_Wispy_Tall"]
-	for i in 52:   # 길 가장자리 풀
+	for i in int(52 * dn):   # 길 가장자리 풀
 		var gz := rng.randf_range(6.2, 15.0) * (1.0 if rng.randf() < 0.4 else -1.0)
 		place("qn/%s.gltf" % tufts[i % tufts.size()], Vector3(rng.randf_range(-38, 30), 0, gz), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
 	if envn == "day" or envn == "night" or envn == "ice":   # 꽃과 버섯
-		for i in 18:
-			var fn := "Flower_3_Group"
+		for i in int(18 * dn):
+			var fn := "Flower_3_Group" if (not ultra or i % 2 == 0) else "Flower_4_Group"
 			place("qn/%s.gltf" % fn, Vector3(rng.randf_range(-36, 28), 0, rng.randf_range(6.5, 14.0) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.5), qtint)
-	for i in 6:
-		var mn2 := "Mushroom_Common"
+	for i in int(6 * dn):
+		var mn2 := "Mushroom_Common" if (not ultra or i % 2 == 0) else "Mushroom_Laetiporus"
 		place("qn/%s.gltf" % mn2, Vector3(rng.randf_range(-34, 30), 0, rng.randf_range(6.5, 12.0) * (1.0 if rng.randf() < 0.5 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.2, 2.2), qtint)
+
+	if ultra:   # 땅바닥 디테일: 조약돌·클로버·낙엽 꽃잎·고사리·징검돌을 길 가장자리를 따라 흩뿌린다
+		var pebs := ["Pebble_Round_1", "Pebble_Round_3", "Pebble_Round_5", "Pebble_Square_2", "Pebble_Square_4"]
+		for i in 90:
+			var pz := rng.randf_range(3.6, 8.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			place("qn/%s.gltf" % pebs[i % pebs.size()], Vector3(rng.randf_range(-34, 33), 0, pz), rng.randf_range(0, 360), rng.randf_range(0.5, 1.1), tint)
+		for i in 40:
+			var cz := rng.randf_range(5.5, 14.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			place("qn/%s.gltf" % ("Clover_1" if i % 2 == 0 else "Clover_2"), Vector3(rng.randf_range(-36, 30), 0, cz), rng.randf_range(0, 360), rng.randf_range(1.0, 2.0), qtint)
+		for i in 30:
+			var fz := rng.randf_range(8.0, 15.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			place("qn/%s.gltf" % ["Fern_1", "Plant_1_Big", "Plant_7_Big", "Plant_1"][i % 4], Vector3(rng.randf_range(-36, 30), 0, fz), rng.randf_range(0, 360), rng.randf_range(0.5, 1.1), qtint)
+		for i in 40:
+			var tz := rng.randf_range(3.2, 9.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			place("qn/Petal_%d.gltf" % (1 + i % 3), Vector3(rng.randf_range(-34, 33), 0.02, tz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.4), qtint)
+		for i in 22:
+			var sz := rng.randf_range(4.6, 6.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			place("qn/RockPath_Round_Small_%d.gltf" % (1 + i % 2), Vector3(rng.randf_range(-33, 33), 0, sz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.3), tint)
 
 	# ===== 먼 배경: 언덕과 산, 구름 =====
 	var hills := ["hills_A", "hills_B", "hills_C", "hills_A_trees"]
@@ -890,16 +1039,18 @@ func _build_set() -> void:
 			f.scale_amount_min = 1.5
 			f.scale_amount_max = 3.0
 
-	# 포탈: 어둠의 문 안쪽에 소용돌이 원판과 입자
+	# 포탈: 문 안쪽에 소용돌이치는 에너지 원판과 입자
 	portal_disc = MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 2.9
-	cm.bottom_radius = 2.9
-	cm.height = 0.1
+	var cm := QuadMesh.new()
+	cm.size = Vector2(5.6, 5.6)
 	portal_disc.mesh = cm
-	portal_disc.material_override = _overlay(Color(0.45, 0.06, 0.65, 0.75))
-	portal_disc.position = Vector3(35.0, 3.6, 0)
-	portal_disc.rotation_degrees = Vector3(0, 0, 90)
+	var pmat := ShaderMaterial.new()
+	pmat.shader = load("res://shaders/portal.gdshader")
+	pmat.set_shader_parameter("noise_a", NOISE_A)
+	portal_disc.material_override = pmat
+	portal_disc.position = Vector3(35.1, 3.0, 0)
+	portal_disc.rotation_degrees = Vector3(0, 90, 0)
+	portal_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(portal_disc)
 	var pl := OmniLight3D.new()
 	pl.light_color = Color(0.7, 0.3, 1.0)
@@ -907,11 +1058,11 @@ func _build_set() -> void:
 	pl.omni_range = 14.0
 	pl.position = Vector3(33, 3, 0)
 	add_child(pl)
-	var pp2 := _particles(Vector3(34.6, 3.6, 0), Color(0.75, 0.35, 1.0), 60, 1.4, 2.6, Vector3(-1.5, 0, 0), false)
+	var pp2 := _particles(Vector3(34.6, 3.0, 0), Color(0.75, 0.35, 1.0), 60, 1.4, 2.6, Vector3(-1.5, 0, 0), false)
 	pp2.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
 	pp2.emission_ring_axis = Vector3(1, 0, 0)
-	pp2.emission_ring_radius = 2.9
-	pp2.emission_ring_inner_radius = 2.5
+	pp2.emission_ring_radius = 2.7
+	pp2.emission_ring_inner_radius = 2.3
 	pp2.emission_ring_height = 0.1
 
 
