@@ -32,6 +32,15 @@ const ENVS := {
 		"fog": Color(0.3, 0.18, 0.36), "fog_d": 0.0035, "fx": "ash"},
 }
 
+# 스테이지별 하늘·분위기 (사실적 하늘 셰이더용)
+const SKYS := {
+	"day": {"cover": 0.55, "lit": Color(1.0, 0.97, 0.92), "shade": Color(0.58, 0.64, 0.76), "stars": 0.0, "sun_col": Color(1.0, 0.92, 0.75), "sun_size": 0.0075, "sun_power": 1.0, "ray": Color(1.0, 0.88, 0.6)},
+	"night": {"cover": 0.35, "lit": Color(0.42, 0.5, 0.72), "shade": Color(0.06, 0.08, 0.18), "stars": 1.0, "sun_col": Color(0.75, 0.85, 1.0), "sun_size": 0.014, "sun_power": 0.7, "ray": Color(0.55, 0.7, 1.0)},
+	"fire": {"cover": 0.75, "lit": Color(1.0, 0.55, 0.25), "shade": Color(0.22, 0.07, 0.05), "stars": 0.0, "sun_col": Color(1.0, 0.55, 0.25), "sun_size": 0.011, "sun_power": 1.2, "ray": Color(1.0, 0.6, 0.3)},
+	"ice": {"cover": 0.6, "lit": Color(0.96, 0.98, 1.0), "shade": Color(0.62, 0.72, 0.88), "stars": 0.0, "sun_col": Color(0.92, 0.96, 1.0), "sun_size": 0.007, "sun_power": 0.9, "ray": Color(0.85, 0.92, 1.0)},
+	"dark": {"cover": 0.7, "lit": Color(0.72, 0.42, 0.88), "shade": Color(0.1, 0.05, 0.18), "stars": 0.5, "sun_col": Color(0.85, 0.6, 1.0), "sun_size": 0.012, "sun_power": 0.8, "ray": Color(0.7, 0.45, 0.95)},
+}
+var gfx := 2                     # 그래픽 품질 0 낮음 / 1 보통 / 2 높음 (Save.settings.gfx)
 var KINDS := {}
 var scenes := {}
 var units: Array = []
@@ -397,6 +406,8 @@ func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "") -
 	n.rotation_degrees.y = rot_deg
 	n.scale = Vector3.ONE * scl
 	add_child(n)
+	if gfx >= 1 and path.begins_with("qn/"):
+		_apply_foliage(n, path.get_file().get_basename())
 	if tint != "":
 		var m := _tint_mat(tint)
 		for mi in n.find_children("*", "MeshInstance3D", true, false):
@@ -406,27 +417,56 @@ func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "") -
 
 func _build_world() -> void:
 	var E: Dictionary = ENVS[stage.env]
+	gfx = clampi(int(Save.settings.gfx), 0, 2)
+	var SK: Dictionary = SKYS[stage.env]
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = E.top
-	sm.sky_horizon_color = E.hor
-	sm.ground_horizon_color = E.hor.darkened(0.3)
-	sm.ground_bottom_color = E.top.darkened(0.5)
-	sky.sky_material = sm
+	if gfx >= 1:
+		# 사실적인 하늘: 태양 원반·빛무리, 흘러가는 구름, 밤의 별 (shaders/sky.gdshader)
+		var ssm := ShaderMaterial.new()
+		ssm.shader = load("res://shaders/sky.gdshader")
+		ssm.set_shader_parameter("top_col", Vector3(E.top.r, E.top.g, E.top.b))
+		ssm.set_shader_parameter("hor_col", Vector3(E.hor.r, E.hor.g, E.hor.b))
+		var lw: Color = E.hor.darkened(0.3)
+		ssm.set_shader_parameter("low_col", Vector3(lw.r, lw.g, lw.b))
+		ssm.set_shader_parameter("sun_col", Vector3(SK.sun_col.r, SK.sun_col.g, SK.sun_col.b))
+		ssm.set_shader_parameter("sun_size", SK.sun_size)
+		ssm.set_shader_parameter("sun_power", SK.sun_power)
+		ssm.set_shader_parameter("cloud_cover", SK.cover)
+		ssm.set_shader_parameter("cloud_lit", Vector3(SK.lit.r, SK.lit.g, SK.lit.b))
+		ssm.set_shader_parameter("cloud_shade", Vector3(SK.shade.r, SK.shade.g, SK.shade.b))
+		ssm.set_shader_parameter("stars", SK.stars)
+		sky.sky_material = ssm
+		sky.radiance_size = Sky.RADIANCE_SIZE_32
+	else:
+		var sm := ProceduralSkyMaterial.new()
+		sm.sky_top_color = E.top
+		sm.sky_horizon_color = E.hor
+		sm.ground_horizon_color = E.hor.darkened(0.3)
+		sm.ground_bottom_color = E.top.darkened(0.5)
+		sky.sky_material = sm
 	e.background_mode = Environment.BG_SKY
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = E.amb
 	e.ambient_light_energy = 0.6
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	e.tonemap_mode = Environment.TONE_MAPPER_ACES if gfx >= 1 else Environment.TONE_MAPPER_FILMIC
 	e.fog_enabled = true
 	e.fog_light_color = E.fog
 	e.fog_density = E.fog_d
+	if gfx >= 1:
+		e.fog_sky_affect = 0.0
+		e.fog_height = 2.5            # 낮은 곳일수록 안개가 짙다 (땅안개)
+		e.fog_height_density = 0.03
+		e.adjustment_enabled = true   # 색 보정: 대비·채도를 살짝 올려 선명하게
+		e.adjustment_contrast = 1.07
+		e.adjustment_saturation = 1.12
 	e.glow_enabled = true
-	e.glow_intensity = 0.5
-	e.glow_hdr_threshold = 1.1
+	e.glow_intensity = 0.55 if gfx >= 1 else 0.5
+	e.glow_hdr_threshold = 1.0 if gfx >= 1 else 1.1
+	if gfx >= 1:
+		e.glow_bloom = 0.04           # 밝은 곳이 은은하게 번진다
 	env.environment = e
 	world_env = e
 	add_child(env)
@@ -434,34 +474,73 @@ func _build_world() -> void:
 	sun = DirectionalLight3D.new()
 	sun.light_color = E.sun
 	sun.light_energy = E.sun_e
-	sun.rotation_degrees = Vector3(-52, -35, 0)
+	sun.rotation_degrees = Vector3(-52, -35, 0) if gfx == 0 else Vector3(-40, -33, 0)   # 해를 낮춰 긴 그림자를 만든다
 	sun.shadow_enabled = Save.settings.shadows
-	sun.directional_shadow_max_distance = 55.0
+	sun.directional_shadow_max_distance = 55.0 if gfx == 0 else 85.0
+	if gfx >= 1:
+		sun.shadow_blur = 1.4
+		sun.light_angular_distance = 0.4   # 그림자 가장자리가 멀수록 부드러워진다
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+		RenderingServer.directional_shadow_atlas_set_size(4096 if (gfx >= 2 and not Save.touch_device) else 2048, true)
+		get_viewport().msaa_3d = Viewport.MSAA_4X if (gfx >= 2 and not Save.touch_device) else Viewport.MSAA_2X
 	add_child(sun)
+	if gfx >= 1:   # 반대편에서 오는 차갑고 약한 보조광: 그림자 쪽이 새까맣게 죽지 않고 윤곽이 산다
+		var fill := DirectionalLight3D.new()
+		fill.light_color = E.amb.lerp(Color(0.6, 0.75, 1.0), 0.5)
+		fill.light_energy = 0.32
+		fill.rotation_degrees = Vector3(-22, 150, 0)
+		fill.shadow_enabled = false
+		add_child(fill)
 
-	var ground := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(320, 220)
-	ground.position = Vector3(0, 0, -50)
-	ground.mesh = pm
-	ground.material_override = _mat(E.ground)
-	add_child(ground)
-	var path := MeshInstance3D.new()
-	var pp := PlaneMesh.new()
-	pp.size = Vector2(66, 9)
-	path.mesh = pp
-	path.material_override = _mat(E.path)
-	path.position = Vector3(0, 0.02, 0)
-	add_child(path)
-	var blight := MeshInstance3D.new()
-	var bp := PlaneMesh.new()
-	bp.size = Vector2(34, 80)
-	blight.mesh = bp
-	blight.material_override = _mat(E.ground.lerp(Color(0.2, 0.17, 0.24), 0.7))
-	blight.position = Vector3(46, 0.01, 0)
-	add_child(blight)
+	if gfx >= 1:
+		var gmat := ShaderMaterial.new()
+		gmat.shader = load("res://shaders/ground.gdshader")
+		gmat.set_shader_parameter("grass_a", Vector3(E.ground.r, E.ground.g, E.ground.b))
+		var gb: Color = E.ground.lerp(E.leaf, 0.5).lightened(0.14)
+		gmat.set_shader_parameter("grass_b", Vector3(gb.r, gb.g, gb.b))
+		var dc: Color = E.path.darkened(0.25)
+		gmat.set_shader_parameter("dirt_col", Vector3(dc.r, dc.g, dc.b))
+		gmat.set_shader_parameter("path_col", Vector3(E.path.r, E.path.g, E.path.b))
+		var bc: Color = E.ground.lerp(Color(0.2, 0.17, 0.24), 0.75).darkened(0.25)
+		gmat.set_shader_parameter("blight_col", Vector3(bc.r, bc.g, bc.b))
+		gmat.set_shader_parameter("snow", 1.0 if stage.env == "ice" else 0.0)
+		gmat.set_shader_parameter("wet", 0.8 if stage.env in ["night", "dark"] else (0.3 if stage.env == "fire" else 0.0))
+		gmat.set_shader_parameter("cracks", 1.0 if stage.env in ["dark", "fire"] else 0.3)
+		var cc: Color = Color(0.65, 0.2, 0.95) if stage.env == "dark" else Color(1.0, 0.4, 0.1)
+		gmat.set_shader_parameter("crack_col", Vector3(cc.r, cc.g, cc.b))
+		var ground := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(320, 220)
+		ground.position = Vector3(0, 0, -50)
+		ground.mesh = pm
+		ground.material_override = gmat
+		add_child(ground)
+	else:
+		var ground := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(320, 220)
+		ground.position = Vector3(0, 0, -50)
+		ground.mesh = pm
+		ground.material_override = _mat(E.ground)
+		add_child(ground)
+		var path := MeshInstance3D.new()
+		var pp := PlaneMesh.new()
+		pp.size = Vector2(66, 9)
+		path.mesh = pp
+		path.material_override = _mat(E.path)
+		path.position = Vector3(0, 0.02, 0)
+		add_child(path)
+		var blight := MeshInstance3D.new()
+		var bp := PlaneMesh.new()
+		bp.size = Vector2(34, 80)
+		blight.mesh = bp
+		blight.material_override = _mat(E.ground.lerp(Color(0.2, 0.17, 0.24), 0.7))
+		blight.position = Vector3(46, 0.01, 0)
+		add_child(blight)
 
 	_build_set()
+	if gfx >= 2:
+		_build_atmosphere(E, SK)
 
 	# 날씨/분위기 입자
 	var fx := _particles(Vector3(0, 6, 0), Color.WHITE, 160, 6.0, 0.0, Vector3.ZERO, false)
@@ -488,6 +567,108 @@ func _build_world() -> void:
 		"ash":
 			fx.color = Color(0.75, 0.55, 0.9, 0.7)
 			fx.gravity = Vector3(-0.2, 0.3, 0)
+
+
+func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
+	## 빛줄기(햇살이 숲 사이로 새는 모습)와 땅 위에 깔리는 안개, 화면 마무리 효과 (그래픽 품질 높음)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99 + stage_idx
+	var to_sun := (-sun.global_transform.basis.z).normalized()   # 빛이 오는 쪽(위)
+	var axis := Vector3.UP.cross(-to_sun)
+	for i in 9:
+		var m := ShaderMaterial.new()
+		m.shader = load("res://shaders/star_beam.gdshader")
+		var rc: Color = SK.ray
+		m.set_shader_parameter("core_col", Vector3(rc.r, rc.g, rc.b))
+		m.set_shader_parameter("edge_col", Vector3(rc.r * 0.8, rc.g * 0.8, rc.b * 0.9))
+		m.set_shader_parameter("intensity", 0.5)
+		m.set_shader_parameter("rings", 0.0)
+		m.set_shader_parameter("top_y", 60.0)
+		m.set_shader_parameter("fade", rng.randf_range(0.18, 0.4))
+		var mi := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 1.0
+		cm.bottom_radius = 1.0
+		cm.height = 1.0
+		cm.radial_segments = 20
+		cm.rings = 1
+		cm.cap_top = false
+		cm.cap_bottom = false
+		mi.mesh = cm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var foot := Vector3(rng.randf_range(-38.0, 40.0), 0.0, -rng.randf_range(6.0, 22.0))
+		var len := 46.0
+		var w := rng.randf_range(1.5, 3.8)
+		mi.scale = Vector3(w, len, w)
+		var up := to_sun
+		var basis := Basis(Quaternion(Vector3.UP, up))
+		mi.transform = Transform3D(basis.scaled(Vector3(w, len, w)), foot + up * len * 0.5)
+		add_child(mi)
+	for i in 6:
+		var mm := ShaderMaterial.new()
+		mm.shader = load("res://shaders/mist.gdshader")
+		var fc: Color = E.fog.lightened(0.15)
+		mm.set_shader_parameter("col", Vector3(fc.r, fc.g, fc.b))
+		mm.set_shader_parameter("density", 0.2 if stage.env != "day" else 0.12)
+		mm.set_shader_parameter("speed", rng.randf_range(0.02, 0.05))
+		var mi2 := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(70, 22)
+		mi2.mesh = pm
+		mi2.material_override = mm
+		mi2.position = Vector3(rng.randf_range(-40.0, 44.0), rng.randf_range(0.5, 1.4), -rng.randf_range(7.0, 20.0))
+		mi2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi2)
+	# 화면 마무리(비네팅·색 분리·필름 그레인): UI 아래에 깔린다
+	if not Save.touch_device:
+		var pl := CanvasLayer.new()
+		pl.layer = 0
+		add_child(pl)
+		var cr := ColorRect.new()
+		cr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var pmat := ShaderMaterial.new()
+		pmat.shader = load("res://shaders/post.gdshader")
+		cr.material = pmat
+		pl.add_child(cr)
+
+
+var foliage_cache := {}
+
+
+func _apply_foliage(n: Node3D, nm: String) -> void:
+	## Quaternius 나무·풀의 잎 재질을 바람·투과광 셰이더로 바꾸고, 줄기 재질은 거칠기를 다듬는다.
+	var wind := 1.0
+	var sway := 0.06
+	if nm.begins_with("Grass") or nm.begins_with("Flower") or nm.begins_with("Fern") or nm.begins_with("Plant"):
+		wind = 14.0
+		sway = 0.07
+	elif nm.begins_with("Bush"):
+		wind = 8.0
+	elif nm.begins_with("Mushroom") or nm.begins_with("Rock"):
+		wind = 0.0
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = mi.mesh
+		if mesh == null:
+			continue
+		for i in mesh.get_surface_count():
+			var src := mesh.surface_get_material(i)
+			if not (src is StandardMaterial3D):
+				continue
+			var sm: StandardMaterial3D = src
+			if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and sm.albedo_texture != null:
+				var key := "%s|%.1f" % [sm.albedo_texture.resource_path, wind]
+				if not foliage_cache.has(key):
+					var fm := ShaderMaterial.new()
+					fm.shader = load("res://shaders/foliage.gdshader")
+					fm.set_shader_parameter("albedo_tex", sm.albedo_texture)
+					fm.set_shader_parameter("wind", wind)
+					fm.set_shader_parameter("sway_h", sway)
+					foliage_cache[key] = fm
+				mi.set_surface_override_material(i, foliage_cache[key])
+			else:
+				sm.roughness = 0.92
 
 
 func _build_set() -> void:

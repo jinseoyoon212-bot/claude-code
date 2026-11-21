@@ -74,7 +74,7 @@ var stars := {}
 var stats := {"kills": 0, "bosses": 0, "elites": 0, "games": 0}
 var endless_best := 0
 var claimed: Array = []
-var settings := {"music": 0.7, "sfx": 0.9, "shadows": true, "numbers": true, "shake": true, "fps": false}
+var settings := {"music": 0.7, "sfx": 0.9, "shadows": true, "numbers": true, "shake": true, "fps": false, "gfx": 2}
 var dev_unlocked := false
 var current_stage := "s1"
 
@@ -93,6 +93,7 @@ var _pending_touch_ms := -1
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_detect_device()
+	settings.gfx = 1 if touch_device else 2   # 그래픽 품질 기본값: 휴대폰·태블릿은 보통, PC는 높음 (저장된 값이 있으면 덮어쓴다)
 	if not FileAccess.file_exists(PATH) and touch_device and OS.has_feature("web"):
 		settings.shadows = false   # 모바일 브라우저는 그림자를 꺼서 부드럽게
 	load_data()
