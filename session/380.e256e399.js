@@ -1,1 +1,0 @@
-(()=>{"use strict";const s=globalThis;s.onmessage=e=>{const[a,t]=e.data;s.postMessage([a,`Image processing (${t}) is not available in the web version yet`])}})();
