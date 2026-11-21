@@ -46,6 +46,7 @@ void fragment() {
 	float v = vnoise(wpos.xz * 0.22);
 	vec3 c = t.rgb * tint * (1.0 - variation + variation * 2.0 * v);
 	c = mix(c, c * vec3(1.12, 1.02, 0.82), smoothstep(0.55, 0.9, vnoise(wpos.xz * 0.11 + 9.0)) * 0.5);   // 군데군데 누렇게
+	c = mix(c, vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.14);   // 너무 쨍한 색을 가라앉힌다
 	ALBEDO = c;
 	ROUGHNESS = 0.8;
 	SPECULAR = 0.2;

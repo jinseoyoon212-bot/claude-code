@@ -2,12 +2,12 @@
 shader_type canvas_item;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear, repeat_disable;
-uniform float vignette = 0.38;
-uniform float grain = 0.025;
-uniform float aberration = 0.0012;
+uniform float vignette = 0.3;
+uniform float grain = 0.018;
+uniform float aberration = 0.0002;
 uniform vec3 warm : source_color = vec3(1.04, 1.0, 0.94);
 uniform vec3 cool : source_color = vec3(0.94, 0.99, 1.06);
-uniform float contrast = 1.06;
+uniform float contrast = 1.03;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);

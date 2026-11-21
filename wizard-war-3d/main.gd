@@ -460,8 +460,9 @@ func _build_world() -> void:
 		e.fog_height = 2.5            # 낮은 곳일수록 안개가 짙다 (땅안개)
 		e.fog_height_density = 0.03
 		e.adjustment_enabled = true   # 색 보정: 대비·채도를 살짝 올려 선명하게
-		e.adjustment_contrast = 1.07
-		e.adjustment_saturation = 1.12
+		e.adjustment_contrast = 1.04
+		e.adjustment_saturation = 1.04
+		e.tonemap_exposure = 0.9
 	e.glow_enabled = true
 	e.glow_intensity = 0.55 if gfx >= 1 else 0.5
 	e.glow_hdr_threshold = 1.0 if gfx >= 1 else 1.1

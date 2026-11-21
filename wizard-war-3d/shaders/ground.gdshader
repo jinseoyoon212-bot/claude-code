@@ -14,7 +14,7 @@ uniform float snow : hint_range(0.0, 1.0) = 0.0;
 uniform float wet : hint_range(0.0, 1.0) = 0.0;
 uniform float cracks : hint_range(0.0, 1.0) = 0.0;
 uniform vec3 crack_col : source_color = vec3(0.6, 0.2, 0.9);
-uniform float bump = 1.0;
+uniform float bump = 0.55;
 
 varying vec3 wp;
 
@@ -84,7 +84,7 @@ float height_at(vec2 p, float pm) {
 	float h = fbm(p * 1.3) * 0.55 + vnoise(p * 6.0) * 0.25;
 	vec2 c = cell(p * 2.3);
 	float peb = smoothstep(0.38, 0.12, c.x);   // 자갈
-	return h + pm * peb * 0.9;
+	return h + pm * peb * 0.22;
 }
 
 void fragment() {
