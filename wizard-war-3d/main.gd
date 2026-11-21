@@ -520,16 +520,16 @@ func _ultra_setup(e: Environment, env: WorldEnvironment, E: Dictionary, SK: Dict
 	# 하늘이 곧 조명: 하늘 셰이더(해·구름)의 빛이 주변광과 반사광이 된다
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	e.ambient_light_sky_contribution = 1.0
-	e.ambient_light_energy = 1.0
+	e.ambient_light_energy = 0.55
 	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	e.sky.radiance_size = Sky.RADIANCE_SIZE_256
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_white = 6.0
+	e.tonemap_white = 5.0
 	e.tonemap_exposure = 1.0
 	# 환경 차폐(SSAO): 구석·틈·나무 밑동이 자연스럽게 어두워진다
 	e.ssao_enabled = true
 	e.ssao_radius = 1.8
-	e.ssao_intensity = 2.2
+	e.ssao_intensity = 3.0
 	e.ssao_power = 1.6
 	e.ssao_detail = 0.6
 	e.ssao_horizon = 0.06
@@ -553,7 +553,7 @@ func _ultra_setup(e: Environment, env: WorldEnvironment, E: Dictionary, SK: Dict
 	# 체적 안개: 햇빛이 나무 사이로 새는 진짜 빛줄기(그림자가 있는 곳은 어두운 줄무늬가 된다)
 	e.fog_enabled = false
 	e.volumetric_fog_enabled = true
-	e.volumetric_fog_density = 0.012 if stage.env == "day" else (0.03 if stage.env in ["dark", "night"] else 0.02)
+	e.volumetric_fog_density = 0.006 if stage.env == "day" else (0.02 if stage.env in ["dark", "night"] else 0.012)
 	e.volumetric_fog_albedo = E.fog.lerp(Color.WHITE, 0.35)
 	e.volumetric_fog_emission = E.fog * 0.04
 	e.volumetric_fog_emission_energy = 0.8
@@ -572,8 +572,8 @@ func _ultra_setup(e: Environment, env: WorldEnvironment, E: Dictionary, SK: Dict
 	e.glow_hdr_threshold = 1.0
 	e.glow_hdr_scale = 2.0
 	e.adjustment_enabled = true
-	e.adjustment_contrast = 1.08
-	e.adjustment_saturation = 1.1
+	e.adjustment_contrast = 1.14
+	e.adjustment_saturation = 1.16
 	# 카메라: 먼 곳은 살짝 흐리게(피사계 심도)
 	var ca := CameraAttributesPractical.new()
 	ca.dof_blur_far_enabled = true
