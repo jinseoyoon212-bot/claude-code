@@ -12,6 +12,7 @@ import './styles/google-sans.scss';
 import './styles/nanum-square-neo.scss';
 import './styles/liquid-glass.scss';
 import './styles/layout.scss';
+import './styles/popups.scss';
 import { ipcRenderer } from 'electron';
 import { initWebFs } from 'fs';
 import { getDefaultSQLKey, initLocale, makeMainHandlers } from './main/ipcMainHandlers';
