@@ -20,8 +20,18 @@
   --lg-blur: 22px;
   --lg-blur-strong: 36px;
   --lg-saturate: 165%;
-  --lg-radius: 20px;
-  --lg-radius-sm: 14px;
+  /* ONE shape scale for the whole app:
+       12px  small things inside surfaces (rows, menu items, text fields)
+       16px  surfaces (bubbles, cards, menus, toasts): the value the app already hard-codes for its
+             cards, notification bubbles and toggles, so nothing needs an override
+
+       28px  sheets (modals)
+       pill  buttons and the search field
+       50%   icon buttons and avatars */
+  --lg-radius-sm: 12px;
+  --lg-radius: 16px;
+  --lg-radius-lg: 28px;
+  --lg-radius-pill: 999px;
 
   /* iOS-style curves: a decelerating "sheet" curve and a springy overshoot */
   --lg-ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -87,6 +97,13 @@ body {
   --toast-background-color: var(--lg-glass-strong);
   --message-bubble-incoming-background-color: var(--lg-glass);
   --emoji-reaction-bar-background-color: var(--lg-glass-strong);
+
+  /* the app's own shape / line variables follow the same scale, so components this file does not
+     mention (settings cards, panels, dividers) match as well */
+  --border-radius: var(--lg-radius-sm);
+  --border-radius-message-box: var(--lg-radius);
+  --default-borders: 1px solid var(--lg-edge-faint);
+  --borders-color: var(--lg-edge-faint);
 }
 
 /* ---------- ambient light behind everything ----------
@@ -147,15 +164,28 @@ body::after {
 
 /* ---------- left pane: icon rail + conversation list ---------- */
 
-:root body [data-testid='leftpane-section-container'] {
+:root body [data-testid='leftpane-section-container'],
+:root body [data-testid='leftpane-section-container'] ~ div {
   background: var(--lg-glass-soft) !important;
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  border-inline-end: 1px solid var(--lg-edge-faint) !important;
+}
+
+/* inside the list column nothing paints its own panel color: header and list are one surface */
+:root body [data-testid='leftpane-section-container'] ~ div {
+  --background-primary-color: transparent;
+  border-inline: 1px solid var(--lg-edge-faint);
+}
+
+:root body [data-testid='leftpane-section-container'] {
+  border: 0 !important;
 }
 
 :root body .module-conversation-list-item {
   margin: 3px 8px;
+  /* the row is 100% wide upstream: leave room for the side margins so its right corners show */
+  width: calc(100% - 16px) !important;
+  box-sizing: border-box;
   border-radius: var(--lg-radius-sm);
   border: 1px solid transparent;
   background: transparent;
@@ -188,8 +218,9 @@ body::after {
   background: var(--lg-glass) !important;
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  border: 0 !important;
   border-bottom: 1px solid var(--lg-edge-faint) !important;
-  box-shadow: var(--lg-rim);
+  box-shadow: none;
   position: relative;
   z-index: 3;
 }
@@ -253,6 +284,7 @@ body::after {
   min-height: 44px;
   margin-inline-end: 14px;
   padding: 4px 0 4px 14px;
+  /* half of the 48px minimum height: a pill when it is one line */
   border-radius: 24px;
   background: var(--lg-glass);
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
@@ -357,7 +389,7 @@ body::after {
   -webkit-backdrop-filter: blur(var(--lg-blur-strong)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur-strong)) saturate(var(--lg-saturate));
   border: 0 !important;
-  border-radius: 28px !important;
+  border-radius: var(--lg-radius-lg) !important;
   box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.65), var(--lg-rim) !important;
   animation: lg-pop var(--lg-slow) var(--lg-ease-spring) both;
 }
@@ -372,7 +404,7 @@ body::after {
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   border: 0 !important;
-  border-radius: 16px !important;
+  border-radius: var(--lg-radius) !important;
   box-shadow: var(--lg-shadow), var(--lg-rim) !important;
   overflow: hidden;
   animation: lg-pop var(--lg-med) var(--lg-ease) both;
@@ -384,7 +416,7 @@ body::after {
 }
 
 :root body .contexify .contexify_itemContent {
-  border-radius: 10px;
+  border-radius: var(--lg-radius-sm);
   transition:
     background-color var(--lg-fast) var(--lg-ease),
     color var(--lg-fast) var(--lg-ease);
@@ -396,7 +428,7 @@ body::after {
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   border: 0 !important;
-  border-radius: 18px !important;
+  border-radius: var(--lg-radius) !important;
   box-shadow: var(--lg-shadow), var(--lg-rim);
   animation: lg-toast-in var(--lg-slow) var(--lg-ease-spring) both;
 }
@@ -423,7 +455,7 @@ body::after {
 }
 
 :root body [data-testid='new-conversation-button'] {
-  border-radius: 14px !important;
+  border-radius: var(--lg-radius-pill) !important;
   background: var(--lg-tint) !important;
   box-shadow: var(--lg-rim);
 }
@@ -438,10 +470,45 @@ body::after {
 :root body input[type='password'],
 :root body textarea,
 :root body [data-testid='search-input'] {
-  border-radius: 14px;
+  border-radius: var(--lg-radius-sm);
   transition:
     box-shadow var(--lg-med) var(--lg-ease),
     background-color var(--lg-med) var(--lg-ease);
+}
+
+/* the search field is a pill, like the buttons */
+:root body [data-testid='search-input'] {
+  border-radius: var(--lg-radius-pill);
+}
+
+/* header icon buttons (back / pencil / close) share one size and shape */
+:root body [data-testid='back-button'],
+:root body [data-testid='modal-pencil-button'],
+:root body [data-testid='modal-close-button'] {
+  box-sizing: border-box;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:root body [data-testid='back-button']:hover,
+:root body [data-testid='modal-pencil-button']:hover,
+:root body [data-testid='modal-close-button']:hover {
+  background: var(--lg-tint-hover);
+}
+
+/* every divider is the same single hairline (upstream draws <hr> as a 2px double border, in
+   differing colors per place) */
+:root body hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid var(--lg-edge-faint);
+  background: transparent;
 }
 
 /* ---------- scrollbars ---------- */
