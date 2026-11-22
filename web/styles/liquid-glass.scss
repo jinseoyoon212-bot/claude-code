@@ -302,8 +302,8 @@ body::after {
 }
 
 /* Composer geometry. The pill is 48px tall; the buttons inside it are 36px circles centered on it
- * (6px of space above, below and at the end), and the + / gif buttons on the left are 40px circles
- * with the same vertical center. Button padding is an inline style upstream, hence !important. */
+ * (6px of space above, below and at the end), and the + / gif buttons on the left are 48px circles,
+ * the same height as the pill. Button padding is an inline style upstream, hence !important. */
 :root body div:has(> [data-testid='message-input-text-area']) {
   min-height: 48px;
 }
@@ -382,16 +382,16 @@ body::after {
 :root body [data-testid='attachments-button'],
 :root body [data-testid='gif-button'] {
   box-sizing: border-box;
-  width: 40px !important;
-  height: 40px !important;
-  min-width: 40px;
+  /* same height as the field's 48px pill, so the circle and the field line up top and bottom */
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px;
   padding: 0 !important;
   border-radius: 50% !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* center on the 48px pill: (48 - 40) / 2 */
-  margin-bottom: 4px;
+  margin-bottom: 0;
   background: var(--lg-glass) !important;
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
