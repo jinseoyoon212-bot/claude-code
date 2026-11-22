@@ -1,0 +1,353 @@
+/**
+ * Layout skin: floating rounded panels, collapsible sidebar, tablet and phone layouts.
+ *
+ * One build serves every screen size (and one relay server): this file only changes how the same
+ * app is arranged, using CSS media queries. Nothing here touches app logic.
+ *
+ *   desktop  (>1024px)  rail + conversation list + chat, as floating rounded cards
+ *   tablet   (701-1024) same, with a narrower list
+ *   phone    (<=700px)  one pane at a time: list (with a bottom bar and a "new chat" button)
+ *                       or chat (with a back button), like the Session mobile apps
+ *
+ * Structure of the app root (from ts/components/SessionInboxView.tsx):
+ *   .inbox.index
+ *     > row (flex)
+ *         > gutter            (width: var(--left-panel-width))
+ *             > left session  (flex row)
+ *                 > [modal / toast containers], rail, list column
+ *         > .session-conversation   (the chat, or the "no conversation" placeholder)
+ *
+ * Note: ancestors of the modal container must NOT get backdrop-filter / transform / filter, they
+ * would become the containing block of the position:fixed modals, and ancestors must not be made
+ * `position: relative` either (see card 1). Surfaces are plain translucent backgrounds.
+ */
+
+:root {
+  --lg-frame: 12px;
+  --lg-gap: 12px;
+  --lg-rail: 80px;
+  --lg-list: 300px;
+  --lg-card-radius: 28px;
+  --lg-phone-bar: 64px;
+}
+
+/* the app's own width variable: rail + list, or only the rail when the sidebar is collapsed */
+body {
+  --left-panel-width: calc(var(--lg-rail) + var(--lg-list));
+}
+
+html[data-lg-sidebar='collapsed'] body {
+  --left-panel-width: var(--lg-rail);
+}
+
+/* ---------- frame ---------- */
+
+:root body .inbox.index {
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  padding: var(--lg-frame);
+}
+
+/* ---------- card 1: rail + list ----------
+ * The surface is painted on the gutter itself. It must NOT become a positioned / isolated box:
+ * the modal containers inside it are positioned against the nearest positioned ancestor, which has
+ * to stay the app root so that modals are centred on the screen, not on this card. */
+
+:root body .inbox.index div:has(> div > [data-testid='leftpane-section-container']) {
+  margin-inline-end: var(--lg-gap);
+  border-radius: var(--lg-card-radius);
+  background: var(--lg-glass-soft);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  transition: width var(--lg-slow) var(--lg-ease);
+}
+
+/* one hairline between the rail and the list */
+:root body [data-testid='leftpane-section-container'] ~ div {
+  width: var(--lg-list) !important;
+  flex: none;
+  overflow: hidden;
+  border-inline-start: 1px solid var(--lg-edge-faint) !important;
+  transition:
+    width var(--lg-slow) var(--lg-ease),
+    opacity var(--lg-med) var(--lg-ease);
+}
+
+html[data-lg-sidebar='collapsed'] body [data-testid='leftpane-section-container'] ~ div {
+  width: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  border-inline-start-width: 0 !important;
+}
+
+/* ---------- card 2: the chat ---------- */
+
+:root body .session-conversation {
+  background: var(--lg-glass-soft) !important;
+  border-radius: var(--lg-card-radius);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ---------- sidebar toggle (web/styles/layoutControls.ts) ---------- */
+
+.lg-sidebar-toggle {
+  position: fixed;
+  z-index: 40;
+  top: calc(50% - 15px);
+  left: calc(var(--lg-frame) + var(--left-panel-width) + var(--lg-gap) / 2 - 15px);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary-color);
+  background: var(--lg-glass-strong);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    left var(--lg-slow) var(--lg-ease),
+    opacity var(--lg-med) var(--lg-ease),
+    transform var(--lg-fast) var(--lg-ease),
+    background-color var(--lg-med) var(--lg-ease);
+}
+
+.lg-sidebar-toggle:hover,
+.lg-sidebar-toggle:focus-visible {
+  opacity: 1;
+  background: var(--lg-tint-hover);
+}
+
+.lg-sidebar-toggle:active {
+  transform: scale(0.9);
+}
+
+.lg-sidebar-toggle svg {
+  width: 16px;
+  height: 16px;
+  transition: transform var(--lg-slow) var(--lg-ease);
+}
+
+html[data-lg-sidebar='collapsed'] .lg-sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+
+/* the back button of the phone layout lives in the chat header (hidden elsewhere) */
+.lg-back {
+  display: none;
+}
+
+/* ---------- tablet ---------- */
+
+@media (min-width: 701px) and (max-width: 1024px) {
+  :root {
+    --lg-frame: 10px;
+    --lg-gap: 10px;
+    --lg-list: 260px;
+    --lg-card-radius: 26px;
+  }
+}
+
+/* ---------- phone: one pane at a time ---------- */
+
+@media (max-width: 700px) {
+  :root {
+    --lg-frame: 8px;
+    --lg-gap: 0px;
+    --lg-card-radius: 24px;
+  }
+
+  :root body .inbox.index {
+    padding-top: max(var(--lg-frame), env(safe-area-inset-top));
+    padding-right: max(var(--lg-frame), env(safe-area-inset-right));
+    padding-bottom: max(var(--lg-frame), env(safe-area-inset-bottom));
+    padding-left: max(var(--lg-frame), env(safe-area-inset-left));
+  }
+
+  .lg-sidebar-toggle {
+    display: none;
+  }
+
+  /* --- list view (no conversation open) --- */
+  body {
+    --left-panel-width: 100%;
+  }
+
+  :root body .inbox.index div:has(> div > [data-testid='leftpane-section-container']) {
+    width: 100% !important;
+    margin-inline-end: 0;
+  }
+
+  /* the list column on top, the rail as a bar at the bottom */
+  :root body .inbox.index div:has(> [data-testid='leftpane-section-container']) {
+    flex-direction: column-reverse;
+  }
+
+  :root body [data-testid='leftpane-section-container'] {
+    width: 100% !important;
+    height: var(--lg-phone-bar);
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    border-top: 1px solid var(--lg-edge-faint) !important;
+  }
+
+  :root body [data-testid='leftpane-section-container'] > div {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* the empty spacer that pushes the bottom group down in the desktop rail */
+  :root body [data-testid='leftpane-section-container'] > div:empty {
+    display: none;
+  }
+
+  :root body [data-testid='leftpane-section-container'] ~ div {
+    width: 100% !important;
+    flex: 1 1 0;
+    min-height: 0;
+    border-inline-start-width: 0 !important;
+  }
+
+  /* the chat is only shown when a conversation is open */
+  :root body .session-conversation:not(:has(.conversation-header)) {
+    display: none;
+  }
+
+  /* new conversation: a floating button above the bar (like the Android app) */
+  :root body [data-testid='new-conversation-button'] {
+    position: fixed;
+    z-index: 30;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: calc(var(--lg-phone-bar) + max(var(--lg-frame), env(safe-area-inset-bottom)) + 16px);
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border-radius: 50% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--lg-accent) 90%, #fff),
+      color-mix(in srgb, var(--lg-accent) 72%, #000)
+    ) !important;
+    border: 0 !important;
+    box-shadow:
+      var(--lg-rim),
+      0 12px 28px -8px color-mix(in srgb, var(--lg-accent) 70%, transparent);
+  }
+
+  :root body [data-testid='new-conversation-button'] * {
+    color: #04130b !important;
+  }
+
+  /* --- chat view (a conversation is open) --- */
+  body:has(.conversation-header) .inbox.index div:has(> div > [data-testid='leftpane-section-container']) {
+    width: 0 !important;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  body:has(.conversation-header) [data-testid='leftpane-section-container'],
+  body:has(.conversation-header) [data-testid='leftpane-section-container'] ~ div {
+    display: none;
+  }
+
+  :root body .session-conversation {
+    flex: 1 1 100%;
+  }
+
+  .lg-back {
+    position: absolute;
+    z-index: 4;
+    top: 50%;
+    inset-inline-start: 8px;
+    width: 40px;
+    height: 40px;
+    margin-top: -20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary-color);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .lg-back:active {
+    background: var(--lg-tint-hover);
+  }
+
+  .lg-back svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* modals become near full-width sheets */
+  :root body .modal > div {
+    min-width: 0 !important;
+    max-width: calc(100vw - 2 * var(--lg-frame)) !important;
+    max-height: calc(100dvh - 2 * var(--lg-frame)) !important;
+  }
+
+  /* upstream positions the sheet with top: 5% and a fixed height; on a phone it must fit the screen */
+  :root body .modal > div {
+    width: calc(100vw - 2 * var(--lg-frame)) !important;
+    top: var(--lg-frame) !important;
+    max-height: calc(100dvh - 2 * var(--lg-frame)) !important;
+  }
+
+  /* sign-up / restore screens: upstream puts a 42px decorative strip on the left and fills the rest
+     (348px) edge to edge. On a phone, drop the strip and give the content side margins. */
+  :root body #root > div:not(.inbox) > div:has(> div > img) {
+    display: none;
+  }
+
+  /* 32px each side: the "back" arrow of the sign-up steps hangs outside the left edge of the content */
+  :root body div:has(> div > div > div > div > [data-testid='session-faq-link']) {
+    box-sizing: border-box;
+    padding-inline: 32px;
+  }
+
+  :root body div:has(> div > div > div > [data-testid='session-faq-link']),
+  :root body div:has(> div > div > [data-testid='session-faq-link']) {
+    width: 100% !important;
+  }
+
+  /* iOS zooms the page when a focused field is smaller than 16px */
+  :root body input,
+  :root body textarea,
+  :root body [contenteditable='true'] {
+    font-size: 16px;
+  }
+}
+
+/* touch screens: no hover-only effects that would stick after a tap */
+@media (hover: none) {
+  :root body .module-conversation-list-item:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root body .inbox.index div:has(> div > [data-testid='leftpane-section-container']),
+  :root body [data-testid='leftpane-section-container'] ~ div,
+  .lg-sidebar-toggle,
+  .lg-sidebar-toggle svg {
+    transition-duration: 0.01ms !important;
+  }
+}

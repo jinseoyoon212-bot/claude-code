@@ -11,15 +11,18 @@ import '../stylesheets/manifest.scss';
 import './styles/google-sans.scss';
 import './styles/nanum-square-neo.scss';
 import './styles/liquid-glass.scss';
+import './styles/layout.scss';
 import { ipcRenderer } from 'electron';
 import { initWebFs } from 'fs';
 import { getDefaultSQLKey, initLocale, makeMainHandlers } from './main/ipcMainHandlers';
 import { showFatalError } from './fatalError';
 import { startLogCapture } from './main/logCapture';
 import { startSendMotion } from './styles/sendMotion';
+import { startLayoutControls } from './styles/layoutControls';
 
 startLogCapture();
 startSendMotion();
+startLayoutControls();
 
 async function startSqlWorker() {
   const worker = new Worker(new URL('./main/sql.worker.ts', import.meta.url));

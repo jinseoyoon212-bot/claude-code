@@ -164,20 +164,13 @@ body::after {
 
 /* ---------- left pane: icon rail + conversation list ---------- */
 
+/* rail + list: the floating card in layout.scss is their surface, they paint nothing themselves.
+   (No backdrop blur on big panels: the ambient light is already smooth, blur only matters where
+   content passes behind a surface, e.g. under the header, composer, modals and menus.) */
 :root body [data-testid='leftpane-section-container'],
 :root body [data-testid='leftpane-section-container'] ~ div {
-  background: var(--lg-glass-soft) !important;
-  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-}
-
-/* inside the list column nothing paints its own panel color: header and list are one surface */
-:root body [data-testid='leftpane-section-container'] ~ div {
   --background-primary-color: transparent;
-  border-inline: 1px solid var(--lg-edge-faint);
-}
-
-:root body [data-testid='leftpane-section-container'] {
+  background: transparent !important;
   border: 0 !important;
 }
 
@@ -210,12 +203,8 @@ body::after {
 
 /* ---------- conversation view ---------- */
 
-:root body .session-conversation {
-  background: transparent !important;
-}
-
 :root body .conversation-header {
-  background: var(--lg-glass) !important;
+  background: color-mix(in srgb, var(--lg-bg1) 30%, transparent) !important;
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   border: 0 !important;
