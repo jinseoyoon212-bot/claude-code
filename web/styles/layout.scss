@@ -90,53 +90,76 @@ html[data-lg-sidebar='collapsed'] body [data-testid='leftpane-section-container'
   min-width: 0;
 }
 
-/* ---------- sidebar toggle (web/styles/layoutControls.ts) ---------- */
+/* ---------- sidebar resize bar (web/styles/layoutControls.ts) ----------
+ * A 14px wide hit area sitting in the gap between the two cards. It shows nothing until hovered,
+ * dragged or focused, then a slim glowing pill. */
 
-.lg-sidebar-toggle {
+.lg-resizer {
   position: fixed;
   z-index: 40;
-  top: calc(50% - 15px);
-  left: calc(var(--lg-frame) + var(--left-panel-width) + var(--lg-gap) / 2 - 15px);
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
+  top: var(--lg-frame);
+  bottom: var(--lg-frame);
+  left: calc(var(--lg-frame) + var(--left-panel-width) + var(--lg-gap) / 2 - 7px);
+  width: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-primary-color);
-  background: var(--lg-glass-strong);
-  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow: var(--lg-rim), var(--lg-shadow);
-  opacity: 0.55;
-  cursor: pointer;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+  transition: left var(--lg-slow) var(--lg-ease);
+}
+
+.lg-resizer-grip {
+  width: 4px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--lg-edge);
+  opacity: 0;
+  transform: scaleY(0.6);
   transition:
-    left var(--lg-slow) var(--lg-ease),
     opacity var(--lg-med) var(--lg-ease),
-    transform var(--lg-fast) var(--lg-ease),
-    background-color var(--lg-med) var(--lg-ease);
+    transform var(--lg-med) var(--lg-ease),
+    background-color var(--lg-med) var(--lg-ease),
+    box-shadow var(--lg-med) var(--lg-ease);
 }
 
-.lg-sidebar-toggle:hover,
-.lg-sidebar-toggle:focus-visible {
+.lg-resizer:hover .lg-resizer-grip,
+.lg-resizer:focus-visible .lg-resizer-grip,
+html.lg-resizing .lg-resizer .lg-resizer-grip {
   opacity: 1;
-  background: var(--lg-tint-hover);
+  transform: none;
 }
 
-.lg-sidebar-toggle:active {
-  transform: scale(0.9);
+html.lg-resizing .lg-resizer .lg-resizer-grip,
+.lg-resizer:focus-visible .lg-resizer-grip {
+  background: var(--lg-accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--lg-accent) 70%, transparent);
 }
 
-.lg-sidebar-toggle svg {
-  width: 16px;
-  height: 16px;
-  transition: transform var(--lg-slow) var(--lg-ease);
+/* while dragging nothing may lag behind the pointer, and text must not get selected */
+html.lg-resizing,
+html.lg-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
-html[data-lg-sidebar='collapsed'] .lg-sidebar-toggle svg {
-  transform: rotate(180deg);
+html.lg-resizing .lg-resizer,
+html.lg-resizing .inbox.index div:has(> div > [data-testid='leftpane-section-container']),
+html.lg-resizing [data-testid='leftpane-section-container'] ~ div {
+  transition: none !important;
+}
+
+/* upstream caps a conversation row at max-width: 300px (stylesheets/_modules.scss): let it follow
+   the column now that the column can be resized */
+:root body .module-conversation-list-item {
+  max-width: none;
+}
+
+/* some upstream lists are given a fixed 300px width in JS: let them follow the column */
+:root body [data-testid='leftpane-section-container'] ~ div [style*='width: 300px'] {
+  width: 100% !important;
 }
 
 /* the back button of the phone layout lives in the chat header (hidden elsewhere) */
@@ -171,7 +194,7 @@ html[data-lg-sidebar='collapsed'] .lg-sidebar-toggle svg {
     padding-left: max(var(--lg-frame), env(safe-area-inset-left));
   }
 
-  .lg-sidebar-toggle {
+  .lg-resizer {
     display: none;
   }
 
@@ -346,8 +369,8 @@ html[data-lg-sidebar='collapsed'] .lg-sidebar-toggle svg {
 @media (prefers-reduced-motion: reduce) {
   :root body .inbox.index div:has(> div > [data-testid='leftpane-section-container']),
   :root body [data-testid='leftpane-section-container'] ~ div,
-  .lg-sidebar-toggle,
-  .lg-sidebar-toggle svg {
+  .lg-resizer,
+  .lg-resizer-grip {
     transition-duration: 0.01ms !important;
   }
 }
