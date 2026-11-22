@@ -9,6 +9,7 @@
  */
 import '../stylesheets/manifest.scss';
 import './styles/google-sans.scss';
+import './styles/nanum-square-neo.scss';
 import './styles/liquid-glass.scss';
 import { ipcRenderer } from 'electron';
 import { initWebFs } from 'fs';

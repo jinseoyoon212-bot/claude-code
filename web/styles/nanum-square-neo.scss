@@ -1,0 +1,25 @@
+/*
+ * NanumSquare Neo (c) NAVER Corp., free to use and embed under the Naver Nanum font license
+ * (https://help.naver.com/service/30016/contents/18088). Self-hosted, converted from the official
+ * woff files to woff2 without changing any glyph.
+ *
+ * Only the Hangul ranges are mapped to it, so Latin text keeps using Google Sans and the file is only
+ * downloaded when Korean text is actually shown. Regular covers weights 100-500, Bold 600-900.
+ */
+@font-face {
+  font-family: 'NanumSquareNeo';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('../../fonts/nanum-square-neo/NanumSquareNeo-400.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF;
+}
+
+@font-face {
+  font-family: 'NanumSquareNeo';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('../../fonts/nanum-square-neo/NanumSquareNeo-700.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF;
+}

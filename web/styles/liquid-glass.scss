@@ -53,12 +53,12 @@
     inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.16), inset 0 0 18px rgba(255, 255, 255, 0.04);
 }
 
-/* Google Sans everywhere (self-hosted, see google-sans.scss). The family has no Hangul glyphs, so
-   Korean text falls through to the platform's Korean UI font. */
+/* Latin text: Google Sans. Hangul: NanumSquare Neo (Google Sans has no Hangul glyphs, so the browser
+   falls through to the next family for those characters). Both are self-hosted. */
 body {
-  --font-default: 'Google Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR',
+  --font-default: 'Google Sans', 'NanumSquareNeo', 'Apple SD Gothic Neo', 'Noto Sans KR',
     'Malgun Gothic', 'Segoe UI', Roboto, NotoColorEmoji;
-  --font-mono: 'Google Sans Code', 'Roboto Mono', monospace;
+  --font-mono: 'Google Sans Code', 'NanumSquareNeo', 'Roboto Mono', monospace;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
