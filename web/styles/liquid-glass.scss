@@ -227,6 +227,16 @@ body::after {
   animation: lg-message-in var(--lg-med) var(--lg-ease) both;
 }
 
+/* a message you just sent is drawn up from the composer by web/styles/sendMotion.ts: the real row
+   stays invisible while its flying copy travels, and skips the generic entrance animation */
+:root body [data-testid='message-container'][data-lg-sent] {
+  animation: none;
+}
+
+:root body [data-testid='message-container'][data-lg-sent='flying'] {
+  opacity: 0;
+}
+
 /* ---------- composer ----------
  * The pill is the whole input row (the wrapper of the editable field), so the emoji / mic buttons
  * sit inside it instead of being crossed by a border. */

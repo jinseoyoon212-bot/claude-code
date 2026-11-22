@@ -14,8 +14,10 @@ import { initWebFs } from 'fs';
 import { getDefaultSQLKey, initLocale, makeMainHandlers } from './main/ipcMainHandlers';
 import { showFatalError } from './fatalError';
 import { startLogCapture } from './main/logCapture';
+import { startSendMotion } from './styles/sendMotion';
 
 startLogCapture();
+startSendMotion();
 
 async function startSqlWorker() {
   const worker = new Worker(new URL('./main/sql.worker.ts', import.meta.url));
