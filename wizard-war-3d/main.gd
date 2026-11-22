@@ -53,7 +53,7 @@ func _is_forward_plus() -> bool:
 
 
 func _can_relaunch() -> bool:
-	return not OS.has_feature("web") and not OS.has_feature("mobile")   # 설치형 PC 게임만 다른 렌더러로 다시 시작할 수 있다
+	return not OS.has_feature("web") and not OS.has_feature("mobile") and OS.get_environment("WW_NO_RELAUNCH") == ""   # 설치형 PC 게임만 다른 렌더러로 다시 시작할 수 있다 (환경변수는 시험용)
 
 
 func _relaunch_ultra() -> void:
