@@ -250,12 +250,6 @@ func deco_plate(c: Vector2, hw: float, hh: float, plate: Color, hover := false, 
 	draw_colored_polygon(PackedVector2Array([c + Vector2(-hw + 6, -hh), c + Vector2(hw - 6, -hh), c + Vector2(hw, -hh + 6), c + Vector2(hw, -hh * 0.1), c + Vector2(-hw, -hh * 0.1), c + Vector2(-hw, -hh + 6)]), Color(1, 1, 1, 0.09))   # 윗면 광택
 	deco_line(deco_pts(c, hw - 3.5, hh - 3.5, 0.0, 4.0), Color(GOLD_L, 0.55), 1.0)
 	deco_line(pl, Color(GOLD_D, 0.9), 1.4)
-	if wings:
-		# 양끝: 이어지는 선과 박힌 보석
-		for sx in [-1.0, 1.0]:
-			var tp := c + Vector2(sx * (hw + 9.0), 0)
-			draw_line(tp, tp + Vector2(sx * 6.0, 0), GOLD_L, 1.6, true)
-			deco_diamond(tp + Vector2(sx * 12.0, 0), 6.5, GOLD_L, Color(plate.darkened(0.5), 1.0))
 
 
 func deco_fit(font: Font, label: String, fs: int, usable: float) -> int:
