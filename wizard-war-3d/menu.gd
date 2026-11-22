@@ -517,11 +517,11 @@ func _draw_shop() -> void:
 	var s := size
 	var tabs := [["up", "강화", "up_power"], ["skill", "스킬", "nova"], ["item", "물약", "potion_hp"]]
 	for i in tabs.size():
-		var r := Rect2(280 + i * 140, 30, 130, 44)
+		var r := Rect2(268 + i * 170, 30, 144, 44)
 		var on: bool = shop_tab == tabs[i][0]
 		fx_begin(r.get_center(), press_scale("tab:" + tabs[i][0]) * (1.04 if (not touch_ui and r.has_point(get_local_mouse_position())) else 1.0))
-		panel(r, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), 22, Color(1, 1, 1, 0.1))
-		icon(tabs[i][2], r.position + Vector2(30, 22), 22, C_DARK if on else C_INK)
+		gem(r.get_center(), 72.0, 22.0, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), Color("fff0bf") if on else C_GOLD, 0.0, on)
+		icon(tabs[i][2], r.position + Vector2(34, 22), 22, C_DARK if on else C_INK)
 		txt(f_bold, Vector2(r.get_center().x + 12, r.position.y + 29), tabs[i][1], 17, C_DARK if on else C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 		fx_end()
 		clicks.append({"rect": r, "act": "tab:" + tabs[i][0]})
@@ -719,11 +719,17 @@ func _draw_cheat() -> void:
 		var it: Array = items[i]
 		var r := Rect2(x0 + (i % cols) * (cw + gap), 100 + (i / cols) * (ch + gap), cw, ch)
 		var on: bool = it[3]
-		panel(r, Color(0.12, 0.2, 0.15, 0.95) if on else C_CARD, 12, Color(on_col, 0.8) if on else Color(1, 1, 1, 0.1), 2 if on else 1)
-		icon(it[2], r.position + Vector2(36, ch / 2), 30, on_col if on else C_GOLD)
-		txt(f_bold, r.position + Vector2(66, ch / 2 + 6), it[1], 15, C_INK, HORIZONTAL_ALIGNMENT_LEFT, false)
+		var cc := r.get_center()
+		var hwc := cw * 0.5 - 14.0
+		var hhc := ch * 0.5 - 3.0
+		gem(cc, hwc, hhc, Color(0.12, 0.2, 0.15, 0.95) if on else C_CARD, on_col if on else C_GOLD, 0.0, on)
+		var lbl: String = it[1]
+		var cfs := gem_fit(f_bold, lbl, 15, hwc - 22.0, hhc)
+		var ctw := f_bold.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, cfs).x
+		icon(it[2], Vector2(cc.x - ctw / 2 - 18, cc.y - 1), 26, on_col if on else C_GOLD)
+		txt(f_bold, Vector2(cc.x + 10, cc.y + 5), lbl, cfs, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 		if it[0].begins_with("cheat:god") or it[0].begins_with("cheat:one_hit") or it[0].begins_with("cheat:no_cd"):
-			txt(f_bold, Vector2(r.end.x - 14, r.position.y + 22), "ON" if on else "OFF", 11, on_col if on else C_DIM, HORIZONTAL_ALIGNMENT_RIGHT, false)
+			txt(f_bold, Vector2(cc.x, cc.y + hhc - 7), "ON" if on else "OFF", 10, on_col if on else C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 		clicks.append({"rect": r, "act": it[0]})
 	txt(f_body, Vector2(s.x / 2, s.y - 44), "치트는 개발·테스트용입니다. 무적·한 방·속도 설정은 게임을 끄면 초기화됩니다.", 13, C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 

@@ -169,6 +169,58 @@ func bar(r: Rect2, k: float, col: Color) -> void:
 	draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(k, 0, 1), r.size.y * 0.4)), Color(1, 1, 1, 0.18))
 
 
+# ---------------- 가로로 긴 화려한 마름모 버튼 ----------------
+func gem_pts(c: Vector2, hw: float, hh: float) -> PackedVector2Array:
+	return PackedVector2Array([c + Vector2(-hw, 0), c + Vector2(0, -hh), c + Vector2(hw, 0), c + Vector2(0, hh)])
+
+
+func gem_outline(c: Vector2, hw: float, hh: float, col: Color, w: float) -> void:
+	var p := gem_pts(c, hw, hh)
+	p.append(p[0])
+	draw_polyline(p, col, w, true)
+
+
+func gem_hit(c: Vector2, hw: float, hh: float, p: Vector2) -> bool:
+	## 마름모 안에 점이 있는지 (누르는 판정)
+	return absf(p.x - c.x) / maxf(hw, 1.0) + absf(p.y - c.y) / maxf(hh, 1.0) <= 1.0
+
+
+func gem(c: Vector2, hw: float, hh: float, fill: Color, edge: Color, glow := 0.0, ornate := true) -> void:
+	## 마름모 몸통 + 위아래 그라데이션 + 안쪽 테두리 + 겹 테두리 + 좌우 끝의 보석과 장식선 + 위아래 꼭짓점 점
+	if glow > 0.0:
+		for k in 3:
+			var g := 4.0 + k * 4.0
+			var p := gem_pts(c, hw + g * 2.0, hh + g)
+			draw_colored_polygon(p, Color(edge, glow * (0.16 - k * 0.045)))
+	var pts := gem_pts(c, hw, hh)
+	draw_polygon(pts, PackedColorArray([fill.darkened(0.12), fill.lightened(0.2), fill.darkened(0.12), fill.darkened(0.4)]))
+	draw_colored_polygon(PackedVector2Array([c + Vector2(-hw, 0), c + Vector2(0, -hh), c + Vector2(hw, 0), c]), Color(1, 1, 1, 0.07))
+	gem_outline(c, hw - 7.0, hh - 4.0, Color(edge, 0.5), 1.4)
+	gem_outline(c, hw, hh, edge, 2.6)
+	if not ornate:
+		return
+	gem_outline(c, hw + 4.0, hh + 2.2, Color(edge, 0.35), 1.2)
+	# 좌우 끝: 장식선과 작은 보석
+	for sx in [-1.0, 1.0]:
+		var tip := c + Vector2(sx * (hw + 4.0), 0)
+		var gp := c + Vector2(sx * (hw + 13.0), 0)
+		draw_line(tip, gp - Vector2(sx * 5.0, 0), Color(edge, 0.7), 1.6, true)
+		draw_colored_polygon(gem_pts(gp, 5.5, 5.5), edge)
+		draw_colored_polygon(gem_pts(gp, 2.4, 2.4), Color(1, 1, 1, 0.75))
+	# 위아래 꼭짓점의 점
+	draw_circle(c + Vector2(0, -hh - 4.0), 2.2, edge)
+	draw_circle(c + Vector2(0, hh + 4.0), 2.2, edge)
+
+
+func gem_fit(font: Font, label: String, fs: int, hw: float, hh: float) -> int:
+	## 마름모 가운데 글자 높이에서 쓸 수 있는 너비에 맞춰 글자 크기를 줄인다
+	var usable := 2.0 * hw * maxf(0.5, 1.0 - fs * 0.32 / hh) * 0.95
+	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	if w > usable:
+		return maxi(10, int(fs * usable / w))
+	return fs
+
+
 func panel(r: Rect2, col := C_PANEL, rad := 10, border := Color(1, 1, 1, 0.08), bw := 1) -> void:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = col
@@ -214,18 +266,20 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 	btn_i += 1
 	var e := clampf((ui_t - 0.06 - i * 0.035) / 0.34, 0.0, 1.0)
 	var sc := lerpf(0.86, 1.0, ease_out_back(e)) * press_scale(act)
-	var hover := enabled and not touch_ui and r.has_point(get_local_mouse_position())
+	var hover := enabled and not touch_ui and gem_hit(c, r.size.x * 0.5 - 14.0, r.size.y * 0.5 - 2.0, get_local_mouse_position())
 	if hover:
 		sc *= 1.035
 	fx_begin(c, sc, (1.0 - e) * 14.0)
 	var bg := C_GOLD if primary else Color(0.2, 0.2, 0.36)
+	var edge := Color("fff0bf") if primary else C_GOLD
 	if not enabled:
 		bg = Color(0.25, 0.25, 0.3)
-	panel(r, bg, int(r.size.y / 2), Color(1, 1, 1, 0.16))
-	if primary and enabled:
-		panel(Rect2(r.position + Vector2(4, 3), Vector2(r.size.x - 8, r.size.y * 0.42)), Color(1, 1, 1, 0.16), int(r.size.y / 3), Color(0, 0, 0, 0), 0)
+		edge = Color(0.5, 0.5, 0.58)
+	var hw := r.size.x * 0.5 - 14.0   # 끝의 보석 장식까지 포함해서 버튼 영역 안에 들어오게
+	var hh := r.size.y * 0.5 - 2.0
+	gem(c, hw, hh, bg, edge, 0.0 if not hover else 1.0)
 	if hover:
-		panel(r, Color(1, 1, 1, 0.1), int(r.size.y / 2), Color(1, 1, 1, 0.5), 2)
+		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.1))
 	var fc := C_DARK if primary and enabled else (C_INK if enabled else C_DIM)
 	var fs := 15 if r.size.y < 44 else (20 if r.size.y < 58 else 24)
 	var cx := c.x
@@ -237,32 +291,37 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 	else:
 		if ic == "":
 			ic = auto_icon(act, label)
+		var lf: Font = f_bold if r.size.y < 44 else f_disp
+		var iw := fs * 1.3 + 4.0 if ic != "" else 0.0
+		fs = gem_fit(lf, label, fs, hw - iw * 0.5, hh)
 		if ic != "":
-			var tw := f_bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			var tw := lf.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 			icon(ic, Vector2(cx - tw / 2 - 6, c.y), fs * 1.3, fc)
 			cx += fs * 0.6
-		txt(f_bold if r.size.y < 44 else f_disp, Vector2(cx, c.y + fs * 0.36), label, fs, fc, HORIZONTAL_ALIGNMENT_CENTER, false)
+		txt(lf, Vector2(cx, c.y + fs * 0.36), label, fs, fc, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(act)
 	if pk < 1.0:   # 누른 순간 하얗게 번쩍
-		panel(r, Color(1, 1, 1, 0.38 * (1.0 - pk)), int(r.size.y / 2), Color(0, 0, 0, 0), 0)
+		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.38 * (1.0 - pk)))
 	fx_end()
 	clicks.append({"rect": r, "act": act})
 
 
 func icon_button(c: Vector2, r: float, ic: String, act: String, col := C_INK, badge := 0) -> void:
-	var hover := not touch_ui and (get_local_mouse_position() - c).length() < r
+	var hw := r * 1.45
+	var hh := r * 0.95
+	var hover := not touch_ui and gem_hit(c, hw, hh, get_local_mouse_position())
 	fx_begin(c, press_scale(act) * (1.08 if hover else 1.0))
-	draw_circle(c, r, Color(0.07, 0.07, 0.16, 0.85))
-	draw_arc(c, r, 0, TAU, 40, Color(col, 0.7 if not hover else 1.0), 2.0 if not hover else 3.0, true)
-	icon(ic, c, r * 1.1, col)
+	gem(c, hw, hh, Color(0.09, 0.09, 0.2, 0.92), Color(col, 0.8 if not hover else 1.0), 0.8 if hover else 0.0)
+	icon(ic, c, r * 1.05, col)
 	if badge > 0:
-		draw_circle(c + Vector2(r * 0.75, -r * 0.75), 11, C_BLOOD)
-		txt(f_bold, c + Vector2(r * 0.75, -r * 0.75 + 5), str(badge), 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+		var bp := c + Vector2(hw * 0.52, -hh * 0.52)
+		draw_circle(bp, 11, C_BLOOD)
+		txt(f_bold, bp + Vector2(0, 5), str(badge), 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(act)
 	if pk < 1.0:
-		draw_circle(c, r, Color(1, 1, 1, 0.35 * (1.0 - pk)))
+		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.35 * (1.0 - pk)))
 	fx_end()
-	clicks.append({"rect": Rect2(c - Vector2(r, r), Vector2(r, r) * 2), "act": act})
+	clicks.append({"rect": Rect2(c - Vector2(hw, hh), Vector2(hw, hh) * 2), "act": act})
 
 
 func gold_chip(pos: Vector2, right_align := true) -> void:
