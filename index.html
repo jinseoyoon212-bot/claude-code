@@ -78,7 +78,7 @@ body {
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<meta name="description" content="빛과 어둠의 마법 전쟁 - 대마법사가 되어 해골 군단을 막는 3D 액션 디펜스"><meta name="theme-color" content="#08081a"><style>body{background:#08081a}</style><script>(function(){var N=4,of=window.fetch;window.fetch=function(u,o){var s=typeof u==='string'?u:(u&&u.url)||'';var p=s.split('?')[0];if(p.slice(-10)!=='index.wasm')return of.apply(this,arguments);var b=p.slice(0,-10),a=[];for(var i=0;i<N;i++)a.push(of(b+'index.part'+i+'.wasm',o));return Promise.all(a).then(function(rs){rs.forEach(function(r){if(!r.ok)throw new Error('wasm part '+r.status)});var rd=rs.map(function(r){return r.body.getReader()}),k=0;var st=new ReadableStream({pull:function(c){return(function nx(){return rd[k].read().then(function(x){if(x.done){k++;if(k>=rd.length){c.close();return}return nx()}c.enqueue(x.value)})})()}});return new Response(st,{status:200,headers:{'Content-Type':'application/wasm'}})})}})();</script>
+<meta name="description" content="빛과 어둠의 마법 전쟁 - 대마법사가 되어 해골 군단을 막는 3D 액션 디펜스"><meta name="theme-color" content="#08081a"><style>body{background:#08081a}</style><script>(function(){var of=window.fetch,T={'index.wasm':[4,'wasm','application/wasm'],'index.pck':[3,'pck','application/octet-stream']};window.fetch=function(u,o){var s=typeof u==='string'?u:(u&&u.url)||'';var p=s.split('?')[0],f=p.split('/').pop(),t=T[f];if(!t)return of.apply(this,arguments);var b=p.slice(0,p.length-f.length),a=[];for(var i=0;i<t[0];i++)a.push(of(b+'index.part'+i+'.'+t[1],o));return Promise.all(a).then(function(rs){rs.forEach(function(r){if(!r.ok)throw new Error(f+' part '+r.status)});var rd=rs.map(function(r){return r.body.getReader()}),k=0;var st=new ReadableStream({pull:function(c){return(function nx(){return rd[k].read().then(function(x){if(x.done){k++;if(k>=rd.length){c.close();return}return nx()}c.enqueue(x.value)})})()}});return new Response(st,{status:200,headers:{'Content-Type':t[2]}})})}})();</script>
 	</head>
 	<body>
 		<canvas id="canvas">
@@ -97,7 +97,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":26144880,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":27792480,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
