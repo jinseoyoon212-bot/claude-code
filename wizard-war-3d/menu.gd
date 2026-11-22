@@ -449,14 +449,14 @@ func _draw_title() -> void:
 	var x := s.x / 2 - bw / 2
 	var y := s.y * 0.44
 	button(Rect2(x, y, bw, 66), "전투 시작", "page:stages", true, true, "attack")
-	button(Rect2(x, y + 80, bw / 2 - 6, 54), "상점", "page:shop", true, false, "gold")
+	button(Rect2(x, y + 92, bw / 2 - 6, 54), "상점", "page:shop", true, false, "gold")
 	var ach := Save.unclaimed_count()
-	button(Rect2(x + bw / 2 + 6, y + 80, bw / 2 - 6, 54), "업적", "page:achieve", true, false, "trophy")
+	button(Rect2(x + bw / 2 + 6, y + 92, bw / 2 - 6, 54), "업적", "page:achieve", true, false, "trophy")
 	if ach > 0:
-		draw_circle(Vector2(x + bw - 6, y + 84), 12, C_BLOOD)
-		txt(f_bold, Vector2(x + bw - 6, y + 89), str(ach), 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
-	button(Rect2(x, y + 148, bw / 2 - 6, 50), "설정", "page:settings", true, false, "settings")
-	button(Rect2(x + bw / 2 + 6, y + 148, bw / 2 - 6, 50), "개발자", "page:dev", true, false, "dev")
+		draw_circle(Vector2(x + bw - 14, y + 100), 12, C_BLOOD)
+		txt(f_bold, Vector2(x + bw - 14, y + 105), str(ach), 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+	button(Rect2(x, y + 170, bw / 2 - 6, 50), "설정", "page:settings", true, false, "settings")
+	button(Rect2(x + bw / 2 + 6, y + 170, bw / 2 - 6, 50), "개발자", "page:dev", true, false, "dev")
 
 	# 장착 스킬
 	var n: int = Save.equipped.size()

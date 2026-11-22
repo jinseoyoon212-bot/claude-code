@@ -331,7 +331,7 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 		plate = PLATE_RED
 	if not enabled:
 		plate = PLATE_GRAY
-	var hw := r.size.x * 0.5 - (30.0 if r.size.x >= 200.0 else 18.0)   # 양끝의 보석까지 버튼 영역 안에 들어오게
+	var hw := r.size.x * 0.5 - 14.0   # 모든 버튼이 같은 여백을 둬서, 위아래로 놓인 버튼의 좌우 끝이 정확히 맞는다
 	var hh := maxf(r.size.y * 0.5 - 8.0, 11.0)
 	deco_plate(c, hw, hh, plate, hover, hw >= 46.0)
 	var fc := GOLD_L if enabled else Color(0.62, 0.6, 0.66)
