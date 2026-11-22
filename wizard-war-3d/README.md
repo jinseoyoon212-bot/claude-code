@@ -70,3 +70,10 @@
 - 음악·효과음: 직접 합성 (`tools/gen_audio.py`)
 - 폰트: Hahmlet(SIL OFL, `fonts/OFL-Hahmlet.txt`)을 전 화면에 굵기만 달리해 사용 — 빛의계승자체의 날카롭고 가는 명조 느낌에 가장 가까운 무료 글꼴. 빠진 글자는 Noto Sans KR(`fonts/NotoSansKR.ttf`)로 대신. (빛의계승자체는 게임 탑재 금지 라이선스라 쓰지 않음)
 - 숲·덤불·풀·꽃·바위 3D 모델: Quaternius Stylized Nature MegaKit (CC0) — `models/env/qn/LICENSE-Quaternius-StylizedNature.txt`
+
+## 그래픽 품질
+- 설정 → 그래픽 품질: 낮음 / 보통 / 높음 / **울트라(설치형 PC 전용)**. 전투 시작 때 프레임이 느리면 자동으로 한 단계 낮춘다.
+- **울트라 리얼리스틱**: 고급 렌더러(Forward+, Vulkan)로 게임을 다시 시작해서 실시간 환경 차폐(SSAO)·간접광(SSIL)·화면 반사(SSR)·체적 안개(햇빛이 나무 사이로 새는 진짜 빛줄기)·4구간 8192 그림자(PCSS 느낌)·TAA·피사계 심도·하늘 기반 조명을 켠다.
+  식물은 1.8배 빽빽해지고 조약돌·클로버·꽃잎·고사리·징검돌이 추가되며, 나무·바위는 2048 해상도 질감(`models/env/qn_hq/`)을 쓴다 (웹·안드로이드 빌드에는 포함하지 않음).
+  Vulkan을 못 쓰는 컴퓨터에서는 자동으로 '높음'으로 실행하고 알려 준다.
+- 포탈 문: 던전 석재(CC0, KayKit Dungeon Remastered) 아치·기둥·받침 + `shaders/portal.gdshader` 소용돌이 에너지.

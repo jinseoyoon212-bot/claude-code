@@ -577,16 +577,15 @@ func _ultra_setup(e: Environment, env: WorldEnvironment, E: Dictionary, SK: Dict
 	# 카메라: 먼 곳은 살짝 흐리게(피사계 심도)
 	var ca := CameraAttributesPractical.new()
 	ca.dof_blur_far_enabled = true
-	ca.dof_blur_far_distance = 58.0
-	ca.dof_blur_far_transition = 46.0
-	ca.dof_blur_amount = 0.05
+	ca.dof_blur_far_distance = 85.0
+	ca.dof_blur_far_transition = 60.0
+	ca.dof_blur_amount = 0.03
 	env.camera_attributes = ca
 	# 화면: TAA(시간축 안티앨리어싱) + 다중 샘플, 멀리서도 자글거리지 않는 이방성 필터, 자세한 메시(LOD) 유지
 	var vp := get_viewport()
 	vp.use_taa = true
 	vp.msaa_3d = Viewport.MSAA_2X
 	vp.mesh_lod_threshold = 0.4
-	vp.anisotropic_filtering_level = 4   # 16배
 	vp.positional_shadow_atlas_size = 4096
 	RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
 
