@@ -52,14 +52,25 @@ func _hahmlet(base: Font, tag: int, w: int) -> Font:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 모든 글자는 Hahmlet(OFL, 날카롭고 가는 고전 명조 느낌) 한 가지 글꼴의 굵기만 달리해서 쓴다.
-	# 빛의계승자체는 게임에 넣는 것을 라이선스가 금지해서 가장 비슷한 느낌의 무료 글꼴을 썼다. 빠진 글자는 Noto Sans KR로 대신한다.
+	# 모든 글자는 빛의계승자체(Regular / Bold)를 쓴다. 글꼴 파일이 없으면(저장소에는 올리지 않는다) Hahmlet(OFL)으로 대신한다.
 	var base: FontFile = load("res://fonts/Hahmlet-VF.ttf")
 	base.fallbacks = [load("res://fonts/NotoSansKR.ttf")]
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
-	f_body = _hahmlet(base, wght, 420)
-	f_bold = _hahmlet(base, wght, 660)
-	f_disp = _hahmlet(base, wght, 560)
+	var reg: Font = null
+	var bold: Font = null
+	if ResourceLoader.exists("res://fonts/HeirofLight-Regular.ttf") and ResourceLoader.exists("res://fonts/HeirofLight-Bold.ttf"):
+		reg = load("res://fonts/HeirofLight-Regular.ttf")
+		bold = load("res://fonts/HeirofLight-Bold.ttf")
+		reg.fallbacks = [base]
+		bold.fallbacks = [base]
+	if reg != null and bold != null:
+		f_body = reg
+		f_bold = bold
+		f_disp = bold
+	else:
+		f_body = _hahmlet(base, wght, 420)
+		f_bold = _hahmlet(base, wght, 660)
+		f_disp = _hahmlet(base, wght, 560)
 	for n in ICON_NAMES:
 		icons[n] = load("res://icons/%s.svg" % n)
 	icons["judge"] = icons["nova"]   # 아스트라 유디키움 버튼은 별빛 아이콘
