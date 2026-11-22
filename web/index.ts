@@ -19,10 +19,12 @@ import { showFatalError } from './fatalError';
 import { startLogCapture } from './main/logCapture';
 import { startSendMotion } from './styles/sendMotion';
 import { startLayoutControls } from './styles/layoutControls';
+import { startComposerSend } from './styles/composerSend';
 
 startLogCapture();
 startSendMotion();
 startLayoutControls();
+startComposerSend();
 
 async function startSqlWorker() {
   const worker = new Worker(new URL('./main/sql.worker.ts', import.meta.url));

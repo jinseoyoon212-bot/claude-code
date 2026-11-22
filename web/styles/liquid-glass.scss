@@ -341,8 +341,42 @@ body::after {
   background: var(--lg-tint-hover) !important;
 }
 
-:root body [data-testid='send-message-button'] {
+:root body [data-testid='send-message-button'],
+:root body [data-lg-typing] [data-testid='microphone-button'] {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--lg-accent) 90%, #fff),
+    color-mix(in srgb, var(--lg-accent) 72%, #000)
+  ) !important;
   box-shadow: var(--lg-rim), 0 4px 14px -4px color-mix(in srgb, var(--lg-accent) 70%, transparent);
+}
+
+/* the send button pops in (the real one, or the microphone button dressed as one: see composerSend.ts) */
+:root body [data-testid='send-message-button'],
+:root body [data-lg-typing] [data-testid='microphone-button'] {
+  animation: lg-send-pop var(--lg-med) var(--lg-ease-spring) both;
+}
+
+/* while text is being composed by an IME the app still shows the microphone button: draw it as the
+   send button (an up arrow) until the app catches up (web/styles/composerSend.ts) */
+:root body [data-lg-typing] [data-testid='microphone-button'] {
+  position: relative;
+}
+
+:root body [data-lg-typing] [data-testid='microphone-button'] > * {
+  visibility: hidden;
+}
+
+:root body [data-lg-typing] [data-testid='microphone-button']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  background: #04130b;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5 12l7-7 7 7'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5 12l7-7 7 7'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 :root body [data-testid='attachments-button'],
@@ -578,6 +612,17 @@ body::after {
   from {
     opacity: 0;
     transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lg-send-pop {
+  from {
+    opacity: 0.4;
+    transform: scale(0.6);
   }
   to {
     opacity: 1;
