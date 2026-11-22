@@ -42,14 +42,14 @@ func _layout_hotbar() -> void:
 		row.append({"kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i], "r": 24.0})
 	if Save.dev_unlocked:   # 개발자 전용: 아스트라 유디키움
 		row.append({"kind": "judge", "id": "judge", "key": "T", "r": 32.0})
-	var gap := 14.0   # 마름모는 가로로 길어서 버튼 너비 합으로 가운데 정렬한다
+	var gap := 28.0   # 마름모는 가로로 길고 양끝에 날개가 있어서 버튼 너비 합으로 가운데 정렬한다
 	var total := gap * (row.size() - 1)
 	for b in row:
-		total += float(b.r) * 2.76
+		total += float(b.r) * 2.9
 	var x := s.x / 2 - total / 2.0
 	for i in row.size():
 		var b: Dictionary = row[i]
-		var bw: float = float(b.r) * 2.76
+		var bw: float = float(b.r) * 2.9
 		b["c"] = Vector2(x + bw / 2.0, s.y - 58)
 		x += bw + gap
 		buttons["hb%d" % i] = b
@@ -77,7 +77,7 @@ func _input(ev: InputEvent) -> void:
 				main.set_paused(true)
 				return
 			for b in buttons:
-				if gem_hit(buttons[b].c, buttons[b].r * 1.38 + 10.0, buttons[b].r * 0.95 + 10.0, ev.position):
+				if gem_hit(buttons[b].c, buttons[b].r * 1.45 + 10.0, buttons[b].r * 1.0 + 10.0, ev.position):
 					btn_touch[ev.index] = b
 					_press(b, true)
 					return
@@ -154,9 +154,6 @@ func _draw() -> void:
 	if main.state != "play" or main.cine_active:
 		return
 	_draw_panels()
-	if not touch_ui and buttons.size() > 0:
-		var xs: Array = buttons.values().map(func(b): return b.c.x)
-		panel(Rect2(xs.min() - 48, size.y - 104, xs.max() - xs.min() + 96, 92), Color(0.04, 0.04, 0.1, 0.72), 18, Color(1, 1, 1, 0.08))
 	for b in buttons:
 		_draw_button(b, buttons[b])
 	if touch_ui:
@@ -258,12 +255,12 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		elif pc > 0.0 and cdk <= 0.0:
 			ready_ms[bname] = Time.get_ticks_msec()
 		prev_cd[bname] = cdk
-	var hw := r * 1.38
-	var hh := r * 0.95
+	var hw := r * 1.45
+	var hh := r * 1.0
 	fx_begin(c, press_scale(bname) * (0.92 if pressed else 1.0))
 	var fillc := Color(0.07, 0.07, 0.16, 0.86) if not pressed else Color(0.34, 0.28, 0.1, 0.95)
-	gem(c, hw, hh, fillc, Color(col, 0.95 if rdy else 0.35), (0.7 + 0.3 * sin(main.t * 4.0)) if (rdy and (bt.kind == "skill" or bt.kind == "judge")) else 0.0)
-	icon(id, c, r * 1.02, Color(col, 1.0 if rdy else 0.3))
+	gem(c, hw, hh, fillc, Color(col, 0.95 if rdy else 0.35), (0.7 + 0.3 * sin(main.t * 4.0)) if (rdy and (bt.kind == "skill" or bt.kind == "judge")) else 0.0, not touch_ui)
+	icon(id, c, r * 1.1, Color(col, 1.0 if rdy else 0.3))
 	if cdk > 0.0:
 		# 대기시간: 마름모를 위에서부터 어둡게 덮고, 가운데에 남은 초를 보여 준다
 		var cut := c.y - hh + 2.0 * hh * (1.0 - cdk)
@@ -279,9 +276,9 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		if touch_ui:
 			txt(f_bold, c + Vector2(0, hh + 16), "Lv%d" % Save.skills[id], 11, Color(col, 0.9), HORIZONTAL_ALIGNMENT_CENTER)
 	if not touch_ui and bt.has("key"):
-		var kp := c + Vector2(-hw * 0.52, hh * 0.52)
-		var kw := 14.0 if bt.key.length() == 1 else 30.0
-		gem(kp, kw, 11.0, Color(0, 0, 0, 0.85), Color(col, 0.7), 0.0, false)
+		var kp := c + Vector2(-hw * 0.6, hh * 0.78)
+		var kw := 22.0 if bt.key.length() == 1 else 46.0
+		panel(Rect2(kp - Vector2(kw / 2, 9), Vector2(kw, 18)), Color(0.02, 0.02, 0.06, 0.92), 4, Color(col, 0.75), 1)   # 키캡
 		txt(f_bold, kp + Vector2(0, 4), bt.key, 11, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(bname)
 	if pk < 1.0:

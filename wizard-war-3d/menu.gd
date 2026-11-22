@@ -520,7 +520,7 @@ func _draw_shop() -> void:
 		var r := Rect2(268 + i * 170, 30, 144, 44)
 		var on: bool = shop_tab == tabs[i][0]
 		fx_begin(r.get_center(), press_scale("tab:" + tabs[i][0]) * (1.04 if (not touch_ui and r.has_point(get_local_mouse_position())) else 1.0))
-		gem(r.get_center(), 72.0, 22.0, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), Color("fff0bf") if on else C_GOLD, 0.0, on)
+		gem(r.get_center(), 62.0, 20.0, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), Color("fff0bf") if on else C_GOLD, 0.0, false)
 		icon(tabs[i][2], r.position + Vector2(34, 22), 22, C_DARK if on else C_INK)
 		txt(f_bold, Vector2(r.get_center().x + 12, r.position.y + 29), tabs[i][1], 17, C_DARK if on else C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 		fx_end()
