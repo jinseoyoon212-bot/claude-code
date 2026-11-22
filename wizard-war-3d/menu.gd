@@ -180,11 +180,10 @@ func _setting(k: String, v: String) -> void:
 		"numbers", "shake", "fps":
 			Save.settings[k] = not Save.settings[k]
 		"gfx":
-			var levels := 4 if Save.ultra_ok else 3
-			Save.settings.gfx = (int(Save.settings.gfx) + 1) % levels
+			Save.settings.gfx = (int(Save.settings.gfx) + 1) % 4
 			Save.save_data()
-			if int(Save.settings.gfx) == 3 and not main._is_forward_plus():
-				main._relaunch_ultra()   # 울트라는 고급(Vulkan) 렌더러가 필요해서 게임을 다시 시작한다
+			if int(Save.settings.gfx) == 3 and not main._is_forward_plus() and main._can_relaunch():
+				main._relaunch_ultra()   # PC 설치형은 울트라를 위해 고급(Vulkan) 렌더러로 게임을 다시 시작한다
 		"intro":
 			Save.intro_seen = false
 			Save.next_action = ""
@@ -658,7 +657,7 @@ func _draw_settings() -> void:
 		y += 76
 	panel(Rect2(x, y, 600, 58), C_CARD, 12)   # 그래픽 품질: 셰이더·빛·질감 효과 단계
 	txt(f_bold, Vector2(x + 24, y + 28), "그래픽 품질 (다음 전투부터 적용)", 17, C_INK, HORIZONTAL_ALIGNMENT_LEFT, false)
-	txt(f_body, Vector2(x + 24, y + 48), "울트라(PC): 실시간 반사·간접광·체적 안개 / 높음: 사실적 하늘·빛줄기 / 낮음: 가볍게", 12, C_DIM, HORIZONTAL_ALIGNMENT_LEFT, false)
+	txt(f_body, Vector2(x + 24, y + 48), "울트라: PC는 실시간 반사·간접광·체적 안개, 웹·모바일은 그 기기의 최고 화질", 12, C_DIM, HORIZONTAL_ALIGNMENT_LEFT, false)
 	button(Rect2(x + 470, y + 10, 110, 38), ["낮음", "보통", "높음", "울트라"][clampi(int(Save.settings.gfx), 0, 3)], "set:gfx", true, int(Save.settings.gfx) >= 1)
 	y += 68
 	for rw in [["shadows", "그림자 (끄면 더 부드럽게 동작)"], ["numbers", "피해 숫자 표시"], ["shake", "화면 흔들림"], ["fps", "FPS 표시 (성능 확인용)"]]:

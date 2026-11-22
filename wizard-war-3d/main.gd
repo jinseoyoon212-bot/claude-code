@@ -44,11 +44,16 @@ const NOISE_A := preload("res://textures/noise_a.png")   # 끊김 없이 이어�
 const NOISE_B := preload("res://textures/noise_b.png")   # 세포 무늬 (자갈·갈라진 땅)
 var gfx := 2                     # 그래픽 품질 0 낮음 / 1 보통 / 2 높음 / 3 울트라 (Save.settings.gfx)
 var ultra := false               # 울트라 리얼리스틱: Forward+ 렌더러 위에서만 켜진다 (실시간 반사·환경 차폐·간접광·체적 안개·4단계 그림자…)
+var ultra_lite := false          # 울트라를 골랐지만 고급 렌더러를 못 쓰는 기기(웹·안드로이드 등): 그 기기에서 낼 수 있는 최고 화질(호환 렌더러)
 var ultra_failed := false        # 울트라를 골랐지만 이 컴퓨터가 고급 렌더러(Vulkan)를 쓸 수 없어 '높음'으로 실행 중
 
 
 func _is_forward_plus() -> bool:
 	return RenderingServer.get_rendering_device() != null   # Vulkan(RenderingDevice)를 쓰는 고급 렌더러에서만 있다
+
+
+func _can_relaunch() -> bool:
+	return not OS.has_feature("web") and not OS.has_feature("mobile")   # 설치형 PC 게임만 다른 렌더러로 다시 시작할 수 있다
 
 
 func _relaunch_ultra() -> void:
@@ -123,17 +128,14 @@ var world_env: Environment
 func _ready() -> void:
 	randomize()
 	gfx = clampi(int(Save.settings.gfx), 0, 3)
-	if gfx >= 3:
-		if not Save.ultra_ok:
-			gfx = 2
-		elif not _is_forward_plus():
-			if "--ultra-relaunch" in OS.get_cmdline_args():
-				gfx = 2          # 다시 실행했는데도 고급 렌더러가 안 켜졌다 = 이 컴퓨터는 지원하지 않는다
-				ultra_failed = true
-			else:
-				_relaunch_ultra()
-				return
-	ultra = gfx >= 3
+	if gfx >= 3 and not _is_forward_plus() and _can_relaunch():
+		if "--ultra-relaunch" in OS.get_cmdline_args():
+			ultra_failed = true   # 다시 실행했는데도 고급 렌더러가 안 켜졌다 = 이 컴퓨터는 Vulkan을 못 쓴다 → 호환 렌더러의 최고 화질로 실행
+		else:
+			_relaunch_ultra()
+			return
+	ultra = gfx >= 3 and _is_forward_plus()
+	ultra_lite = gfx >= 3 and not ultra
 	stage = Save.stage(Save.current_stage)
 	endless = stage.id == "endless"
 	max_wave = stage.waves
@@ -439,7 +441,7 @@ const SHADOW_MODELS := ["tree", "Tree", "Pine", "building", "wall", "tower", "ca
 func place(path: String, pos: Vector3, rot_deg := 0.0, scl := 1.0, tint := "", solo := false) -> Node3D:
 	## 모델 하나를 월드에 놓는다. tint 를 주면 반투명 색을 덧씌워 분위기를 바꾼다 (얼음/어둠/불꽃).
 	## 장면을 만드는 동안(batching)에는 같은 모델을 구역별로 모아 한 번에 그린다 (그리기 호출이 크게 줄어든다).
-	if ultra and path.begins_with("qn/") and ResourceLoader.exists("res://models/env/qn_hq/" + path.substr(3)):
+	if gfx >= 3 and path.begins_with("qn/") and ResourceLoader.exists("res://models/env/qn_hq/" + path.substr(3)):
 		path = "qn_hq/" + path.substr(3)     # 울트라: 2048 해상도 질감(줄기·바위)과 더 많은 종류의 나무
 	if batching and not solo:
 		var cell := "%d|%d" % [floori(pos.x / 70.0), floori(pos.z / 90.0)]
@@ -507,7 +509,7 @@ func _flush_batches() -> void:
 				mm.set_instance_transform(i, (xfs[i] as Transform3D) * (part.rel as Transform3D))
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ((part.shadow and b.near) or ultra) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ((part.shadow and b.near) or gfx >= 3) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			if b.tint != "":
 				mmi.material_overlay = _tint_mat(b.tint)
 			add_child(mmi)
@@ -664,6 +666,15 @@ func _build_world() -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_ULTRA)
 		RenderingServer.directional_shadow_atlas_set_size(8192, true)
 		get_viewport().msaa_3d = Viewport.MSAA_2X
+	elif ultra_lite:
+		# 호환 렌더러의 최고 화질: 4구간 그림자·큰 그림자 지도·먼 곳까지 그림자
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		sun.directional_shadow_max_distance = 110.0
+		sun.shadow_blur = 1.2
+		sun.light_angular_distance = 0.6
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM)
+		RenderingServer.directional_shadow_atlas_set_size(2048 if Save.touch_device else 4096, true)
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED if Save.touch_device else Viewport.MSAA_2X
 	elif gfx >= 1:
 		sun.shadow_blur = 1.4
 		sun.light_angular_distance = 0.4   # 그림자 가장자리가 멀수록 부드러워진다
@@ -693,7 +704,7 @@ func _build_world() -> void:
 		gmat.set_shader_parameter("blight_col", Vector3(bc.r, bc.g, bc.b))
 		gmat.set_shader_parameter("noise_a", NOISE_A)
 		gmat.set_shader_parameter("noise_b", NOISE_B)
-		gmat.set_shader_parameter("bump", 1.0 if ultra else 0.55)
+		gmat.set_shader_parameter("bump", 1.0 if gfx >= 3 else 0.55)
 		gmat.set_shader_parameter("snow", 1.0 if stage.env == "ice" else 0.0)
 		gmat.set_shader_parameter("wet", 0.8 if stage.env in ["night", "dark"] else (0.3 if stage.env == "fire" else 0.0))
 		gmat.set_shader_parameter("cracks", 1.0 if stage.env in ["dark", "fire"] else 0.3)
@@ -766,7 +777,7 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 	rng.seed = 99 + stage_idx
 	var to_sun := (-sun.global_transform.basis.z).normalized()   # 빛이 오는 쪽(위)
 	var axis := Vector3.UP.cross(-to_sun)
-	for i in 6:
+	for i in (9 if gfx >= 3 else 6):
 		var m := ShaderMaterial.new()
 		m.shader = load("res://shaders/star_beam.gdshader")
 		var rc: Color = SK.ray
@@ -797,7 +808,7 @@ func _build_atmosphere(E: Dictionary, SK: Dictionary) -> void:
 		var basis := Basis(Quaternion(Vector3.UP, up))
 		mi.transform = Transform3D(basis.scaled(Vector3(w, len, w)), foot + up * len * 0.5)
 		add_child(mi)
-	for i in 4:
+	for i in (7 if gfx >= 3 else 4):
 		var mm := ShaderMaterial.new()
 		mm.shader = load("res://shaders/mist.gdshader")
 		var fc: Color = E.fog.lightened(0.15)
@@ -942,11 +953,11 @@ func _build_set() -> void:
 		place("hw/%s.gltf" % nm, Vector3(rng.randf_range(22, 34), 0.0, bz), rng.randf_range(0, 360), rng.randf_range(0.8, 1.2))
 
 	# ===== 숲: Quaternius Stylized Nature MegaKit (CC0) 나무·덤불·풀·꽃·바위. 스테이지마다 나무 종류와 색조가 달라진다 =====
-	var dn := 1.8 if ultra else 1.0      # 울트라는 식물을 훨씬 빽빽하게
-	var commons := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5"] if ultra else ["CommonTree_3", "CommonTree_4"]
-	var pines := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"] if ultra else ["Pine_2", "Pine_5"]
-	var twisted := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"] if ultra else ["TwistedTree_1"]
-	var deads := ["DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4", "DeadTree_5"] if ultra else ["DeadTree_1", "DeadTree_3", "DeadTree_4"]
+	var dn := 1.8 if ultra else (1.4 if ultra_lite else 1.0)      # 울트라는 식물을 훨씬 빽빽하게
+	var commons := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5"] if gfx >= 3 else ["CommonTree_3", "CommonTree_4"]
+	var pines := ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"] if gfx >= 3 else ["Pine_2", "Pine_5"]
+	var twisted := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"] if gfx >= 3 else ["TwistedTree_1"]
+	var deads := ["DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4"] + (["DeadTree_5"] if ResourceLoader.exists("res://models/env/qn_hq/DeadTree_5.gltf") else []) if gfx >= 3 else ["DeadTree_1", "DeadTree_3", "DeadTree_4"]
 	var qtint := tint if tint != "dark" else "gloom"
 	var nforest := int(38 * dn)
 	for i in nforest:   # 뒤쪽(-z)의 숲
@@ -988,13 +999,13 @@ func _build_set() -> void:
 		place("qn/%s.gltf" % tufts[i % tufts.size()], Vector3(rng.randf_range(-38, 30), 0, gz), rng.randf_range(0, 360), rng.randf_range(1.0, 1.7), qtint)
 	if envn == "day" or envn == "night" or envn == "ice":   # 꽃과 버섯
 		for i in int(18 * dn):
-			var fn := "Flower_3_Group" if (not ultra or i % 2 == 0) else "Flower_4_Group"
+			var fn := "Flower_3_Group" if (gfx < 3 or i % 2 == 0) else "Flower_4_Group"
 			place("qn/%s.gltf" % fn, Vector3(rng.randf_range(-36, 28), 0, rng.randf_range(6.5, 14.0) * (1.0 if rng.randf() < 0.4 else -1.0)), rng.randf_range(0, 360), rng.randf_range(0.9, 1.5), qtint)
 	for i in int(6 * dn):
-		var mn2 := "Mushroom_Common" if (not ultra or i % 2 == 0) else "Mushroom_Laetiporus"
+		var mn2 := "Mushroom_Common" if (gfx < 3 or i % 2 == 0) else "Mushroom_Laetiporus"
 		place("qn/%s.gltf" % mn2, Vector3(rng.randf_range(-34, 30), 0, rng.randf_range(6.5, 12.0) * (1.0 if rng.randf() < 0.5 else -1.0)), rng.randf_range(0, 360), rng.randf_range(1.2, 2.2), qtint)
 
-	if ultra:   # 땅바닥 디테일: 조약돌·클로버·낙엽 꽃잎·고사리·징검돌을 길 가장자리를 따라 흩뿌린다
+	if gfx >= 3 and ResourceLoader.exists("res://models/env/qn_hq/Pebble_Round_1.gltf"):   # 땅바닥 디테일 (2048 질감 모델이 들어 있는 빌드: PC·안드로이드): 조약돌·클로버·낙엽 꽃잎·고사리·징검돌을 길 가장자리를 따라 흩뿌린다
 		var pebs := ["Pebble_Round_1", "Pebble_Round_3", "Pebble_Round_5", "Pebble_Square_2", "Pebble_Square_4"]
 		for i in 90:
 			var pz := rng.randf_range(3.6, 8.0) * (1.0 if rng.randf() < 0.5 else -1.0)
