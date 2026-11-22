@@ -53,10 +53,12 @@
     inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.16), inset 0 0 18px rgba(255, 255, 255, 0.04);
 }
 
-/* use the system font on Apple devices (San Francisco); other platforms keep the app's Roboto */
+/* Google Sans everywhere (self-hosted, see google-sans.scss). The family has no Hangul glyphs, so
+   Korean text falls through to the platform's Korean UI font. */
 body {
-  --font-default: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Roboto,
-    NotoColorEmoji;
+  --font-default: 'Google Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR',
+    'Malgun Gothic', 'Segoe UI', Roboto, NotoColorEmoji;
+  --font-mono: 'Google Sans Code', 'Roboto Mono', monospace;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -225,6 +227,12 @@ body::after {
 
 :root body [data-testid='message-container'] {
   animation: lg-message-in var(--lg-med) var(--lg-ease) both;
+}
+
+/* the flying copy of a single-line bubble must not re-wrap while it narrows */
+[data-lg-ghost='nowrap'],
+[data-lg-ghost='nowrap'] * {
+  white-space: nowrap !important;
 }
 
 /* a message you just sent is drawn up from the composer by web/styles/sendMotion.ts: the real row
