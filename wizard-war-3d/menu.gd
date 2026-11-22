@@ -520,7 +520,7 @@ func _draw_shop() -> void:
 		var r := Rect2(268 + i * 170, 30, 144, 44)
 		var on: bool = shop_tab == tabs[i][0]
 		fx_begin(r.get_center(), press_scale("tab:" + tabs[i][0]) * (1.04 if (not touch_ui and r.has_point(get_local_mouse_position())) else 1.0))
-		gem(r.get_center(), 62.0, 20.0, Color(C_GOLD, 0.95) if on else Color(0.14, 0.14, 0.26), Color("fff0bf") if on else C_GOLD, 0.0, false)
+		deco_plate(r.get_center(), 50.0, 12.0, PLATE_TEAL if on else PLATE_BLUE, false, true)
 		icon(tabs[i][2], r.position + Vector2(34, 22), 22, C_DARK if on else C_INK)
 		txt(f_bold, Vector2(r.get_center().x + 12, r.position.y + 29), tabs[i][1], 17, C_DARK if on else C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
 		fx_end()
@@ -720,16 +720,16 @@ func _draw_cheat() -> void:
 		var r := Rect2(x0 + (i % cols) * (cw + gap), 100 + (i / cols) * (ch + gap), cw, ch)
 		var on: bool = it[3]
 		var cc := r.get_center()
-		var hwc := cw * 0.5 - 14.0
-		var hhc := ch * 0.5 - 3.0
-		gem(cc, hwc, hhc, Color(0.12, 0.2, 0.15, 0.95) if on else C_CARD, on_col if on else C_GOLD, 0.0, on)
+		var hwc := cw * 0.5 - 30.0
+		var hhc := ch * 0.5 - 14.0
+		deco_plate(cc, hwc, hhc, PLATE_TEAL if on else PLATE_BLUE, false, true)
 		var lbl: String = it[1]
-		var cfs := gem_fit(f_bold, lbl, 15, hwc - 22.0, hhc)
+		var cfs := deco_fit(f_bold, lbl, 15, hwc * 2.0 - 54.0)
 		var ctw := f_bold.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, cfs).x
-		icon(it[2], Vector2(cc.x - ctw / 2 - 18, cc.y - 1), 26, on_col if on else C_GOLD)
-		txt(f_bold, Vector2(cc.x + 10, cc.y + 5), lbl, cfs, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+		icon(it[2], Vector2(cc.x - ctw / 2 - 16, cc.y - 1), 24, GOLD_L)
+		txt(f_bold, Vector2(cc.x + 10, cc.y + 5), lbl, cfs, GOLD_L, HORIZONTAL_ALIGNMENT_CENTER, false)
 		if it[0].begins_with("cheat:god") or it[0].begins_with("cheat:one_hit") or it[0].begins_with("cheat:no_cd"):
-			txt(f_bold, Vector2(cc.x, cc.y + hhc - 7), "ON" if on else "OFF", 10, on_col if on else C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
+			txt(f_bold, Vector2(cc.x, cc.y + hhc + 14), "ON" if on else "OFF", 10, on_col if on else C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 		clicks.append({"rect": r, "act": it[0]})
 	txt(f_body, Vector2(s.x / 2, s.y - 44), "치트는 개발·테스트용입니다. 무적·한 방·속도 설정은 게임을 끄면 초기화됩니다.", 13, C_DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
 

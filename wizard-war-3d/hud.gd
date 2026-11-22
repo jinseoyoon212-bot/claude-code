@@ -42,16 +42,11 @@ func _layout_hotbar() -> void:
 		row.append({"kind": "item", "id": Save.ITEMS[i].id, "key": ITEM_KEYS[i], "r": 24.0})
 	if Save.dev_unlocked:   # 개발자 전용: 아스트라 유디키움
 		row.append({"kind": "judge", "id": "judge", "key": "T", "r": 32.0})
-	var gap := 28.0   # 마름모는 가로로 길고 양끝에 날개가 있어서 버튼 너비 합으로 가운데 정렬한다
-	var total := gap * (row.size() - 1)
-	for b in row:
-		total += float(b.r) * 2.9
-	var x := s.x / 2 - total / 2.0
+	var gap := 76.0
+	var x0 := s.x / 2 - gap * (row.size() - 1) / 2.0
 	for i in row.size():
 		var b: Dictionary = row[i]
-		var bw: float = float(b.r) * 2.9
-		b["c"] = Vector2(x + bw / 2.0, s.y - 58)
-		x += bw + gap
+		b["c"] = Vector2(x0 + i * gap, s.y - 62)
 		buttons["hb%d" % i] = b
 
 
@@ -77,7 +72,7 @@ func _input(ev: InputEvent) -> void:
 				main.set_paused(true)
 				return
 			for b in buttons:
-				if gem_hit(buttons[b].c, buttons[b].r * 1.45 + 10.0, buttons[b].r * 1.0 + 10.0, ev.position):
+				if ev.position.distance_to(buttons[b].c) < buttons[b].r + 10:
 					btn_touch[ev.index] = b
 					_press(b, true)
 					return
@@ -255,39 +250,39 @@ func _draw_button(bname: String, bt: Dictionary) -> void:
 		elif pc > 0.0 and cdk <= 0.0:
 			ready_ms[bname] = Time.get_ticks_msec()
 		prev_cd[bname] = cdk
-	var hw := r * 1.45
-	var hh := r * 1.0
 	fx_begin(c, press_scale(bname) * (0.92 if pressed else 1.0))
-	var fillc := Color(0.07, 0.07, 0.16, 0.86) if not pressed else Color(0.34, 0.28, 0.1, 0.95)
-	gem(c, hw, hh, fillc, Color(col, 0.95 if rdy else 0.35), (0.7 + 0.3 * sin(main.t * 4.0)) if (rdy and (bt.kind == "skill" or bt.kind == "judge")) else 0.0, not touch_ui)
-	icon(id, c, r * 1.1, Color(col, 1.0 if rdy else 0.3))
+	var tint := col if not pressed else C_GOLD
+	var glowk := (0.7 + 0.3 * sin(main.t * 4.0)) if (rdy and (bt.kind == "skill" or bt.kind == "judge")) else 0.0
+	deco_round(c, r, tint, col, rdy, pressed, glowk)
+	icon(id, c, r * 1.12, Color(col, 1.0 if rdy else 0.3))
 	if cdk > 0.0:
-		# 대기시간: 마름모를 위에서부터 어둡게 덮고, 가운데에 남은 초를 보여 준다
-		var cut := c.y - hh + 2.0 * hh * (1.0 - cdk)
-		var polys := Geometry2D.intersect_polygons(gem_pts(c, hw, hh), PackedVector2Array([Vector2(c.x - hw - 2, c.y - hh - 2), Vector2(c.x + hw + 2, c.y - hh - 2), Vector2(c.x + hw + 2, cut), Vector2(c.x - hw - 2, cut)]))
-		for pl in polys:
-			draw_colored_polygon(pl, Color(0, 0, 0, 0.55))
+		# 대기시간: 위에서부터 시계 방향으로 어둡게 덮고, 가운데에 남은 초를 보여 준다
+		var pie := PackedVector2Array([c])
+		var a0 := -PI / 2.0
+		var steps := 36
+		for k in steps + 1:
+			pie.append(c + Vector2.from_angle(a0 + TAU * cdk * float(k) / float(steps)) * (r - 1.0))
+		draw_colored_polygon(pie, Color(0, 0, 0, 0.6))
 		txt(f_bold, c + Vector2(0, 9), "%.0f" % ceilf(main.cds[id]) if main.cds[id] >= 1.0 else "%.1f" % main.cds[id], 22, C_INK, HORIZONTAL_ALIGNMENT_CENTER)
 	if bt.kind == "item":
-		var bp := c + Vector2(hw * 0.5, -hh * 0.5)
+		var bp := c + Vector2(r * 0.78, -r * 0.78)
 		draw_circle(bp, 12, C_GOLD if rdy else Color(0.3, 0.3, 0.35))
 		txt(f_bold, bp + Vector2(0, 6), str(Save.items[id]), 14, C_DARK, HORIZONTAL_ALIGNMENT_CENTER, false)
 	if bt.kind == "skill":
 		if touch_ui:
-			txt(f_bold, c + Vector2(0, hh + 16), "Lv%d" % Save.skills[id], 11, Color(col, 0.9), HORIZONTAL_ALIGNMENT_CENTER)
+			txt(f_bold, c + Vector2(0, r + 18), "Lv%d" % Save.skills[id], 11, Color(col, 0.9), HORIZONTAL_ALIGNMENT_CENTER)
 	if not touch_ui and bt.has("key"):
-		var kp := c + Vector2(-hw * 0.6, hh * 0.78)
+		var kp := c + Vector2(0, r + 14)
 		var kw := 22.0 if bt.key.length() == 1 else 46.0
-		panel(Rect2(kp - Vector2(kw / 2, 9), Vector2(kw, 18)), Color(0.02, 0.02, 0.06, 0.92), 4, Color(col, 0.75), 1)   # 키캡
-		txt(f_bold, kp + Vector2(0, 4), bt.key, 11, C_INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+		panel(Rect2(kp - Vector2(kw / 2, 9), Vector2(kw, 18)), Color(0.02, 0.02, 0.06, 0.92), 4, Color(GOLD_D, 0.9), 1)   # 키캡
+		txt(f_bold, kp + Vector2(0, 4), bt.key, 11, GOLD_L, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(bname)
 	if pk < 1.0:
-		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.3 * (1.0 - pk)))
+		draw_circle(c, r, Color(1, 1, 1, 0.3 * (1.0 - pk)))
 	fx_end()
 	var rk := (Time.get_ticks_msec() - int(ready_ms.get(bname, -10000))) / 520.0
-	if rk < 1.0:   # 다시 쓸 수 있게 되면 마름모 테두리 파동이 한 번 퍼진다
-		var e := ease_out(rk)
-		gem_outline(c, hw + 8.0 * e * 2.0, hh + 8.0 * e, Color(col, 0.85 * (1.0 - rk)), 3.0)
+	if rk < 1.0:   # 다시 쓸 수 있게 되면 파동이 한 번 퍼진다
+		draw_arc(c, r + 3.0 + 22.0 * ease_out(rk), 0, TAU, 40, Color(col, 0.85 * (1.0 - rk)), 4.0, true)
 
 
 func _draw_joystick() -> void:

@@ -169,94 +169,118 @@ func bar(r: Rect2, k: float, col: Color) -> void:
 	draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(k, 0, 1), r.size.y * 0.4)), Color(1, 1, 1, 0.18))
 
 
-# ---------------- 가로로 긴 마름모 버튼 (금속 테두리·유리 몸통·뾰족한 날개) ----------------
-func gem_flat(hw: float, hh: float) -> float:
-	## 위아래 꼭짓점을 살짝 잘라낸 평평한 부분의 반 너비 (완전한 마름모보다 글자와 아이콘이 잘 들어간다)
-	return clampf(hw * 0.4, hh * 0.5, hw * 0.8)
+# ---------------- 아르데코 판타지 버튼: 금빛 이중 테두리, 위아래 가운데의 뾰족한 돌기, 양끝의 보석, 색이 있는 판, 아래로 번지는 빛 ----------------
+const GOLD_L := Color("f6dc8a")
+const GOLD_D := Color("a8741c")
+const PLATE_TEAL := Color(0.1, 0.46, 0.46)
+const PLATE_BLUE := Color(0.13, 0.22, 0.58)
+const PLATE_RED := Color(0.5, 0.14, 0.17)
+const PLATE_GRAY := Color(0.24, 0.24, 0.3)
 
 
-func gem_halfw(hw: float, hh: float, y: float) -> float:
-	## 중심에서 y 만큼 떨어진 높이에서의 반 너비
-	var f := gem_flat(hw, hh)
-	return hw - minf(absf(y) / hh, 1.0) * (hw - f)
+func deco_pts(c: Vector2, hw: float, hh: float, peak: float, cut: float) -> PackedVector2Array:
+	## 모서리를 깎은 판의 윤곽. peak 만큼 위아래 가운데가 뾰족하게 솟는다 (peak=0 이면 평평한 판)
+	var bw := hw * 0.2
+	var bs := hw * 0.34
+	var p := PackedVector2Array()
+	p.append(c + Vector2(-hw + cut, -hh))
+	if peak > 0.0:
+		p.append(c + Vector2(-bs, -hh))
+		p.append(c + Vector2(-bw, -hh - peak))
+		p.append(c + Vector2(bw, -hh - peak))
+		p.append(c + Vector2(bs, -hh))
+	p.append(c + Vector2(hw - cut, -hh))
+	p.append(c + Vector2(hw, -hh + cut))
+	p.append(c + Vector2(hw, hh - cut))
+	p.append(c + Vector2(hw - cut, hh))
+	if peak > 0.0:
+		p.append(c + Vector2(bs, hh))
+		p.append(c + Vector2(bw, hh + peak))
+		p.append(c + Vector2(-bw, hh + peak))
+		p.append(c + Vector2(-bs, hh))
+	p.append(c + Vector2(-hw + cut, hh))
+	p.append(c + Vector2(-hw, hh - cut))
+	p.append(c + Vector2(-hw, -hh + cut))
+	return p
 
 
-func gem_pts(c: Vector2, hw: float, hh: float) -> PackedVector2Array:
-	var f := gem_flat(hw, hh)
-	return PackedVector2Array([c + Vector2(-hw, 0), c + Vector2(-f, -hh), c + Vector2(f, -hh), c + Vector2(hw, 0), c + Vector2(f, hh), c + Vector2(-f, hh)])
+func deco_line(p: PackedVector2Array, col: Color, w: float) -> void:
+	var q := p.duplicate()
+	q.append(q[0])
+	draw_polyline(q, col, w, true)
 
 
-func gem_outline(c: Vector2, hw: float, hh: float, col: Color, w: float) -> void:
-	var p := gem_pts(c, hw, hh)
-	p.append(p[0])
-	draw_polyline(p, col, w, true)
+func deco_hit(c: Vector2, hw: float, hh: float, p: Vector2) -> bool:
+	return absf(p.x - c.x) <= hw + 6.0 and absf(p.y - c.y) <= hh + 6.0
 
 
-func gem_hit(c: Vector2, hw: float, hh: float, p: Vector2) -> bool:
-	var dy := absf(p.y - c.y)
-	return dy <= hh and absf(p.x - c.x) <= gem_halfw(hw, hh, dy)
+func deco_diamond(c: Vector2, sz: float, outer: Color, inner: Color) -> void:
+	var d := PackedVector2Array([c + Vector2(-sz, 0), c + Vector2(0, -sz), c + Vector2(sz, 0), c + Vector2(0, sz)])
+	draw_colored_polygon(d, outer)
+	var e := PackedVector2Array([c + Vector2(-sz * 0.55, 0), c + Vector2(0, -sz * 0.55), c + Vector2(sz * 0.55, 0), c + Vector2(0, sz * 0.55)])
+	draw_colored_polygon(e, inner)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(-sz * 0.3, 0), c + Vector2(0, -sz * 0.3), c + Vector2(sz * 0.3, 0)]), Color(1, 1, 1, 0.55))
 
 
-func gem(c: Vector2, hw: float, hh: float, fill: Color, edge: Color, glow := 0.0, ornate := true) -> void:
-	## 실제 게임 버튼처럼: 바깥 그림자 → 빛을 받는 방향에 따라 밝기가 달라지는 금속 테두리 → 안쪽으로 파인 유리 몸통 → 광택 → 뾰족한 날개
-	var light := edge.lightened(0.45)
-	var dark := edge.darkened(0.6)
-	var fw := 5.0 if hh > 20.0 else 4.0              # 테두리 두께
-	if glow > 0.0:
-		for k in 3:
-			var g := 3.0 + k * 3.5
-			draw_colored_polygon(gem_pts(c, hw + g * 1.8, hh + g), Color(edge, glow * (0.17 - k * 0.05)))
-	# 드롭 섀도
-	draw_colored_polygon(gem_pts(c + Vector2(0, 3), hw + 1.0, hh + 1.0), Color(0, 0, 0, 0.35))
-	if ornate:
-		# 좌우 뾰족한 날개: 테두리가 바깥으로 이어지는 모양
-		for sx in [-1.0, 1.0]:
-			var wing := PackedVector2Array([c + Vector2(sx * (hw - 3.0), -hh * 0.34), c + Vector2(sx * (hw + 17.0), 0), c + Vector2(sx * (hw - 3.0), hh * 0.34)])
-			draw_polygon(wing, PackedColorArray([light, edge, dark]))
-			draw_polyline(PackedVector2Array([wing[0], wing[1], wing[2]]), Color(dark, 0.9), 1.2, true)
-	# 금속 테두리: 변마다 빛 방향(왼쪽 위)과 마주 보는 정도로 밝기를 정한다
-	var o := gem_pts(c, hw, hh)
-	var inn := gem_pts(c, hw - fw * 1.6, hh - fw)
-	for i in o.size():
-		var j := (i + 1) % o.size()
-		var mid := (o[i] + o[j]) * 0.5 - c
-		var nrm := mid.normalized()
-		var lit := clampf(0.5 + 0.5 * nrm.dot(Vector2(-0.55, -0.83)), 0.0, 1.0)
-		var c1 := dark.lerp(light, lit)
-		var c2 := dark.lerp(light, clampf(lit - 0.18, 0.0, 1.0))
-		draw_polygon(PackedVector2Array([o[i], o[j], inn[j], inn[i]]), PackedColorArray([c1, c1, c2, c2]))
-	gem_outline(c, hw, hh, Color(0, 0, 0, 0.7), 1.4)                       # 바깥 윤곽
-	gem_outline(c, hw - 1.2, hh - 1.0, Color(light, 0.55), 1.0)            # 테두리 바깥쪽 하이라이트
-	# 유리 몸통: 위가 밝고 아래가 어두운 그라데이션
-	var pf := gem_pts(c, hw - fw * 1.6, hh - fw)
+func deco_plate(c: Vector2, hw: float, hh: float, plate: Color, hover := false, wings := true) -> void:
+	## 색이 있는 판 + 이중 금테 + 양끝 보석 + 아래로 번지는 빛
+	# 아래로 번지는 빛(바닥 반사)
+	var gl := PackedVector2Array()
+	for i in 24:
+		var a := TAU * i / 24.0
+		gl.append(c + Vector2(cos(a) * hw * 0.95, hh + 20.0 + sin(a) * 6.0))
+	draw_colored_polygon(gl, Color(plate.lightened(0.25), 0.2))
+	var gl2 := PackedVector2Array()
+	for i in 24:
+		var a2 := TAU * i / 24.0
+		gl2.append(c + Vector2(cos(a2) * hw * 1.25, hh + 20.0 + sin(a2) * 11.0))
+	draw_colored_polygon(gl2, Color(plate.lightened(0.25), 0.07))
+	# 바깥 금테 두 겹
+	var o2 := deco_pts(c, hw + 9.0, hh + 8.0, 9.0, 12.0)
+	deco_line(o2, Color(GOLD_D, 0.85), 1.2)
+	var o1 := deco_pts(c, hw + 4.5, hh + 4.0, 6.0, 9.0)
+	deco_line(o1, GOLD_L if not hover else Color.WHITE, 1.7)
+	# 판: 위가 밝고 아래가 어두운 색, 안쪽 금선
+	var pl := deco_pts(c, hw, hh, 0.0, 6.0)
 	var cols := PackedColorArray()
-	for p in pf:
+	for p in pl:
 		var ty := clampf((p.y - (c.y - hh)) / (2.0 * hh), 0.0, 1.0)
-		cols.append(fill.lightened(0.16).lerp(fill.darkened(0.45), ty))
-	draw_polygon(pf, cols)
-	# 테두리 안쪽으로 파인 그림자
-	var pf2 := pf.duplicate()
-	pf2.append(pf2[0])
-	draw_polyline(pf2, Color(0, 0, 0, 0.5), 3.0, true)
-	gem_outline(c, hw - fw * 1.6 - 1.5, hh - fw - 1.2, Color(light, 0.25), 1.0)
-	# 윗면 광택 띠
-	var gl := gem_pts(c, hw - fw * 1.6 - 2.0, hh - fw - 2.0)
-	draw_colored_polygon(PackedVector2Array([gl[0], gl[1], gl[2], gl[3], c + Vector2(gl[3].x * 0.0 + (hw - fw * 1.6 - 2.0) * 0.82, -hh * 0.06), c + Vector2(-(hw - fw * 1.6 - 2.0) * 0.82, -hh * 0.06)]), Color(1, 1, 1, 0.11))
-	if ornate and hw > 62.0:
-		# 윗변 가운데에 박힌 작은 보석
-		var gp := c + Vector2(0, -hh)
-		draw_colored_polygon(gem_pts(gp, 9.0, 6.5), dark)
-		draw_colored_polygon(gem_pts(gp, 7.0, 4.8), edge.lightened(0.2))
-		draw_colored_polygon(PackedVector2Array([gp + Vector2(-3.5, 0), gp + Vector2(0, -3.2), gp + Vector2(3.5, 0)]), Color(1, 1, 1, 0.65))
+		cols.append(plate.lightened(0.18 if not hover else 0.3).lerp(plate.darkened(0.45), ty))
+	draw_polygon(pl, cols)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(-hw + 6, -hh), c + Vector2(hw - 6, -hh), c + Vector2(hw, -hh + 6), c + Vector2(hw, -hh * 0.1), c + Vector2(-hw, -hh * 0.1), c + Vector2(-hw, -hh + 6)]), Color(1, 1, 1, 0.09))   # 윗면 광택
+	deco_line(deco_pts(c, hw - 3.5, hh - 3.5, 0.0, 4.0), Color(GOLD_L, 0.55), 1.0)
+	deco_line(pl, Color(GOLD_D, 0.9), 1.4)
+	if wings:
+		# 양끝: 이어지는 선과 박힌 보석
+		for sx in [-1.0, 1.0]:
+			var tp := c + Vector2(sx * (hw + 9.0), 0)
+			draw_line(tp, tp + Vector2(sx * 6.0, 0), GOLD_L, 1.6, true)
+			deco_diamond(tp + Vector2(sx * 12.0, 0), 6.5, GOLD_L, Color(plate.darkened(0.5), 1.0))
 
 
-func gem_fit(font: Font, label: String, fs: int, hw: float, hh: float) -> int:
-	## 마름모 가운데 글자 높이에서 쓸 수 있는 너비에 맞춰 글자 크기를 줄인다
-	var usable := 2.0 * (gem_halfw(hw, hh, fs * 0.36) - 7.0) * 0.96
+func deco_fit(font: Font, label: String, fs: int, usable: float) -> int:
 	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	if w > usable:
 		return maxi(10, int(fs * usable / w))
 	return fs
+
+
+func deco_round(c: Vector2, r: float, tint: Color, ring: Color, rdy := true, hover := false, glow := 0.0) -> void:
+	## 둥근 아이콘 버튼: 어두운 유리 원 + 금빛 이중 테두리 + 동서남북의 보석
+	if glow > 0.0:
+		draw_circle(c, r + 9.0, Color(ring, 0.14 * glow))
+		draw_circle(c, r + 5.0, Color(ring, 0.1 * glow))
+	draw_circle(c + Vector2(0, 3), r + 2.0, Color(0, 0, 0, 0.35))
+	draw_circle(c, r, Color(tint.darkened(0.62), 0.94))
+	draw_circle(c + Vector2(0, -r * 0.18), r * 0.78, Color(tint.darkened(0.3), 0.35))   # 안쪽 은은한 빛
+	draw_arc(c, r + 0.5, 0, TAU, 48, Color(GOLD_D if rdy else GOLD_D.darkened(0.4), 1.0), 3.2, true)
+	draw_arc(c, r, 0, TAU, 48, Color(GOLD_L if (rdy and not hover) else Color.WHITE if hover else GOLD_L.darkened(0.45), 1.0), 1.6, true)
+	draw_arc(c, r - 5.0, 0, TAU, 48, Color(ring, 0.55 if rdy else 0.2), 1.1, true)
+	draw_arc(c, r + 5.0, 0, TAU, 48, Color(GOLD_D, 0.5), 1.0, true)
+	draw_arc(c, r * 0.8, PI * 1.1, PI * 1.55, 14, Color(1, 1, 1, 0.22), 2.0, true)   # 유리 반사
+	for i in 4:
+		var a := i * PI * 0.5
+		deco_diamond(c + Vector2(cos(a), sin(a)) * (r + 5.0), 5.2, GOLD_L if rdy else GOLD_L.darkened(0.45), Color(tint.darkened(0.55), 1.0))
 
 
 func panel(r: Rect2, col := C_PANEL, rad := 10, border := Color(1, 1, 1, 0.08), bw := 1) -> void:
@@ -304,21 +328,19 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 	btn_i += 1
 	var e := clampf((ui_t - 0.06 - i * 0.035) / 0.34, 0.0, 1.0)
 	var sc := lerpf(0.86, 1.0, ease_out_back(e)) * press_scale(act)
-	var hover := enabled and not touch_ui and gem_hit(c, r.size.x * 0.5 - 17.0, r.size.y * 0.5 - 3.0, get_local_mouse_position())
+	var hover := enabled and not touch_ui and r.has_point(get_local_mouse_position())
 	if hover:
 		sc *= 1.035
 	fx_begin(c, sc, (1.0 - e) * 14.0)
-	var bg := C_GOLD if primary else Color(0.2, 0.2, 0.36)
-	var edge := Color("fff0bf") if primary else C_GOLD
+	var plate := PLATE_TEAL if primary else PLATE_BLUE
+	if act.begins_with("to_title") or act == "set:reset" or act == "cheat:lock":
+		plate = PLATE_RED
 	if not enabled:
-		bg = Color(0.25, 0.25, 0.3)
-		edge = Color(0.5, 0.5, 0.58)
-	var hw := r.size.x * 0.5 - 17.0   # 뾰족한 날개까지 포함해서 버튼 영역 안에 들어오게
-	var hh := r.size.y * 0.5 - 3.0
-	gem(c, hw, hh, bg, edge, 0.0 if not hover else 1.0)
-	if hover:
-		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.1))
-	var fc := C_DARK if primary and enabled else (C_INK if enabled else C_DIM)
+		plate = PLATE_GRAY
+	var hw := r.size.x * 0.5 - 30.0   # 양끝의 보석까지 버튼 영역 안에 들어오게
+	var hh := r.size.y * 0.5 - 10.0
+	deco_plate(c, hw, hh, plate, hover)
+	var fc := GOLD_L if enabled else Color(0.62, 0.6, 0.66)
 	var fs := 15 if r.size.y < 44 else (20 if r.size.y < 58 else 24)
 	var cx := c.x
 	if label == "+" or label == "-":
@@ -331,35 +353,34 @@ func button(r: Rect2, label: String, act: String, enabled := true, primary := tr
 			ic = auto_icon(act, label)
 		var lf: Font = f_bold if r.size.y < 44 else f_disp
 		var iw := fs * 1.3 + 4.0 if ic != "" else 0.0
-		fs = gem_fit(lf, label, fs, hw - iw * 0.5, hh)
+		fs = deco_fit(lf, label, fs, hw * 2.0 - 18.0 - iw)
 		if ic != "":
 			var tw := lf.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 			icon(ic, Vector2(cx - tw / 2 - 6, c.y), fs * 1.3, fc)
 			cx += fs * 0.6
+		txt(lf, Vector2(cx + 1, c.y + fs * 0.36 + 1), label, fs, Color(0, 0, 0, 0.55), HORIZONTAL_ALIGNMENT_CENTER, false)
 		txt(lf, Vector2(cx, c.y + fs * 0.36), label, fs, fc, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(act)
 	if pk < 1.0:   # 누른 순간 하얗게 번쩍
-		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.38 * (1.0 - pk)))
+		draw_colored_polygon(deco_pts(c, hw, hh, 0.0, 6.0), Color(1, 1, 1, 0.38 * (1.0 - pk)))
 	fx_end()
 	clicks.append({"rect": r, "act": act})
 
 
 func icon_button(c: Vector2, r: float, ic: String, act: String, col := C_INK, badge := 0) -> void:
-	var hw := r * 1.5
-	var hh := r * 1.0
-	var hover := not touch_ui and gem_hit(c, hw, hh, get_local_mouse_position())
+	var hover := not touch_ui and (get_local_mouse_position() - c).length() < r + 6.0
 	fx_begin(c, press_scale(act) * (1.08 if hover else 1.0))
-	gem(c, hw, hh, Color(0.09, 0.09, 0.2, 0.92), Color(col, 0.8 if not hover else 1.0), 0.8 if hover else 0.0)
-	icon(ic, c, r * 1.05, col)
+	deco_round(c, r, PLATE_BLUE, col, true, hover, 1.0 if hover else 0.0)
+	icon(ic, c, r * 1.1, col)
 	if badge > 0:
-		var bp := c + Vector2(hw * 0.52, -hh * 0.52)
+		var bp := c + Vector2(r * 0.78, -r * 0.78)
 		draw_circle(bp, 11, C_BLOOD)
 		txt(f_bold, bp + Vector2(0, 5), str(badge), 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
 	var pk := press_k(act)
 	if pk < 1.0:
-		draw_colored_polygon(gem_pts(c, hw, hh), Color(1, 1, 1, 0.35 * (1.0 - pk)))
+		draw_circle(c, r, Color(1, 1, 1, 0.35 * (1.0 - pk)))
 	fx_end()
-	clicks.append({"rect": Rect2(c - Vector2(hw, hh), Vector2(hw, hh) * 2), "act": act})
+	clicks.append({"rect": Rect2(c - Vector2(r + 6, r + 6), Vector2(r + 6, r + 6) * 2), "act": act})
 
 
 func gold_chip(pos: Vector2, right_align := true) -> void:
