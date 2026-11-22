@@ -5,6 +5,8 @@
  *    the list width; drag it narrow enough and the list collapses to the icon rail, drag it back out
  *    to open it again. Double-click toggles, the arrow keys nudge it, Ctrl/Cmd + \ toggles from the
  *    keyboard. Width and collapsed state are remembered in localStorage.
+ *  - `data-lg-theme="light" | "dark"` on <html>, kept in sync with the app's active theme, so that CSS
+ *    can adapt the glass (edges, shadows, accent buttons) to light themes
  *  - on the phone layout (one pane at a time), a back button in the chat header that returns to the
  *    conversation list, also bound to the browser / Android back button
  *
@@ -211,6 +213,61 @@ function ensureSidebarResizer() {
   setCollapsed(readStorage(STATE_KEY) === 'collapsed', false);
 }
 
+// ---- light / dark: tell the CSS which theme is active ----
+
+/** relative luminance (0..1) of #rgb / #rrggbb / rgb(...), or null if it can not be parsed */
+function luminance(color: string): number | null {
+  const c = color.trim();
+  let rgb: number[] | null = null;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  if (hex) {
+    const h = hex[1].length === 3 ? [...hex[1]].map(ch => ch + ch).join('') : hex[1];
+    rgb = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  } else {
+    const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(c);
+    if (m) {
+      rgb = [Number(m[1]), Number(m[2]), Number(m[3])];
+    }
+  }
+  if (!rgb) {
+    return null;
+  }
+  const [r, g, b] = rgb.map(v => v / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function syncThemeKind() {
+  // the text colour is dark on light themes and light on dark themes
+  const text = luminance(getComputedStyle(root()).getPropertyValue('--text-primary-color'));
+  if (text === null) {
+    return;
+  }
+  const kind = text < 0.5 ? 'light' : 'dark';
+  if (root().dataset.lgTheme !== kind) {
+    root().dataset.lgTheme = kind;
+  }
+}
+
+function watchTheme() {
+  let queued = false;
+  const schedule = () => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        syncThemeKind();
+      });
+    }
+  };
+  // the app writes its theme variables into a <style> element in <head> and rewrites it on change
+  new MutationObserver(schedule).observe(document.head, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  syncThemeKind();
+}
+
 // ---- phone: back to the list ----
 
 let chatWasOpen = false;
@@ -250,6 +307,8 @@ function syncChatHistory() {
 }
 
 export function startLayoutControls() {
+  watchTheme();
+
   const init = () => {
     ensureSidebarResizer();
 

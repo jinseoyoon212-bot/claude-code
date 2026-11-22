@@ -1,0 +1,71 @@
+/**
+ * Light theme refinements (html[data-lg-theme='light'], set by layoutControls.ts).
+ *
+ * The glass of liquid-glass.scss is tuned for dark themes: its edge light is white and its shadows
+ * are black, which on a white page leaves edges undefined and shadows muddy. Here the edge becomes a
+ * crisp hairline plus a faint inner highlight, the shadows become light and tinted, and the buttons
+ * next to the message field take the accent colour.
+ */
+
+html[data-lg-theme='light'] {
+  /* a crisp 1px edge instead of a white glow that disappears on white */
+  --lg-rim: inset 0 0 0 1px rgba(20, 30, 40, 0.085), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  /* small, soft, slightly cool shadows instead of big black ones */
+  --lg-shadow: 0 10px 26px -14px rgba(30, 45, 60, 0.26), 0 1px 2px rgba(30, 45, 60, 0.08);
+
+  /* the accent on white: darker, so that icons and outlines in it stay readable */
+  --lg-accent-ink: color-mix(in srgb, var(--lg-accent) 70%, #000);
+}
+
+/* ---------- the buttons next to the message field ---------- */
+
+html[data-lg-theme='light'] body {
+  /* the + / emoji / microphone / gif buttons take their icon colour from this variable */
+  --chat-buttons-icon-color: var(--lg-accent-ink);
+}
+
+html[data-lg-theme='light'] [data-testid='attachments-button'],
+html[data-lg-theme='light'] [data-testid='gif-button'] {
+  background: color-mix(in srgb, var(--lg-accent) 16%, rgba(255, 255, 255, 0.9)) !important;
+  box-shadow: var(--lg-rim);
+}
+
+html[data-lg-theme='light'] [data-testid='emoji-button']:hover:not(:disabled),
+html[data-lg-theme='light'] [data-testid='microphone-button']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lg-accent) 18%, transparent) !important;
+}
+
+/* ---------- field and cards ---------- */
+
+/* focus: a clean accent line, not a wide mint glow */
+html[data-lg-theme='light'] div:has(> [data-testid='message-input-text-area']):focus-within {
+  box-shadow:
+    var(--lg-rim),
+    0 0 0 2px color-mix(in srgb, var(--lg-accent) 60%, transparent),
+    0 8px 20px -12px color-mix(in srgb, var(--lg-accent) 55%, transparent);
+}
+
+/* message bubbles: edge and shadow follow the light tokens; the green gets a darker lower edge so
+   the shape reads on white */
+html[data-lg-theme='light'] div:has(> .module-message__text) {
+  box-shadow:
+    var(--lg-shadow),
+    var(--lg-rim),
+    inset 0 -1px 0 color-mix(in srgb, var(--lg-accent) 55%, #000 0%);
+}
+
+/* the "new conversation" button in the list header (on a phone it is the green floating button) */
+@media (min-width: 701px) {
+  html[data-lg-theme='light'] [data-testid='new-conversation-button'] {
+    border-color: color-mix(in srgb, var(--lg-accent-ink) 70%, transparent) !important;
+    background: color-mix(in srgb, var(--lg-accent) 14%, rgba(255, 255, 255, 0.85)) !important;
+  }
+
+  html[data-lg-theme='light'] [data-testid='new-conversation-button'] * {
+    color: var(--lg-accent-ink) !important;
+  }
+
+  html[data-lg-theme='light'] [data-testid='new-conversation-button']:hover {
+    background: color-mix(in srgb, var(--lg-accent) 26%, rgba(255, 255, 255, 0.85)) !important;
+  }
+}
