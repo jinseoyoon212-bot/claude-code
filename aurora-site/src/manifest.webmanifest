@@ -1,0 +1,2 @@
+{ "name": "Aurora — 오로라 AI", "short_name": "Aurora", "description": "무지개 오로라 얼굴과 대화하는 AI", "start_url": "/", "display": "standalone", "background_color": "#f5f7fd", "theme_color": "#f5f7fd", "lang": "ko",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }] }
