@@ -25,8 +25,10 @@ window.AURORA_SITE = true;
       const msgs0 = history.slice(-10).map((m) => ({ role: m.role, content: m.content })), lastUser = msgs0[msgs0.length - 1].content;
       let found = null, searched = false;
       const doSearch = async (q) => {                                                       // 실시간 검색 (실패해도 대화는 계속)
-        searched = true; notify({ type: 'search', query: q });
-        try { found = await S.run(q); } catch (e) { found = { query: q, results: [], error: String(e && e.message || e) }; }
+        searched = true; const t0 = Date.now(); notify({ type: 'search', query: q, sec: 0 });
+        const tick = setInterval(() => notify({ type: 'search', query: q, sec: Math.round((Date.now() - t0) / 1000) }), 1000);   // "검색 중… N초"로 멈춘 게 아님을 보여줌
+        try { found = await S.run(q); found.ms = found.ms || Date.now() - t0; } catch (e) { found = { query: q, results: [], error: /timeout|abort/i.test(String(e && e.name || e)) ? '시간 초과(7초)' : String(e && e.message || e), ms: Date.now() - t0 }; }
+        finally { clearInterval(tick); }
       };
       const mkReq = (allowMarker) => {                                                      // 검색 결과가 있으면 마지막 사용자 메시지 뒤에 붙인다 (기록에는 남기지 않음)
         const m = msgs0.map((x) => ({ ...x })); let sys = SYSTEM + `\n현재 시각: ${S.now()} (한국 시간).`;
@@ -60,7 +62,7 @@ window.AURORA_SITE = true;
         if (mk && !searched) { await doSearch(S.queryOf(mk[1])); raw = await answer(false); }  // 모델이 직접 검색을 요청한 경우
         raw = raw.replace(/^\s*\[검색:[^\]]*\]\s*/, '');
         const c = LLM.moodSplit(raw);
-        return { text: c.text.trim() || raw || '죄송해요, 답을 만들지 못했어요. 한 번만 더 물어봐 주실래요?', mood: c.mood, sources: found && found.results && found.results.length ? S.sources(found) : null };
+        return { text: c.text.trim() || raw || '죄송해요, 답을 만들지 못했어요. 한 번만 더 물어봐 주실래요?', mood: c.mood, sources: found && found.results && found.results.length ? S.sources(found) : null, note: searched ? S.note(found) : '' };
       } catch (e) {
         const m = String(e && e.message || e);
         if (s.provider === 'aurora' && /HTTP (404|405)\b/.test(m)) return { error: 'AI 연결(/api)이 이 사이트에 배포되지 않았어요. Cloudflare Pages 설정에서 Root directory가 aurora-site인지, Bindings에 Workers AI(이름 AI)가 있는지 확인한 뒤 다시 배포해 주세요. (확인: 사이트 주소 뒤에 /api/health)' };

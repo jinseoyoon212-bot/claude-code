@@ -50,7 +50,7 @@ npx wrangler pages deploy public --project-name aurora
 | `ALLOWED_ORIGINS` | 사이트 주소 외에 호출을 허용할 출처(쉼표 구분, 예: `https://my.domain.com`) |
 | `RATE_PER_MIN` | IP당 분당 대화 요청 한도 (기본 100) |
 | `SEARCH_PER_MIN` | IP당 분당 검색 요청 한도 (기본 30) |
-| `TAVILY_API_KEY` / `BRAVE_API_KEY` / `SERPER_API_KEY` | (Secret) 범용 웹 검색용. 위 "실시간 웹 검색" 참고 |
+| `SERPER_API_KEY` / `GEMINI_API_KEY` / `TAVILY_API_KEY` / `BRAVE_API_KEY` | (Secret) 구글·범용 웹 검색용. 위 "실시간 웹 검색" 참고 |
 
 ### 악용 방지 (키가 없는 공개 엔드포인트라서 꼭 권장)
 - 같은 사이트가 아닌 출처의 호출은 거부합니다(`Origin` 확인). 다만 브라우저 밖에서는 헤더를 위조할 수 있으니,
@@ -71,12 +71,14 @@ npx wrangler pages deploy public --project-name aurora
 
 > ⚠️ **키가 없으면 범용 웹 검색은 안 됩니다.** 확인해 보니 DuckDuckGo(봇 차단 202), Google(자바스크립트 차단), Brave 웹/Mojeek/Yahoo(차단·오류), Bing RSS(엉뚱한 결과)는 키 없이는 믿을 수 없었습니다. 그래서 위 키 없는 소스만 쓰고, 일반 웹 검색을 하려면 아래처럼 키를 추가하세요.
 
-### 범용 웹 검색 켜기 (추천: Tavily, 무료 월 1,000회·카드 불필요)
-1. https://tavily.com 에서 가입 → API Key 복사
-2. Cloudflare Pages → 프로젝트 → Settings → **Variables and Secrets** → Add → 유형 **Secret**, 이름 `TAVILY_API_KEY`, 값 붙여넣기 → Save → 다시 배포
-3. `https://<사이트>/api/health?search=1` 로 확인 (`search.provider`가 `tavily`로 나오면 성공)
+### 구글 검색 켜기 (추천: Serper, 약 1초 · 무료 2,500회 · 카드 불필요)
+**구글은 키 없이 긁어 갈 수 없습니다**(봇 차단). 진짜 구글 결과는 아래 둘 중 하나로만 가능합니다.
+1. **Serper (추천)** — https://serper.dev 가입 → API Key 복사 → Cloudflare Pages → Settings → **Variables and Secrets** → 유형 **Secret**, 이름 `SERPER_API_KEY` → Save → 다시 배포. 구글의 "바로 답"·지식 패널·뉴스·일반 결과를 모두 씁니다.
+2. **Gemini 구글 검색 연동** — 이미 Gemini 키가 있다면 Secret `GEMINI_API_KEY`로 추가(모델은 `GEMINI_SEARCH_MODEL`, 기본 gemini-2.5-flash). 구글 검색으로 근거를 찾아 요약해 줍니다.
 
-다른 선택지: `BRAVE_API_KEY`(Brave Search API) 또는 `SERPER_API_KEY`(serper.dev, 무료 2,500회). 여러 개를 넣으면 Tavily → Brave → Serper 순으로 씁니다.
+그 밖에 `TAVILY_API_KEY`, `BRAVE_API_KEY`도 가능합니다. 여러 개를 넣으면 Serper → Gemini → Tavily → Brave 순으로 씁니다. 확인: `/api/health?search=1` (검색시간ms와 실패 이유가 나옵니다).
+
+**속도:** 검색은 소스를 동시에 부르고 전체 4.5초(Gemini 6초) 안에 끝냅니다. 느린 소스는 버리고 받은 결과로 답하며, 화면에는 "검색 중… N초"와 "검색 0.4초 · Google" 같은 안내 칩이 나옵니다.
 
 ### 한도·비용·개인정보
 - 검색은 IP당 분당 30회(`SEARCH_PER_MIN`), 같은 질의는 2~10분 캐시(날씨 5분, 뉴스 2분)

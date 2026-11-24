@@ -10,7 +10,7 @@ const clip = (s, n) => { s = String(s || '').replace(/[\u0000-\u001f]/g, ' ').re
 const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } };
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 
-async function tf(url, init = {}, ms = 4500) {                   // 타임아웃이 있는 fetch
+async function tf(url, init = {}, ms = 3000) {                   // 타임아웃이 있는 fetch
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
   try { return await fetch(url, { ...init, signal: c.signal, headers: { 'user-agent': UA, ...(init.headers || {}) } }); } finally { clearTimeout(t); }
 }
@@ -101,13 +101,11 @@ export function relevant(topic, title, extract) {
   return toks.some((t) => (t.length >= 3 ? head.includes(t) : title.includes(t)));
 }
 async function wiki(q) {
-  const topic = topicOf(q);
-  for (const lang of /[가-힣]/.test(topic) ? ['ko', 'en'] : ['en', 'ko']) {
-    const s = await jget(`https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&srlimit=2&format=json&utf8=1`);
-    const hit = s && s.query && s.query.search && s.query.search[0]; if (!hit) continue;
-    const r = await jget(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(hit.title)}`);
-    if (r && r.extract && relevant(topic, r.title, r.extract)) return [{ title: `${r.title} — 위키백과`, url: safeUrl((r.content_urls && r.content_urls.desktop && r.content_urls.desktop.page) || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title)}`), source: `${lang}.wikipedia.org`, snippet: clip(r.extract, 420) }];
-  }
+  const topic = topicOf(q), lang = /[가-힣]/.test(topic) ? 'ko' : 'en';                       // 한 언어만, 호출은 짧게 (이전엔 ko→en 순차로 최악 18초)
+  const s = await jget(`https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&srlimit=2&format=json&utf8=1`, {}, 2500);
+  const hit = s && s.query && s.query.search && s.query.search[0]; if (!hit) return [];
+  const r = await jget(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(hit.title)}`, {}, 2500);
+  if (r && r.extract && relevant(topic, r.title, r.extract)) return [{ title: `${r.title} — 위키백과`, url: safeUrl((r.content_urls && r.content_urls.desktop && r.content_urls.desktop.page) || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title)}`), source: `${lang}.wikipedia.org`, snippet: clip(r.extract, 420) }];
   return [];
 }
 
@@ -121,12 +119,29 @@ const API = {
     const j = await (await tf(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=6&country=KR&search_lang=ko`, { headers: { accept: 'application/json', 'x-subscription-token': env.BRAVE_API_KEY } }, 7000)).json();
     return ((j.web && j.web.results) || []).map((r) => ({ title: clip(strip(r.title), 140), url: safeUrl(r.url), source: host(r.url), snippet: clip(strip(r.description), 420) }));
   },
-  async serper(q, env) {
-    const j = await (await tf('https://google.serper.dev/search', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.SERPER_API_KEY }, body: JSON.stringify({ q, gl: 'kr', hl: 'ko', num: 6 }) }, 7000)).json();
-    return (j.organic || []).map((r) => ({ title: clip(r.title, 140), url: safeUrl(r.link), source: host(r.link), snippet: clip(r.snippet, 420) }));
+  async serper(q, env) {                                                                      // 실제 구글 검색 결과 (serper.dev)
+    const j = await jget('https://google.serper.dev/search', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.SERPER_API_KEY }, body: JSON.stringify({ q, gl: 'kr', hl: 'ko', num: 8 }) }, 4000);
+    const out = [], g = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+    const ab = j.answerBox;                                                                   // 구글이 맨 위에 보여주는 "바로 답" (날씨·환율·점수·정의 등)
+    if (ab) { const t = ab.answer || ab.snippet || [].concat(ab.snippetHighlighted || []).join(' '); if (t) out.push({ title: clip(ab.title || '구글 바로 답', 100), url: safeUrl(ab.link) || g, source: 'Google 바로 답', snippet: clip(t, 420) }); }
+    const kg = j.knowledgeGraph;
+    if (kg && kg.description) out.push({ title: clip((kg.title || '') + (kg.type ? ` (${kg.type})` : ''), 100), url: safeUrl(kg.website || kg.descriptionLink) || g + '&kp=1', source: 'Google 지식 패널', snippet: clip(kg.description + ' ' + Object.entries(kg.attributes || {}).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(', '), 420) });
+    for (const s of (j.topStories || []).slice(0, 3)) out.push({ title: clip(s.title, 140), url: safeUrl(s.link), source: s.source || host(s.link), snippet: clip(`${s.source || ''} · ${s.date || ''}`, 80) });
+    for (const r of j.organic || []) out.push({ title: clip(r.title, 140), url: safeUrl(r.link), source: host(r.link), snippet: clip(r.snippet, 420) });
+    return out;
+  },
+  async gemini(q, env) {                                                                      // 구글 검색으로 근거를 찾아 정리해 주는 Gemini (이미 가진 Gemini 키 사용)
+    const body = { contents: [{ role: 'user', parts: [{ text: `Google 검색으로 최신 정보를 찾아 한국어로 사실만 간결하게(최대 6문장) 정리해 주세요. 날짜와 숫자는 정확히.\n질문: ${q}` }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2, maxOutputTokens: 600, thinkingConfig: { thinkingBudget: 0 } } };
+    const j = await jget(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash'}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body) }, 8000);
+    const cand = j.candidates && j.candidates[0]; if (!cand) return [];
+    const text = ((cand.content && cand.content.parts) || []).map((p) => p.text || '').join('').trim(), chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
+    const out = text ? [{ title: 'Google 검색 요약', url: 'https://www.google.com/search?q=' + encodeURIComponent(q), source: 'Google 검색(Gemini)', snippet: clip(text, 900) }] : [];
+    for (const ch of chunks.slice(0, 5)) if (ch.web && safeUrl(ch.web.uri)) out.push({ title: clip(ch.web.title || host(ch.web.uri), 100), url: safeUrl(ch.web.uri), source: ch.web.title || '출처', snippet: '' });
+    return out;
   },
 };
-export const apiProvider = (env) => (env && env.TAVILY_API_KEY ? 'tavily' : env && env.BRAVE_API_KEY ? 'brave' : env && env.SERPER_API_KEY ? 'serper' : null);
+// 우선순위: 구글 결과를 주는 것(Serper, Gemini) → Tavily → Brave
+export const apiProvider = (env) => (env && env.SERPER_API_KEY ? 'serper' : env && env.GEMINI_API_KEY ? 'gemini' : env && env.TAVILY_API_KEY ? 'tavily' : env && env.BRAVE_API_KEY ? 'brave' : null);
 
 export function cleanQuery(q) { q = String(q || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim(); return q.length > MAX_Q ? q.slice(0, MAX_Q) : q; }
 
@@ -139,17 +154,25 @@ async function wikiThenNews(q) {
 }
 
 /** 질문 유형에 맞는 소스만 불러 합친다. 하나가 실패해도 나머지는 쓴다 */
-export async function searchAll(q, env) {
-  const it = intents(q), key = apiProvider(env), jobs = [], names = [];
+export async function searchAll(q, env, budgetMs) {
+  const t0 = Date.now(), it = intents(q), key = apiProvider(env), jobs = [], names = [];
   const add = (name, p) => { names.push(name); jobs.push(p); };
   if (it.weather) add('weather', weather(q));
   if (it.fx) add('fx', fx());
   if (key) add(key, API[key](q, env, it.news));
   else if (it.news) add('news', news(q));
   else if (!it.weather && !it.fx) add('wiki+', wikiThenNews(q));
-  const settled = await Promise.allSettled(jobs); const results = [], failed = [], seen = new Set();
-  settled.forEach((s, i) => { if (s.status !== 'fulfilled') { failed.push(names[i]); return; } for (const r of s.value) { if (!r.url || !r.title || seen.has(r.url)) continue; seen.add(r.url); results.push(r); } });
-  return { query: q, provider: key || 'keyless', sources: names, failed, limited: !key && !it.weather && !it.fx, results: results.slice(0, TOP) };
+  // 전체 시간 상한: 정해진 시간이 지나면 끝난 소스의 결과만 쓰고 나머지는 버린다 (한 소스가 느려서 전체가 멈추는 일을 막는다)
+  const limit = budgetMs || (key === 'gemini' ? 6000 : 4500), settled = Array.from({ length: jobs.length }, () => null);
+  const watch = jobs.map((p, i) => p.then((v) => { settled[i] = { v }; }, (e) => { settled[i] = { e }; }));
+  await Promise.race([Promise.all(watch), new Promise((r) => setTimeout(r, limit))]);
+  const results = [], errors = {}, seen = new Set();
+  settled.forEach((s, i) => {
+    if (!s) { errors[names[i]] = `시간 초과(${Math.round(limit / 1000)}초)`; return; }
+    if (s.e) { errors[names[i]] = String((s.e && s.e.message) || s.e).slice(0, 80); return; }
+    for (const r of s.v) { if (!r.url || !r.title || seen.has(r.url)) continue; seen.add(r.url); results.push(r); }
+  });
+  return { query: q, provider: key || 'keyless', sources: names, failed: Object.keys(errors), errors, limited: !key && !it.weather && !it.fx, ms: Date.now() - t0, results: results.slice(0, TOP) };
 }
 
 // ---------- 캐시 (같은 질의를 짧은 시간 동안 재사용: 속도 + CPU/상류 호출 절약) ----------
