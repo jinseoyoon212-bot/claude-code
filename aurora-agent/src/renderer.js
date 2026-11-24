@@ -7,8 +7,6 @@ function showUser(text, typing) { clearTimeout(fadeT); ubub.style.visibility = '
 window.showUser = showUser;
 const setBubble = (t) => { bubble.textContent = t; FX.jelly(bubble); };
 window.setBubble = setBubble;
-const faceRect = () => { const c = document.getElementById('face').getBoundingClientRect(); return { left: c.left + c.width / 2 - 22, top: c.top + c.height / 2 - 14, width: 44, height: 28 }; };
-const inputRect = (text) => { const c = input.getBoundingClientRect(); const w = Math.min(c.width, 36 + text.length * 11); return { left: c.left + 6, top: c.top + c.height * .12, width: w, height: c.height * .76 }; };
 const history = [];
 let busy = false;
 
@@ -26,12 +24,11 @@ let turn = null;
 function beginTurn(text, from, t0) {
   busy = true; document.body.classList.add('busy');
   turn = { t0: t0 || performance.now(), tFirst: 0, streamed: false };
-  const origin = from === 'face' ? faceRect() : inputRect(text);
   if (from === 'input') { input.value = ''; FX.jelly($('form'), 'jelly'); }
   Face.react(text); setBubble('…');
   history.push({ role: 'user', content: text });
   if (window.AuroraAssist && window.AuroraAssist.onTurnStart) window.AuroraAssist.onTurnStart();
-  FX.flyUp(text, origin, ubub).then(() => { Face.poke(0.7); Face.lookAt(0, -0.5); setTimeout(() => Face.lookAt(0, 0), 900); });
+  FX.settle(text, ubub); Face.poke(0.45); Face.lookAt(0, 0.7); setTimeout(() => Face.lookAt(0, 0), 1100);     // 얼굴이 아래의 풍선을 슬쩍 내려다본다
 }
 function streamBubble(text) {                                   // 답이 오는 대로 풍선에 표시 (첫 글자가 나오기까지의 체감 시간을 줄인다)
   if (!turn || !text) return;

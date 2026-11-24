@@ -1,10 +1,13 @@
 // 음성 입력 (APK·브라우저·데스크톱 공통)
 //  1) 직접 녹음(APK는 네이티브, 그 외는 getUserMedia) + Gemini 받아쓰기   2) APK 전용 폴백: 안드로이드 음성 인식 → 시스템 음성 입력 창
 const Voice = (() => {
+  /*NATIVE:BEGIN dev*/
   const dev = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AuroraDevice;
+  /*NATIVE:END*/
   const STT_SYS = '당신은 한국어 음성 받아쓰기 도구입니다. 들린 말을 그대로 한 줄로 적습니다. 설명·따옴표·마침표 장식 없이 말한 내용만 적습니다. 소리가 없거나 알아들을 수 없으면 정확히 (없음) 이라고만 씁니다. 대부분 기기에 시키는 짧은 명령이나 질문입니다.';
   const cur = { onLevel() {}, onSpeech() {}, onPartial() {}, onStatus() {} };
   let wired = false;
+  /*NATIVE:BEGIN wire*/
   function wire() {
     const D = dev(); if (!D || wired) return; wired = true;
     D.addListener('recLevel', (e) => cur.onLevel(Number(e.lvl)));
@@ -13,6 +16,7 @@ const Voice = (() => {
     D.addListener('speechPartial', (e) => cur.onPartial(e.text));
     D.addListener('speechRms', (e) => cur.onLevel(Math.max(0, Math.min(1, (e.rms + 2) / 12))));
   }
+  /*NATIVE:END*/
   const fail = (msg, code) => { const e = new Error(msg); e.code = code; return e; };
 
   const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
@@ -48,11 +52,16 @@ const Voice = (() => {
     if (sr !== 16000) { const r = sr / 16000, m = Math.floor(pcm.length / r), out = new Float32Array(m); for (let i = 0; i < m; i++) { const p = i * r, i0 = Math.floor(p), f = p - i0; out[i] = pcm[i0] * (1 - f) + (pcm[i0 + 1] || pcm[i0]) * f; } pcm = out; }
     return b64(wavOf(pcm, 16000));
   }
+  /*NATIVE:BEGIN recordNative*/
+  async function recordNative() {                                                         // APK: 네이티브 녹음 우선 (웹뷰 권한과 무관)
+    const D = dev(); if (!(D && D.recordWav)) return { skip: true };
+    try { return { wav: (await D.recordWav({ silenceMs: 750 })).wav }; } catch (e) { return { err: e && e.message ? e.message : String(e) }; }
+  }
+  /*NATIVE:END*/
   async function record() {
-    const D = dev(); let nerr = '';
-    if (D && D.recordWav) { try { return (await D.recordWav({ silenceMs: 750 })).wav; } catch (e) { nerr = e && e.message ? e.message : String(e); } }   // APK: 네이티브 녹음 우선 (웹뷰 권한과 무관)
+    const n = await recordNative(); if (n.wav !== undefined) return n.wav;
     try { return await recordJS(); }
-    catch (e) { throw new Error((nerr ? '녹음: ' + nerr + ' / ' : '') + '마이크: ' + (e && e.name ? e.name + ' ' : '') + (e && e.message ? e.message : e)); }
+    catch (e) { throw new Error((n.err ? '녹음: ' + n.err + ' / ' : '') + '마이크: ' + (e && e.name ? e.name + ' ' : '') + (e && e.message ? e.message : e)); }
   }
   async function geminiStt(wav, s) {
     let hint = ''; try { hint = (await window.PhoneAgent.vocab()).slice(0, 80).join(', '); } catch {}
@@ -61,6 +70,7 @@ const Voice = (() => {
     const t = r.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim().replace(/^["'“”‘’「」]+|["'“”‘’「」]+$/g, '');
     return /^\(?\s*없음\s*\)?$/.test(t) ? '' : t;
   }
+  /*NATIVE:BEGIN native*/
   // 마이크 권한(APK): ① 이미 있음 ② Shizuku로 즉시 허용 ③ 권한 창(12초) → 안 되면 false
   async function ensureMic(D) {
     try { if ((await D.micStatus()).granted) return true; } catch {}
@@ -82,6 +92,7 @@ const Voice = (() => {
     for (let i = 0; i < texts.length; i++) { let sc = 0; try { sc = await window.PhoneAgent.matchScore(texts[i]); } catch {} sc += (r.scores && r.scores[i] || 0) * 0.5 - i * 0.05; if (sc > bs) { bs = sc; best = texts[i]; } }
     return { text: best, via: 'android' };
   }
+  /*NATIVE:END*/
 
   /** hooks: onStatus(text, phase), onLevel(0..1), onSpeech(), onPartial(text) → { text, via } 또는 오류(code: 'mic' | 'silence') */
   async function listen(hooks = {}) {
@@ -110,6 +121,12 @@ const Voice = (() => {
 - 질문이나 대화면 [기분:happy|sad|angry|surprised|thinking|sleepy|love|laugh|neutral] 중 하나로 시작해 한두 문장으로 짧게 답합니다.
 소리가 없거나 알아들을 수 없으면 첫 줄을 [말] (없음) 으로 하고 끝냅니다.`;
   // Gemini 한 번의 호출이 실패하면 기존 폴백(안드로이드 음성 인식 → 시스템 음성 입력 창)으로 이어진다
+  // 웹사이트 버전: 기기 조작이 없으니 모든 말을 대화로 처리
+  const SITE_TURN_SYS = `당신은 "오로라"라는 귀여운 AI입니다. 웹사이트에서 동작하며 사용자의 기기나 파일은 조작할 수 없습니다. 사용자는 음성으로 말했습니다.
+출력 형식(그대로 지킴):
+첫 줄: [말] 들린 말을 한국어로 그대로 받아쓴 것
+둘째 줄부터: [기분:happy|sad|angry|surprised|thinking|sleepy|love|laugh|neutral] 중 하나로 시작해 한두 문장으로 짧게 답합니다. 기기 조작을 시키는 말이면 웹 버전에서는 할 수 없다고 짧게 알려 줍니다.
+소리가 없거나 알아들을 수 없으면 첫 줄을 [말] (없음) 으로 하고 끝냅니다.`;
   async function listenAndAnswer(hooks = {}) {
     const s = await window.api.getSettings();
     if (!(s.provider === 'gemini' && s.apiKey)) { const v = await listen(hooks); return { text: v.text }; }       // Gemini가 아니면 기존 방식
@@ -135,14 +152,14 @@ const Voice = (() => {
     const parse = (txt) => { const m = txt.match(/^\s*\[말\]\s*([^\n]*)(\n([\s\S]*))?$/); return m ? { t: m[1].trim(), done: m[2] !== undefined, rest: m[3] || '' } : null; };
     let rs;
     try {
-      rs = await LLM.fastStream({ provider: 'gemini', apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: TURN_SYS, maxTokens: 360, signal: ctrl.signal,
+      rs = await LLM.fastStream({ provider: 'gemini', apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: window.AURORA_SITE ? SITE_TURN_SYS : TURN_SYS, maxTokens: 360, signal: ctrl.signal,
         messages: [{ role: 'user', content: [{ type: 'text', text: '듣고 처리해줘.' + (hint ? ' 자주 나오는 단어: ' + hint : '') }, { type: 'audio', source: { type: 'base64', media_type: 'audio/wav', data: wav } }] }],
         onDelta: (txt) => {
           const p = parse(txt); if (!p || !p.done) return;
           if (!told) {                                                                                       // 첫 줄(들린 말)이 완성되는 순간
             told = true; transcript = p.t; if (!transcript || /^\(?\s*없음\s*\)?$/.test(transcript)) { aborted = true; ctrl.abort(); return; }
             if (hooks.onTranscript) hooks.onTranscript(transcript);
-            const pa = window.PhoneAgent; const cmd = LLM.TOOLISH.test(transcript) || (pa && pa.matchScore ? null : false);
+            const pa = window.PhoneAgent; const cmd = !window.AURORA_SITE && LLM.TOOLISH.test(transcript);
             if (cmd) { aborted = true; ctrl.abort(); return; }                                              // 기기 조작 말이면 답 생성 중단 → 명령 경로로
             if (pa && pa.matchScore) pa.matchScore(transcript).then((sc) => { if (sc >= 2 && !aborted) { aborted = true; ctrl.abort(); } }).catch(() => {});
           }

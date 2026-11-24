@@ -1,6 +1,7 @@
 // 여러 AI 제공자를 하나의 형식(Anthropic 메시지 블록)으로 다루는 어댑터. 브라우저/Node 공용.
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.LLM = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   const PRESETS = {
+    aurora: { label: 'Aurora 기본 AI (키 없이 무료)', endpoint: '/api/v1/chat/completions', model: 'default', noKey: true, siteOnly: true, keyUrl: '필요 없음' },   // 웹사이트 전용: 사이트 서버(/api)가 클라우드플레어 AI에 대신 연결
     pollinations: { label: 'Pollinations (키 없이 무료)', endpoint: 'https://text.pollinations.ai/openai', model: 'openai', noKey: true, keyUrl: '필요 없음' },
     anthropic: { label: 'Anthropic Claude (유료)', model: 'claude-sonnet-5-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
     gemini: { label: 'Google Gemini (무료 사용량 있음)', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey' },
