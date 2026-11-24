@@ -23,6 +23,7 @@ const parts = [path.join(agent, 'llm.js'), path.join(agent, 'voice.js'), path.jo
 const js = '/* Aurora web — 기기 조작 기능 없음 */\n' + parts.map((p) => `/* ${path.basename(p)} */\n${strip(read(p))}`).join('\n;\n');
 const css = read(path.join(agent, 'style.css'));
 const jsName = `assets/app.${hash(js)}.js`, cssName = `assets/style.${hash(css)}.css`;
+try { new (require('vm').Script)(js, { filename: 'app.js' }); } catch (e) { console.error('❌ 번들 JavaScript 문법 오류:', e.message); process.exit(1); }   // 깨진 번들이 배포되지 않게
 fs.writeFileSync(path.join(out, jsName), js); fs.writeFileSync(path.join(out, cssName), css);
 
 fs.writeFileSync(path.join(out, 'index.html'), read(path.join(root, 'src', 'index.html')).replace('{{APP_JS}}', '/' + jsName).replace('{{APP_CSS}}', '/' + cssName));

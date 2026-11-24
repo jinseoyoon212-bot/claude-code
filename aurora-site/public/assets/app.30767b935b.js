@@ -3,6 +3,7 @@
 // 여러 AI 제공자를 하나의 형식(Anthropic 메시지 블록)으로 다루는 어댑터. 브라우저/Node 공용.
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.LLM = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   const PRESETS = {
+    aurora: { label: 'Aurora 기본 AI (키 없이 무료)', endpoint: '/api/v1/chat/completions', model: 'default', noKey: true, siteOnly: true, keyUrl: '필요 없음' },   // 웹사이트 전용: 사이트 서버(/api)가 클라우드플레어 AI에 대신 연결
     pollinations: { label: 'Pollinations (키 없이 무료)', endpoint: 'https://text.pollinations.ai/openai', model: 'openai', noKey: true, keyUrl: '필요 없음' },
     anthropic: { label: 'Anthropic Claude (유료)', model: 'claude-sonnet-5-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
     gemini: { label: 'Google Gemini (무료 사용량 있음)', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey' },
@@ -369,7 +370,7 @@ const FX = (() => {
 window.AURORA_SITE = true;
 (() => {
   const KEY = 'aurora-site-settings';
-  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', fastModel: '' };
+  const defaults = { provider: 'aurora', apiKey: '', model: 'default', fastModel: '' };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -383,7 +384,7 @@ window.AURORA_SITE = true;
     onEvent: (cb) => listeners.push(cb),
     send: async (history) => {
       const s = load();
-      if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 키를 넣거나, 키 없이 쓰려면 제공자를 Pollinations로 바꿔 주세요.' };
+      if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 키를 넣거나, 키 없이 쓰려면 제공자를 "Aurora 기본 AI"로 바꿔 주세요.' };
       const msgs = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
       try {
         let r = await LLM.fastStream({ provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, maxTokens: 700, messages: msgs,
@@ -653,12 +654,12 @@ input.addEventListener('input', () => Face.lookAt(0, 0.6));
 // 설정: data-k 속성이 붙은 입력칸을 자동으로 읽고 저장 (화면에 보이는 칸만)
 const dlg = $('settings');
 const prov = $('provider');
-Object.entries(LLM.PRESETS).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
+Object.entries(LLM.PRESETS).forEach(([k, v]) => { if (v.siteOnly && !window.AURORA_SITE) return; const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
 const modelEl = () => dlg.querySelector('[data-k=model]');
 function provChanged(resetModel) {
   const p = LLM.PRESETS[prov.value] || LLM.PRESETS.pollinations, m = modelEl();
   if (resetModel && (!m.value || Object.values(LLM.PRESETS).some((x) => x.model === m.value))) m.value = p.model;
-  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'pollinations' ? '  (API 키 칸은 비워 두세요)' : prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
+  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'pollinations' || prov.value === 'aurora' ? '  (API 키 칸은 비워 두세요)' : prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
 }
 prov.addEventListener('change', () => provChanged(true));
 const fields = () => [...dlg.querySelectorAll('[data-k]')];

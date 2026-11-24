@@ -2,7 +2,7 @@
 window.AURORA_SITE = true;
 (() => {
   const KEY = 'aurora-site-settings';
-  const defaults = { provider: 'pollinations', apiKey: '', model: 'openai', fastModel: '' };
+  const defaults = { provider: 'aurora', apiKey: '', model: 'default', fastModel: '' };
   const load = () => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...defaults }; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
   const listeners = [];
@@ -16,7 +16,7 @@ window.AURORA_SITE = true;
     onEvent: (cb) => listeners.push(cb),
     send: async (history) => {
       const s = load();
-      if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 키를 넣거나, 키 없이 쓰려면 제공자를 Pollinations로 바꿔 주세요.' };
+      if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 키를 넣거나, 키 없이 쓰려면 제공자를 "Aurora 기본 AI"로 바꿔 주세요.' };
       const msgs = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
       try {
         let r = await LLM.fastStream({ provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, maxTokens: 700, messages: msgs,

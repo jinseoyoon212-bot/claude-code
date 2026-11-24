@@ -79,12 +79,12 @@ input.addEventListener('input', () => Face.lookAt(0, 0.6));
 // 설정: data-k 속성이 붙은 입력칸을 자동으로 읽고 저장 (화면에 보이는 칸만)
 const dlg = $('settings');
 const prov = $('provider');
-Object.entries(LLM.PRESETS).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
+Object.entries(LLM.PRESETS).forEach(([k, v]) => { if (v.siteOnly && !window.AURORA_SITE) return; const o = document.createElement('option'); o.value = k; o.textContent = v.label; prov.appendChild(o); });
 const modelEl = () => dlg.querySelector('[data-k=model]');
 function provChanged(resetModel) {
   const p = LLM.PRESETS[prov.value] || LLM.PRESETS.pollinations, m = modelEl();
   if (resetModel && (!m.value || Object.values(LLM.PRESETS).some((x) => x.model === m.value))) m.value = p.model;
-  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'pollinations' ? '  (API 키 칸은 비워 두세요)' : prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
+  $('keyHelp').textContent = 'API 키 발급: ' + p.keyUrl + (prov.value === 'pollinations' || prov.value === 'aurora' ? '  (API 키 칸은 비워 두세요)' : prov.value === 'anthropic' ? '' : '  (무료, 카드 등록 없이 가능. 한도 초과 시 잠시 후 재시도)');
 }
 prov.addEventListener('change', () => provChanged(true));
 const fields = () => [...dlg.querySelectorAll('[data-k]')];
