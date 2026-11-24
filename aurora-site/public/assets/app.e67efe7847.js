@@ -671,12 +671,8 @@ let busy = false;
 function addLog(msg) { const d = document.createElement('div'); d.textContent = msg; log.appendChild(d); log.scrollTop = log.scrollHeight; }
 const toolLabel = {};
 
-function renderSources(items, note) {                                  // 답변 아래 출처 칩 (웹사이트 버전: #sources 요소가 있을 때만)
-  const el = $('sources'); if (!el) return; el.textContent = '';
-  const list = (items || []).filter((it) => it && /^https?:\/\//.test(it.url)); if (!list.length && !note) return;
-  if (note) { const n = document.createElement('span'); n.className = 'src note'; n.textContent = '🔍 ' + note; el.appendChild(n); }
-  for (const it of list) { const a = document.createElement('a'); a.className = 'src'; a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = it.title || ''; a.textContent = (it.source ? it.source + ' · ' : '') + String(it.title || '').slice(0, 24); el.appendChild(a); }
-  FX.jelly(el);
+function renderSources() {                                  // 출처 링크·검색 시간 칩은 표시하지 않는다 (답변이 가려져서) — 이전 칩만 지운다
+  const el = $('sources'); if (el) el.textContent = '';
 }
 api.onEvent((ev) => {
   if (ev.type === 'search') { setBubble('🔍 “' + String(ev.query).slice(0, 26) + '” 검색 중…' + (ev.sec ? ' ' + ev.sec + '초' : '')); Face.setMood('thinking'); Face.doMotion('tilt'); return; }
