@@ -396,7 +396,11 @@ window.AURORA_SITE = true;
           raw = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
         }
         const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw, mood: c.mood };
-      } catch (e) { return { error: String(e && e.message || e) }; }
+      } catch (e) {
+        const m = String(e && e.message || e);
+        if (s.provider === 'aurora' && /HTTP (404|405)\b/.test(m)) return { error: 'AI 연결(/api)이 이 사이트에 배포되지 않았어요. Cloudflare Pages 설정에서 Root directory가 aurora-site인지, Bindings에 Workers AI(이름 AI)가 있는지 확인한 뒤 다시 배포해 주세요. (확인: 사이트 주소 뒤에 /api/health)' };
+        return { error: m };
+      }
     },
   };
 })();
