@@ -13,7 +13,14 @@ let busy = false;
 function addLog(msg) { const d = document.createElement('div'); d.textContent = msg; log.appendChild(d); log.scrollTop = log.scrollHeight; }
 const toolLabel = { run_command: (i) => '⚙ 실행: ' + i.command, read_file: (i) => '📖 읽기: ' + i.path, write_file: (i) => '✏ 쓰기: ' + i.path, list_dir: (i) => '📂 목록: ' + i.path, system_info: () => '🖥 시스템 정보', launch_app: (i) => '📱 앱 실행: ' + (i.name || i.package), list_apps: () => '📱 앱 목록 확인', screen_read: () => '👀 화면 읽는 중', screen_click_text: (i) => '👆 누르는 중: ' + i.text, screen_tap: () => '👆 화면 탭', screen_swipe: () => '👆 스와이프', screen_type: (i) => '⌨ 입력: ' + i.text, screen_global: (i) => '🔘 ' + i.action, device_info: () => '📊 기기 정보', open_intent: () => '🔗 열기', wait: () => '⏳ 잠시 대기', adb_command: (i) => '🛠 adb: ' + i.command, request_all_files_access: () => '🔐 파일 권한 요청', open_accessibility_settings: () => '🔐 접근성 설정 열기' };
 
+function renderSources(items) {                                  // 답변 아래 출처 칩 (웹사이트 버전: #sources 요소가 있을 때만)
+  const el = $('sources'); if (!el) return; el.textContent = '';
+  const list = (items || []).filter((it) => it && /^https?:\/\//.test(it.url)); if (!list.length) return;
+  for (const it of list) { const a = document.createElement('a'); a.className = 'src'; a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = it.title || ''; a.textContent = (it.source ? it.source + ' · ' : '') + String(it.title || '').slice(0, 24); el.appendChild(a); }
+  FX.jelly(el);
+}
 api.onEvent((ev) => {
+  if (ev.type === 'search') { setBubble('🔍 “' + String(ev.query).slice(0, 26) + '” 검색 중…'); Face.setMood('thinking'); Face.doMotion('tilt'); return; }
   if (ev.type === 'delta') { streamBubble(ev.text); return; }
   if (ev.type === 'wait') { bubble.textContent = `무료 서버 한도 때문에 ${ev.seconds}초 기다리는 중이에요… ⏳`; Face.setMood('sleepy'); return; }
   if (ev.type === 'tool') { bubble.textContent = '🔧 ' + ((toolLabel[ev.name] || (() => ev.name))(ev.input)) + ' …'; Face.setMood('thinking'); Face.doMotion('nod'); addLog((toolLabel[ev.name] || (() => ev.name))(ev.input)); }
@@ -22,7 +29,7 @@ api.onEvent((ev) => {
 // ---- 한 번의 요청(턴): 시작 → (글자가 스트리밍으로 표시) → 끝. 걸린 시간도 기록 ----
 let turn = null;
 function beginTurn(text, from, t0) {
-  clearTimeout(fadeT); busy = true; document.body.classList.add('busy');
+  clearTimeout(fadeT); renderSources(null); busy = true; document.body.classList.add('busy');
   turn = { t0: t0 || performance.now(), tFirst: 0, streamed: false };
   if (from === 'input') { input.value = ''; FX.jelly($('form'), 'jelly'); }
   Face.react(text); setBubble('…');
@@ -45,6 +52,7 @@ function finishTurn(r) {
   history.push({ role: 'assistant', content: r.text });
   Face.setMood(r.mood); Face.doMotion({ happy: 'wave', laugh: 'bounce', love: 'bounce', sad: 'droop', angry: 'shake', surprised: 'jump', sleepy: 'sway', thinking: 'tilt' }[r.mood] || 'nod');
   if (t && t.streamed) bubble.textContent = r.text; else setBubble(r.text);
+  renderSources(r.sources);
   if (window.AuroraAssist) window.AuroraAssist.onAnswer(r);
   Face.setTalking(true); setTimeout(() => Face.setTalking(false), Math.min(4000, 300 + r.text.length * 60));
 }

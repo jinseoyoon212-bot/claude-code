@@ -48,12 +48,41 @@ npx wrangler pages deploy public --project-name aurora
 |---|---|
 | `AI_MODEL` | 사용할 모델(쉼표로 여러 개 가능, 앞에서부터 시도). 기본: `@cf/google/gemma-4-26b-a4b-it` → `@cf/qwen/qwen3-30b-a3b-fp8` → `@cf/meta/llama-3.1-8b-instruct-fp8-fast` |
 | `ALLOWED_ORIGINS` | 사이트 주소 외에 호출을 허용할 출처(쉼표 구분, 예: `https://my.domain.com`) |
-| `RATE_PER_MIN` | IP당 분당 요청 한도 (기본 100) |
+| `RATE_PER_MIN` | IP당 분당 대화 요청 한도 (기본 100) |
+| `SEARCH_PER_MIN` | IP당 분당 검색 요청 한도 (기본 30) |
+| `TAVILY_API_KEY` / `BRAVE_API_KEY` / `SERPER_API_KEY` | (Secret) 범용 웹 검색용. 위 "실시간 웹 검색" 참고 |
 
 ### 악용 방지 (키가 없는 공개 엔드포인트라서 꼭 권장)
 - 같은 사이트가 아닌 출처의 호출은 거부합니다(`Origin` 확인). 다만 브라우저 밖에서는 헤더를 위조할 수 있으니,
 - Cloudflare 대시보드 → Security → WAF → **Rate limiting rules**에 `/api/*` 경로를 IP당 분당 100~120회로 제한하는 규칙을 하나 추가하세요(무료 플랜 1개 포함).
 - 사용량은 대시보드 → AI → Workers AI에서 확인할 수 있습니다.
+
+## 🔍 실시간 웹 검색
+최신 정보가 필요한 질문(날씨·뉴스·환율·가격·순위·"검색해줘" 등)이면 자동으로 검색하고, 그 결과를 AI에게 근거로 주어 답합니다. 답변 아래에 **출처 칩**(클릭하면 원문)이 붙습니다. ⚙ 설정 → "🔍 실시간 웹 검색"에서 자동/항상/끄기를 고를 수 있습니다.
+브라우저 → `/api/search`(Pages Function) → 아래 소스. 키는 방문자가 아니라 **사이트 주인이 서버 비밀값으로** 한 번만 넣습니다.
+
+| 소스 | 키 | 되는 것 |
+|---|---|---|
+| Open-Meteo | 필요 없음 | 도시별 **실시간 날씨**·3일 예보 (주요 한국/해외 도시는 좌표 표로 즉시 처리) |
+| ExchangeRate-API | 필요 없음 | 원/달러·엔·유로·위안 **환율** |
+| Google 뉴스 RSS | 필요 없음 | **뉴스·속보** (최신 기사 6건, 출처·시각 포함) |
+| 위키백과 | 필요 없음 | 사실·개념 설명 (거절되거나 관련이 없으면 자동으로 버림) |
+| **Tavily / Brave / Serper** | **사이트 주인이 1개만 추가** | **범용 웹 검색**(제품 가격, 맛집, 일반 정보 등 무엇이든) |
+
+> ⚠️ **키가 없으면 범용 웹 검색은 안 됩니다.** 확인해 보니 DuckDuckGo(봇 차단 202), Google(자바스크립트 차단), Brave 웹/Mojeek/Yahoo(차단·오류), Bing RSS(엉뚱한 결과)는 키 없이는 믿을 수 없었습니다. 그래서 위 키 없는 소스만 쓰고, 일반 웹 검색을 하려면 아래처럼 키를 추가하세요.
+
+### 범용 웹 검색 켜기 (추천: Tavily, 무료 월 1,000회·카드 불필요)
+1. https://tavily.com 에서 가입 → API Key 복사
+2. Cloudflare Pages → 프로젝트 → Settings → **Variables and Secrets** → Add → 유형 **Secret**, 이름 `TAVILY_API_KEY`, 값 붙여넣기 → Save → 다시 배포
+3. `https://<사이트>/api/health?search=1` 로 확인 (`search.provider`가 `tavily`로 나오면 성공)
+
+다른 선택지: `BRAVE_API_KEY`(Brave Search API) 또는 `SERPER_API_KEY`(serper.dev, 무료 2,500회). 여러 개를 넣으면 Tavily → Brave → Serper 순으로 씁니다.
+
+### 한도·비용·개인정보
+- 검색은 IP당 분당 30회(`SEARCH_PER_MIN`), 같은 질의는 2~10분 캐시(날씨 5분, 뉴스 2분)
+- 사용자의 질문(검색어)이 위 검색 서비스로 전송됩니다. 민감한 내용은 입력하지 마세요.
+- 검색 결과 안의 문장은 "자료"로만 쓰도록 AI에게 지시하며(프롬프트 주입 방지), 링크는 http/https만 허용합니다.
+- 무료 플랜 CPU 한도(요청당 10ms)에 맞춰 큰 응답은 앞부분만 읽고 가볍게 파싱합니다(뉴스 파싱 약 1ms).
 
 ## 수정 후 다시 만들기
 ```

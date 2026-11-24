@@ -18,8 +18,8 @@ const STUBS = {
 };
 const strip = (src) => src.replace(/\/\*NATIVE:BEGIN (\w+)\*\/[\s\S]*?\/\*NATIVE:END\*\//g, (_, k) => { if (!(k in STUBS)) throw new Error('알 수 없는 NATIVE 블록: ' + k); return STUBS[k]; })
                            .replace(/^const toolLabel = \{.*\};$/m, 'const toolLabel = {};');
-// 스크립트: 한 파일로 합친다 (요청 수 감소). 순서가 중요: llm → voice → fx → site-api → face → renderer
-const parts = [path.join(agent, 'llm.js'), path.join(agent, 'voice.js'), path.join(agent, 'fx.js'), path.join(root, 'src', 'site-api.js'), path.join(agent, 'face.js'), path.join(agent, 'renderer.js')];
+// 스크립트: 한 파일로 합친다 (요청 수 감소). 순서가 중요: llm → voice → fx → search → site-api → face → renderer
+const parts = [path.join(agent, 'llm.js'), path.join(agent, 'voice.js'), path.join(agent, 'fx.js'), path.join(root, 'src', 'search.js'), path.join(root, 'src', 'site-api.js'), path.join(agent, 'face.js'), path.join(agent, 'renderer.js')];
 const js = '/* Aurora web — 기기 조작 기능 없음 */\n' + parts.map((p) => `/* ${path.basename(p)} */\n${strip(read(p))}`).join('\n;\n');
 const css = read(path.join(agent, 'style.css'));
 const jsName = `assets/app.${hash(js)}.js`, cssName = `assets/style.${hash(css)}.css`;

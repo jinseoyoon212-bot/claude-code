@@ -159,7 +159,7 @@ const Voice = (() => {
           if (!told) {                                                                                       // 첫 줄(들린 말)이 완성되는 순간
             told = true; transcript = p.t; if (!transcript || /^\(?\s*없음\s*\)?$/.test(transcript)) { aborted = true; ctrl.abort(); return; }
             if (hooks.onTranscript) hooks.onTranscript(transcript);
-            const pa = window.PhoneAgent; const cmd = !window.AURORA_SITE && LLM.TOOLISH.test(transcript);
+            const pa = window.PhoneAgent; const cmd = window.AURORA_SITE ? !!(window.AuroraSearch && window.AuroraSearch.needs(transcript)) : LLM.TOOLISH.test(transcript);   // 사이트: 검색이 필요한 말이면 검색 경로로
             if (cmd) { aborted = true; ctrl.abort(); return; }                                              // 기기 조작 말이면 답 생성 중단 → 명령 경로로
             if (pa && pa.matchScore) pa.matchScore(transcript).then((sc) => { if (sc >= 2 && !aborted) { aborted = true; ctrl.abort(); } }).catch(() => {});
           }

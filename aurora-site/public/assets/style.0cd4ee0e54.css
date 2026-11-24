@@ -45,7 +45,7 @@ main { flex: 1; display: flex; flex-direction: column; align-items: center; min-
 
 /* 오로라의 답변 */
 #bubble { order: 2; position: relative; margin: 6px 0 10px; padding: 14px 22px; border-radius: 28px; max-width: min(92vw, 600px); text-align: center; font-size: 16.5px; line-height: 1.55; white-space: pre-wrap; max-height: 32vh; overflow: auto; }
-#log { order: 3; width: min(92vw, 600px); flex: 1; overflow: auto; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 0 10px; font-size: 12.5px; color: var(--ink2); }
+#log { order: 4; width: min(92vw, 600px); flex: 1; overflow: auto; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 0 10px; font-size: 12.5px; color: var(--ink2); }
 #log div { position: relative; padding: 6px 14px; border-radius: 999px; max-width: 100%; word-break: break-all; animation: pop .35s ease both; }
 
 /* 입력 바: 둥근 유리 캡슐 + 포커스/생각 중일 때 애플 인텔리전스 빛 */
@@ -144,3 +144,12 @@ body.listening #form { transform: scale(calc(1.01 + var(--lvl, 0) * .03), calc(1
 #face:active { filter: drop-shadow(0 16px 30px rgba(140, 112, 255, .5)) brightness(1.04); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* 검색 출처 칩 */
+#sources { order: 3; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: min(92vw, 600px); margin: 0 0 8px; }
+#sources:empty { display: none; }
+#sources .src { position: relative; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--ink2); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: linear-gradient(160deg, var(--glass-a), var(--glass-b)); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); border: 1px solid var(--rim);
+  box-shadow: 0 6px 18px rgba(46, 56, 120, .10), inset 0 1.5px 0 rgba(255, 255, 255, .95); transition: transform .5s var(--spring), color .2s; }
+#sources .src:hover { transform: translateY(-2px) scale(1.03); color: var(--ink); }
+#sources .src:active { transform: scale(.94); }

@@ -17,6 +17,7 @@
 <main>
   <div id="stage"><div id="ubub"></div><canvas id="face" width="520" height="520" aria-label="오로라 얼굴 (누르면 말할 수 있어요)"></canvas></div>
   <div id="bubble">안녕! 나는 오로라야</div>
+  <div id="sources"></div>
   <div id="log"></div>
 </main>
 <form id="form"><input id="input" placeholder="오로라에게 물어보세요" autocomplete="off" autofocus><button class="send primary" aria-label="보내기"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button></form>
@@ -27,6 +28,7 @@
   <p class="hint" id="keyHelp"></p>
   <label>모델<input data-k="model"></label>
   <label>빠른 응답용 모델 (비우면 자동)<input data-k="fastModel" placeholder="gemini-2.5-flash-lite"></label>
+  <label>🔍 실시간 웹 검색<select data-k="searchMode"><option value="auto">자동 (최신 정보가 필요한 질문일 때)</option><option value="always">항상 검색</option><option value="off">끄기</option></select></label>
   <p class="hint">✨ 기본값 "Aurora 기본 AI"는 사이트가 대신 연결해 줘서 키가 필요 없어요. (다른 제공자를 쓰려면 키를 넣으세요)<br>🔒 입력한 API 키는 이 브라우저에만 저장되고, 선택한 AI 제공자에게만 전송돼요.<br>🎤 얼굴을 눌러 말하는 기능은 Google Gemini 키가 있을 때 쓸 수 있어요.</p>
   <menu><button value="cancel">닫기</button><button id="save" class="primary" value="ok">저장</button></menu>
 </form></dialog>
