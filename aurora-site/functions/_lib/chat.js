@@ -4,7 +4,6 @@
 // 사용 모델: 환경변수 AI_MODEL(쉼표로 여러 개 가능)이 있으면 그것, 없으면 아래 순서로 시도한다 (앞 모델이 없거나 실패하면 다음 모델)
 export const DEFAULT_MODELS = ['@cf/google/gemma-4-26b-a4b-it', '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/meta/llama-3.1-8b-instruct-fp8-fast'];
 const MAX_MESSAGES = 12, MAX_CONTENT = 2000, MAX_TOTAL = 9000, MAX_TOKENS = 900;
-const THINK_CAP = 1400;      // 보이는 답 없이 "생각"만 이만큼(글자) 이어지면 끊고 생각 없이 다시 답하게 한다
 
 const json = (status, error, extra = {}) => new Response(JSON.stringify({ error: { message: error } }), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra } });
 
@@ -63,12 +62,11 @@ const textOf = (d) => {                         // 모델마다 다른 응답 �
   return '';
 };
 
-const reasoningOf = (d) => { const c = d && d.choices && d.choices[0]; const m = c && (c.delta || c.message); return (m && (m.reasoning_content || m.reasoning)) || ''; };   // 별도 필드로 오는 생각 과정
-
-// 생각 모델은 생각을 끄거나 줄이는 설정을 같이 보낸다 (지원하지 않는 설정이면 아래에서 설정 없이 다시 시도)
+// 생각(reasoning)을 끈다. Workers AI 문서: chat_template_kwargs.enable_thinking 의 기본값은 true라서, 끄지 않으면 모델이 매번 길게 생각해 답이 10초 넘게 걸린다.
+// 지원하지 않는 모델이면 아래 runModel에서 설정 없이 다시 시도한다.
 function prepare(model, messages, strict) {
-  const msgs = messages.map((m) => ({ ...m })), extra = {};
-  if (/qwen3/i.test(model)) { extra.chat_template_kwargs = { enable_thinking: false }; for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') { msgs[i].content += ' /no_think'; break; } }
+  const msgs = messages.map((m) => ({ ...m })), extra = { chat_template_kwargs: { enable_thinking: false } };
+  if (/qwen3/i.test(model)) for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') { msgs[i].content += ' /no_think'; break; }   // Qwen3의 소프트 스위치도 함께
   if (strict) msgs.unshift({ role: 'system', content: '생각 과정이나 설명은 쓰지 말고, 바로 한국어로 짧게 답만 하세요.' });
   return { msgs, extra };
 }
@@ -90,57 +88,34 @@ export async function runModel(env, messages, { stream, maxTokens, strict = fals
 }
 
 const FALLBACK_TEXT = '죄송해요, 답을 만들지 못했어요. 한 번만 더 물어봐 주실래요?';
-const sseChunk = (t) => 'data: ' + JSON.stringify({ choices: [{ delta: { content: t } }] }) + '\n\n';
 
-export async function handleChat(request, env, ctx) {
+export async function handleChat(request, env) {
   if (!env || !env.AI) return json(503, 'AI 연결(Workers AI 바인딩 "AI")이 설정되지 않았어요. 사이트 관리자에게 알려 주세요.');
   if (!originOk(request, env)) return json(403, '허용되지 않은 출처예요.');
   const wait = rateOk(request.headers.get('cf-connecting-ip') || 'local', Number(env.RATE_PER_MIN) || 100);
   if (wait) return json(429, `요청이 너무 많아요. Retry after ${wait}s`, { 'retry-after': String(wait) });
   let body; try { body = await request.json(); } catch { return json(400, '요청 형식이 올바르지 않아요.'); }
   const messages = cleanMessages(body && body.messages); if (!messages) return json(400, '대화 내용이 비었어요.');
-  const stream = body.stream === true, maxTokens = Math.max(16, Math.min(Number(body.max_tokens) || 400, MAX_TOKENS));
+  const strict = body.strict === true;                  // 브라우저가 "생각만 길어져서" 다시 요청할 때 보내는 표시: 스트림 없이, 생각 없이
+  const stream = !strict && body.stream === true, maxTokens = Math.max(16, Math.min(Number(body.max_tokens) || 400, MAX_TOKENS));
 
   let run;
-  try { run = await runModel(env, messages, { stream, maxTokens }); }
+  try { run = await runModel(env, messages, { stream, maxTokens, strict }); }
   catch (e) {
     if (isQuota(e)) return json(429, '오늘의 무료 AI 사용량을 모두 썼어요. 내일 오전 9시(한국 시간)에 다시 채워져요.');
     return json(502, 'AI 서버에서 오류가 났어요: ' + String((e && e.message) || e).slice(0, 160));
   }
   const { out } = run;
+  const hdr = { 'cache-control': 'no-store', 'x-aurora-model': run.model };
 
-  // 생각만 하다 끝난 경우: 생각 없이 한 번 더(비스트림) 답하게 한다
-  const retryStrict = async () => { try { const r2 = await runModel(env, messages, { stream: false, maxTokens: 400, strict: true }); return makeThinkFilter()(textOf(r2.out), true).trim(); } catch { return ''; } };
-
-  if (!stream) {
+  if (!stream) {                                    // 한 번만 해석하는 비스트림(strict 재시도 포함): 생각 구간 제거, 비면 생각 없이 한 번 더
     let text = makeThinkFilter()(textOf(out), true).trim();
-    if (!text) text = (await retryStrict()) || FALLBACK_TEXT;
-    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: text } }] }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-aurora-model': run.model } });
+    if (!text && !strict) { try { const r2 = await runModel(env, messages, { stream: false, maxTokens: 400, strict: true }); text = makeThinkFilter()(textOf(r2.out), true).trim(); } catch { /* 아래 대체 문구 */ } }
+    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: text || FALLBACK_TEXT } }] }), { headers: { ...hdr, 'content-type': 'application/json; charset=utf-8' } });
   }
-  // 스트리밍: 어떤 모양의 SSE가 와도 OpenAI 호환 delta로 바꿔 내보낸다. 보이는 글 없이 생각만 길어지면 끊고 다시 시도한다
-  const enc = new TextEncoder(), dec = new TextDecoder(), ts = new TransformStream(), writer = ts.writable.getWriter();
-  const upstream = (out && out.getReader) ? out : new ReadableStream({ start(c2) { c2.enqueue(enc.encode('data: ' + JSON.stringify({ response: textOf(out) }) + '\n\n')); c2.close(); } });
-  const pump = (async () => {
-    const filter = makeThinkFilter(); let sent = false, thought = 0, buf = '';
-    const emit = async (t) => { if (t) { sent = true; await writer.write(enc.encode(sseChunk(t))); } };
-    const reader = upstream.getReader();
-    try {
-      outer: for (;;) {
-        const { done, value } = await reader.read(); if (done) break;
-        buf += typeof value === 'string' ? value : dec.decode(value, { stream: true }); let i;
-        while ((i = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue;
-          const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
-          let j; try { j = JSON.parse(d); } catch { continue; }
-          thought += reasoningOf(j).length; await emit(filter(textOf(j)));
-          if (!sent && thought + filter.dropped > THINK_CAP) { try { await reader.cancel(); } catch {} break outer; }      // 생각만 너무 길다 → 끊는다
-        }
-      }
-      await emit(filter('', true));
-    } catch (e) { /* 업스트림 오류: 아래에서 대체 응답 */ }
-    if (!sent) await emit((await retryStrict()) || FALLBACK_TEXT);
-    await writer.write(enc.encode('data: [DONE]\n\n')); await writer.close();
-  })();
-  if (ctx && ctx.waitUntil) ctx.waitUntil(pump.catch(() => {}));
-  return new Response(ts.readable, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no', 'x-aurora-model': run.model } });
+  // 스트리밍: Workers AI의 스트림을 **그대로 통과**시킨다. (이벤트마다 해석하면 무료 플랜의 요청당 CPU 10ms 한도를 넘어 응답이 중간에 끊긴다)
+  // 모양 변환·생각 제거는 브라우저(llm.js)가 한다.
+  const passthrough = (out && typeof out.getReader === 'function') ? out
+    : new ReadableStream({ start(ctl) { const e = new TextEncoder(); ctl.enqueue(e.encode('data: ' + JSON.stringify({ response: textOf(out) }) + '\n\ndata: [DONE]\n\n')); ctl.close(); } });
+  return new Response(passthrough, { headers: { ...hdr, 'content-type': 'text/event-stream; charset=utf-8', 'x-accel-buffering': 'no' } });
 }

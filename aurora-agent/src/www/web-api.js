@@ -55,10 +55,16 @@
     if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 AI 제공자와 API 키를 넣거나 PC 서버에 연결해 주세요.' };
     try {
       const msgs = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-      let r = await LLM.fastStream({ provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, maxTokens: 700, messages: msgs,
-        onWait: (sec) => notify({ type: 'wait', seconds: sec }), onDelta: (t) => { const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
-      let raw = (r.content[0] && r.content[0].text || '').trim();
-      if (!raw) { r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 700, messages: msgs, onWait: (sec) => notify({ type: 'wait', seconds: sec }) }); raw = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); }
+      const common = { provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, messages: msgs, onWait: (sec) => notify({ type: 'wait', seconds: sec }) };
+      const viaCall = async () => { const r = await LLM.call({ ...common, maxTokens: 700 }); return r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); };
+      let raw = '';
+      try {
+        const r = await LLM.fastStream({ ...common, maxTokens: 700, onDelta: (t) => { const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
+        raw = (r.content[0] && r.content[0].text || '').trim();
+      } catch (e) {                                                                          // 생각만 길어지거나 연결이 끊기면 스트리밍 없이 한 번 더
+        if (e && (e.code === 'THINKING' || /network error|Failed to fetch|Load failed|NetworkError|ERR_/i.test(String(e.message)))) raw = await viaCall(); else throw e;
+      }
+      if (!raw) raw = await viaCall();
       const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw, mood: c.mood };
     } catch (e) { return { error: String(e.message || e) }; }
   }

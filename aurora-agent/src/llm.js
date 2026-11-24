@@ -11,6 +11,31 @@
   const env = (k) => (typeof process !== 'undefined' && process.env && process.env[k]) || '';
   const errMsg = (data, status) => { const d = Array.isArray(data) ? data[0] : data; const e = d && d.error; return (e && (e.message || (typeof e === 'string' ? e : JSON.stringify(e)))) || 'HTTP ' + status; };
   const EFFORTS = ['none', 'low', null];       // Gemini 생각 단계: 모델이 거부하면 한 단계씩 완화
+  // <think>…</think> 같은 "생각" 구간을 걸러낸다 (조각 경계에 걸쳐도 동작). dropped = 지금까지 버린 글자 수
+  function makeThinkFilter() {
+    let inThink = false, buf = '', dropped = 0;
+    const f = (chunk, flush = false) => {
+      buf += chunk; let out = '';
+      for (;;) {
+        if (inThink) { const i = buf.indexOf('</think>'); if (i < 0) { dropped += Math.max(0, buf.length - 8); buf = buf.slice(-8); return out; } dropped += i; buf = buf.slice(i + 8); inThink = false; }
+        else {
+          const i = buf.indexOf('<think>'); if (i >= 0) { out += buf.slice(0, i); buf = buf.slice(i + 7); inThink = true; continue; }
+          const keep = flush ? 0 : (() => { for (let k = Math.min(6, buf.length); k > 0; k--) if ('<think>'.startsWith(buf.slice(-k))) return k; return 0; })();
+          out += buf.slice(0, buf.length - keep); buf = buf.slice(buf.length - keep); return out;
+        }
+      }
+    };
+    Object.defineProperty(f, 'dropped', { get: () => dropped });
+    return f;
+  }
+  // 서버/모델마다 다른 응답 모양을 { text, reasoning } 하나로: Workers AI 고유({response}) / OpenAI 호환(choices[].delta|message)
+  function oaParse(d, whole) {
+    if (d == null) return {}; if (typeof d === 'string') return { text: d };
+    if (typeof d.response === 'string') return { text: d.response };
+    const c = d.choices && d.choices[0]; if (!c) return {};
+    const m = (whole ? (c.message || c.delta) : (c.delta || c.message)) || {};
+    return { text: typeof m.content === 'string' ? m.content : (typeof c.text === 'string' ? c.text : ''), reasoning: m.reasoning_content || m.reasoning || '' };
+  }
   const effortIdx = {};                          // `${제공자}:${모델}` → 마지막으로 통한 단계 (다음부터는 실패한 단계를 건너뛰어 왕복을 아낀다)
   const badFast = {};                            // 존재하지 않아 못 쓴 빠른 모델 기억
 
@@ -51,7 +76,7 @@
   }
   const call = (opts) => withRetry(() => callOnce(opts), opts);
 
-  async function callOnce({ provider = 'anthropic', apiKey, model, system, tools = [], messages, maxTokens = 4096, baseUrl }) {
+  async function callOnce({ provider = 'anthropic', apiKey, model, system, tools = [], messages, maxTokens = 4096, baseUrl, extra }) {
     const p = PRESETS[provider] || PRESETS.anthropic;
     model = model || p.model;
     if (provider === 'anthropic' || !PRESETS[provider]) {
@@ -62,7 +87,7 @@
       return { content: data.content, stop_reason: data.stop_reason };
     }
     // OpenAI 호환 (Gemini / Groq / OpenRouter / Pollinations)
-    const body = { model, messages: toOA(system, messages), max_tokens: maxTokens };
+    const body = { model, messages: toOA(system, messages), max_tokens: maxTokens, ...extra };
     if (tools.length) body.tools = oaTools(tools);
     const url = oaUrl(p, baseUrl), headers = oaHeaders(apiKey), key = provider + ':' + model;
     const efforts = provider === 'gemini' ? EFFORTS.slice(effortIdx[key] || 0) : [null];
@@ -81,49 +106,61 @@
     return { content, stop_reason: (msg.tool_calls || []).length ? 'tool_use' : 'end_turn' };
   }
 
-  /** 글자가 생성되는 대로 onDelta(지금까지의 글)를 부른다. 도구 호출 없이 글만. signal로 중단 가능 */
-  async function streamOnce({ provider = 'anthropic', apiKey, model, system, messages, maxTokens = 400, baseUrl, onDelta: onDelta0, signal: outer, firstTokenMs = 25000, totalMs = 60000 }) {
+  /** 글자가 생성되는 대로 onDelta(지금까지의 글)를 부른다. 도구 호출 없이 글만. signal로 중단 가능.
+   *  - 생각만 길어지면(thinkMs/thinkCap) code='THINKING' 오류로 끊는다 → 호출자가 "생각 없이" 다시 요청
+   *  - 중간에 연결이 끊겨도 이미 받은 글이 있으면 그것을 결과로 돌려준다 */
+  async function streamOnce({ provider = 'anthropic', apiKey, model, system, messages, maxTokens = 400, baseUrl, onDelta: onDelta0, signal: outer, firstTokenMs = 25000, totalMs = 60000, thinkMs = 9000, thinkCap = 1500, extra }) {
     const p = PRESETS[provider] || PRESETS.anthropic; model = model || p.model; let text = '';
-    // 무한 대기 방지: 첫 글자가 firstTokenMs 안에 안 오거나 전체가 totalMs를 넘으면 중단한다 (호출자가 직접 abort한 경우와 구분)
     const ctrl = new AbortController(); let timedOut = '';
     const link = () => ctrl.abort(); if (outer) { if (outer.aborted) ctrl.abort(); else outer.addEventListener('abort', link, { once: true }); }
     const tFirst = setTimeout(() => { timedOut = 'first'; ctrl.abort(); }, firstTokenMs), tAll = setTimeout(() => { timedOut = 'all'; ctrl.abort(); }, totalMs);
-    const onDelta = (t) => { clearTimeout(tFirst); if (onDelta0) onDelta0(t); }; const signal = ctrl.signal;
-    try {
-    const pump = async (res, pick) => {
+    const signal = ctrl.signal, filter = makeThinkFilter(); let reasoningChars = 0, thinkStart = 0;
+    const emit = (t) => { if (!t) return; text += t; clearTimeout(tFirst); if (onDelta0) onDelta0(text); };
+    const watch = () => {                                                                                  // 보이는 글 없이 생각만 길다
+      const thought = reasoningChars + filter.dropped; if (text || !thought) return; if (!thinkStart) thinkStart = Date.now();
+      if (thought > thinkCap || Date.now() - thinkStart > thinkMs) { const e = new Error('모델이 생각만 길게 하고 있어요'); e.code = 'THINKING'; ctrl.abort(); throw e; }
+    };
+    const pump = async (res, parse) => {
       const ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
-      if (!res.body || !res.body.getReader || (ct && !/event-stream/.test(ct))) { const d = await res.json(); const t = pick(d, true); if (t) { text += t; if (onDelta) onDelta(text); } return; }   // 스트림이 아니면 한 번에
+      if (!res.body || !res.body.getReader || (ct && !/event-stream/.test(ct))) { const r = parse(await res.json(), true); emit(filter(r.text || '', true)); return; }   // 스트림이 아니면 한 번에
       const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '';
       for (;;) {
-        const { done, value } = await reader.read(); if (done) break;
-        buf += dec.decode(value, { stream: true }); let i;
-        while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue; const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue; try { const t = pick(JSON.parse(d)); if (t) { text += t; if (onDelta) onDelta(text); } } catch {} }
+        let chunk; try { chunk = await reader.read(); } catch (e) { if (text) { emit(filter('', true)); return; } throw e; }   // 중간에 끊겨도 받은 글은 살린다
+        if (chunk.done) break;
+        buf += dec.decode(chunk.value, { stream: true }); let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue;
+          const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
+          let j; try { j = JSON.parse(d); } catch { continue; }
+          const r = parse(j); if (r.reasoning) reasoningChars += r.reasoning.length; if (r.text) emit(filter(r.text)); watch();
+        }
       }
+      emit(filter('', true));
     };
-    if (provider === 'anthropic' || !PRESETS[provider]) {
-      const res = await fetch(anBase(baseUrl) + '/v1/messages', { method: 'POST', headers: anHeaders(apiKey), body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, stream: true }), signal });
-      if (!res.ok) throw new Error(errMsg(await res.json().catch(() => ({})), res.status));
-      await pump(res, (d, whole) => whole ? (d.content || []).map((b) => b.text || '').join('') : ((d.type === 'content_block_delta' && d.delta && d.delta.text) || ''));
-    } else {
-      const url = oaUrl(p, baseUrl), headers = oaHeaders(apiKey), key = provider + ':' + model;
-      const efforts = provider === 'gemini' ? EFFORTS.slice(effortIdx[key] || 0) : [null]; let res;
-      for (let k = 0; k < efforts.length; k++) {
-        const ef = efforts[k], body = { model, messages: toOA(system, messages), max_tokens: maxTokens, stream: true }; if (ef) body.reasoning_effort = ef;
-        res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
-        if (res.ok) { if (provider === 'gemini') effortIdx[key] = EFFORTS.indexOf(ef); break; }
-        const msg = errMsg(await res.json().catch(() => ({})), res.status);
-        if (!/reasoning|thinking|effort/i.test(msg) || k === efforts.length - 1) throw new Error(msg);
+    try {
+      if (provider === 'anthropic' || !PRESETS[provider]) {
+        const res = await fetch(anBase(baseUrl) + '/v1/messages', { method: 'POST', headers: anHeaders(apiKey), body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, stream: true, ...extra }), signal });
+        if (!res.ok) throw new Error(errMsg(await res.json().catch(() => ({})), res.status));
+        await pump(res, (d, whole) => whole ? { text: (d.content || []).map((b) => b.text || '').join('') } : { text: (d.type === 'content_block_delta' && d.delta && d.delta.text) || '' });
+      } else {
+        const url = oaUrl(p, baseUrl), headers = oaHeaders(apiKey), key = provider + ':' + model;
+        const efforts = provider === 'gemini' ? EFFORTS.slice(effortIdx[key] || 0) : [null]; let res;
+        for (let k = 0; k < efforts.length; k++) {
+          const ef = efforts[k], body = { model, messages: toOA(system, messages), max_tokens: maxTokens, stream: true, ...extra }; if (ef) body.reasoning_effort = ef;
+          res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+          if (res.ok) { if (provider === 'gemini') effortIdx[key] = EFFORTS.indexOf(ef); break; }
+          const msg = errMsg(await res.json().catch(() => ({})), res.status);
+          if (!/reasoning|thinking|effort/i.test(msg) || k === efforts.length - 1) throw new Error(msg);
+        }
+        await pump(res, oaParse);
       }
-      await pump(res, (d, whole) => whole ? ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '') : ((d.choices && d.choices[0] && d.choices[0].delta && d.choices[0].delta.content) || ''));
-      if (!text && res.ok) { /* 일부 서버는 스트림을 지원하지 않아 빈 결과일 수 있음 → 호출자가 비어 있으면 일반 호출로 재시도 */ }
-    }
-    return { content: [{ type: 'text', text }], stop_reason: 'end_turn' };
+      return { content: [{ type: 'text', text }], stop_reason: 'end_turn' };
     } catch (e) {
+      if (e && e.code === 'THINKING') throw e;
       if (timedOut) throw new Error(timedOut === 'first' ? `AI가 ${Math.round(firstTokenMs / 1000)}초 안에 답을 시작하지 못했어요. 잠시 후 다시 물어봐 주세요.` : `AI 응답이 너무 오래 걸려서 중단했어요(${Math.round(totalMs / 1000)}초). 다시 시도해 주세요.`);
       throw e;
     } finally { clearTimeout(tFirst); clearTimeout(tAll); if (outer) outer.removeEventListener('abort', link); }
   }
-
   const stream = (opts) => withRetry(() => streamOnce(opts), opts);
 
   /** 빠른 응답용: Gemini는 가벼운 모델을 먼저 쓰고, 없으면 사용자 모델로 자동 대체 */
@@ -152,5 +189,5 @@
   }
   /** 기기를 조작해야 할 것 같은 말(도구가 필요한 요청) */
   const TOOLISH = /(열어|열기|켜|꺼|끄|끌|실행|파일|폴더|저장|삭제|만들어|설치|앱|어플|설정|화면|볼륨|소리|밝기|전화|문자|카메라|와이파이|블루투스|데이터|배터리|저장공간|캡처|스크린샷|폰에서|핸드폰|명령|adb|쉘|다운로드|사진)/;
-  return { PRESETS, call, stream, fastStream, warm, needsKey, moodSplit, TOOLISH, MOODS };
+  return { PRESETS, call, stream, fastStream, warm, needsKey, moodSplit, TOOLISH, MOODS, makeThinkFilter };
 });

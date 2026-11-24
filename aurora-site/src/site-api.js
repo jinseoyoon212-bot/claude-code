@@ -18,16 +18,24 @@ window.AURORA_SITE = true;
       const s = load();
       if (LLM.needsKey(s.provider) && !s.apiKey) return { error: 'API 키가 없어요. ⚙ 설정에서 키를 넣거나, 키 없이 쓰려면 제공자를 "Aurora 기본 AI"로 바꿔 주세요.' };
       const msgs = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
+      const common = { provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, messages: msgs, onWait: (sec) => notify({ type: 'wait', seconds: sec }) };
+      const viaCall = async (strict) => {                                                    // 스트리밍 없이 한 번에 받는 안전한 길 (strict = 생각 없이)
+        const r = await LLM.call({ ...common, maxTokens: 700, extra: strict && s.provider === 'aurora' ? { strict: true } : undefined });
+        return r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+      };
       try {
-        let r = await LLM.fastStream({ provider: s.provider, apiKey: s.apiKey, model: s.model, fastModel: s.fastModel, system: SYSTEM, maxTokens: 700, messages: msgs,
-          onWait: (sec) => notify({ type: 'wait', seconds: sec }),
-          onDelta: (t) => { const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
-        let raw = (r.content[0] && r.content[0].text || '').trim();
-        if (!raw) {                                                                       // 스트리밍을 못 주는 서버면 일반 호출로
-          r = await LLM.call({ provider: s.provider, apiKey: s.apiKey, model: s.model, system: SYSTEM, maxTokens: 700, messages: msgs, onWait: (sec) => notify({ type: 'wait', seconds: sec }) });
-          raw = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+        let raw = '';
+        try {
+          const r = await LLM.fastStream({ ...common, maxTokens: 700, onDelta: (t) => { const c = LLM.moodSplit(t); if (c.ready && c.text) notify({ type: 'delta', text: c.text }); } });
+          raw = (r.content[0] && r.content[0].text || '').trim();
+        } catch (e) {
+          const m = String(e && e.message || e);
+          if (e && e.code === 'THINKING') raw = await viaCall(true);                          // 모델이 생각만 길게 함 → 생각 없이 다시
+          else if (/network error|Failed to fetch|Load failed|NetworkError|ERR_/i.test(m)) raw = await viaCall(false);   // 연결이 끊김 → 한 번 더(스트리밍 없이)
+          else throw e;
         }
-        const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw, mood: c.mood };
+        if (!raw) raw = await viaCall(true);                                                 // 빈 응답 → 생각 없이 다시
+        const c = LLM.moodSplit(raw); return { text: c.text.trim() || raw || '죄송해요, 답을 만들지 못했어요. 한 번만 더 물어봐 주실래요?', mood: c.mood };
       } catch (e) {
         const m = String(e && e.message || e);
         if (s.provider === 'aurora' && /HTTP (404|405)\b/.test(m)) return { error: 'AI 연결(/api)이 이 사이트에 배포되지 않았어요. Cloudflare Pages 설정에서 Root directory가 aurora-site인지, Bindings에 Workers AI(이름 AI)가 있는지 확인한 뒤 다시 배포해 주세요. (확인: 사이트 주소 뒤에 /api/health)' };
