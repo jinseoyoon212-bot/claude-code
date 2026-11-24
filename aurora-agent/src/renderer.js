@@ -22,7 +22,7 @@ api.onEvent((ev) => {
 // ---- 한 번의 요청(턴): 시작 → (글자가 스트리밍으로 표시) → 끝. 걸린 시간도 기록 ----
 let turn = null;
 function beginTurn(text, from, t0) {
-  busy = true; document.body.classList.add('busy');
+  clearTimeout(fadeT); busy = true; document.body.classList.add('busy');
   turn = { t0: t0 || performance.now(), tFirst: 0, streamed: false };
   if (from === 'input') { input.value = ''; FX.jelly($('form'), 'jelly'); }
   Face.react(text); setBubble('…');

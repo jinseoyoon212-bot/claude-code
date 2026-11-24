@@ -36,6 +36,7 @@
   const anHeaders = (apiKey) => ({ 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
   const anBase = (baseUrl) => (baseUrl || env('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com').replace(/\/+$/, '');
 
+  const tmo = () => (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(60000) : undefined);   // 비스트림 호출도 60초를 넘기지 않게
   // 무료 서버 한도("Retry after Ns")면 기다렸다가 재시도
   async function withRetry(fn, opts) {
     for (let attempt = 0; ; attempt++) {
@@ -55,7 +56,7 @@
     model = model || p.model;
     if (provider === 'anthropic' || !PRESETS[provider]) {
       const body = { model, max_tokens: maxTokens, system, messages }; if (tools.length) body.tools = tools;
-      const res = await fetch(anBase(baseUrl) + '/v1/messages', { method: 'POST', headers: anHeaders(apiKey), body: JSON.stringify(body) });
+      const res = await fetch(anBase(baseUrl) + '/v1/messages', { method: 'POST', headers: anHeaders(apiKey), body: JSON.stringify(body), signal: tmo() });
       const data = await res.json();
       if (!res.ok) throw new Error(errMsg(data, res.status));
       return { content: data.content, stop_reason: data.stop_reason };
@@ -68,7 +69,7 @@
     let res, data;
     for (const ef of efforts) {
       if (ef) body.reasoning_effort = ef; else delete body.reasoning_effort;
-      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: tmo() });
       data = await res.json();
       if (res.ok) { if (provider === 'gemini') effortIdx[key] = EFFORTS.indexOf(ef); break; }
       if (!/reasoning|thinking|effort/i.test(errMsg(data, res.status))) break;
@@ -81,8 +82,14 @@
   }
 
   /** 글자가 생성되는 대로 onDelta(지금까지의 글)를 부른다. 도구 호출 없이 글만. signal로 중단 가능 */
-  async function streamOnce({ provider = 'anthropic', apiKey, model, system, messages, maxTokens = 400, baseUrl, onDelta, signal }) {
+  async function streamOnce({ provider = 'anthropic', apiKey, model, system, messages, maxTokens = 400, baseUrl, onDelta: onDelta0, signal: outer, firstTokenMs = 25000, totalMs = 60000 }) {
     const p = PRESETS[provider] || PRESETS.anthropic; model = model || p.model; let text = '';
+    // 무한 대기 방지: 첫 글자가 firstTokenMs 안에 안 오거나 전체가 totalMs를 넘으면 중단한다 (호출자가 직접 abort한 경우와 구분)
+    const ctrl = new AbortController(); let timedOut = '';
+    const link = () => ctrl.abort(); if (outer) { if (outer.aborted) ctrl.abort(); else outer.addEventListener('abort', link, { once: true }); }
+    const tFirst = setTimeout(() => { timedOut = 'first'; ctrl.abort(); }, firstTokenMs), tAll = setTimeout(() => { timedOut = 'all'; ctrl.abort(); }, totalMs);
+    const onDelta = (t) => { clearTimeout(tFirst); if (onDelta0) onDelta0(t); }; const signal = ctrl.signal;
+    try {
     const pump = async (res, pick) => {
       const ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
       if (!res.body || !res.body.getReader || (ct && !/event-stream/.test(ct))) { const d = await res.json(); const t = pick(d, true); if (t) { text += t; if (onDelta) onDelta(text); } return; }   // 스트림이 아니면 한 번에
@@ -111,7 +118,12 @@
       if (!text && res.ok) { /* 일부 서버는 스트림을 지원하지 않아 빈 결과일 수 있음 → 호출자가 비어 있으면 일반 호출로 재시도 */ }
     }
     return { content: [{ type: 'text', text }], stop_reason: 'end_turn' };
+    } catch (e) {
+      if (timedOut) throw new Error(timedOut === 'first' ? `AI가 ${Math.round(firstTokenMs / 1000)}초 안에 답을 시작하지 못했어요. 잠시 후 다시 물어봐 주세요.` : `AI 응답이 너무 오래 걸려서 중단했어요(${Math.round(totalMs / 1000)}초). 다시 시도해 주세요.`);
+      throw e;
+    } finally { clearTimeout(tFirst); clearTimeout(tAll); if (outer) outer.removeEventListener('abort', link); }
   }
+
   const stream = (opts) => withRetry(() => streamOnce(opts), opts);
 
   /** 빠른 응답용: Gemini는 가벼운 모델을 먼저 쓰고, 없으면 사용자 모델로 자동 대체 */

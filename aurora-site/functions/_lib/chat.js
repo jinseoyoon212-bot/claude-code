@@ -3,7 +3,8 @@
 
 // 사용 모델: 환경변수 AI_MODEL(쉼표로 여러 개 가능)이 있으면 그것, 없으면 아래 순서로 시도한다 (앞 모델이 없거나 실패하면 다음 모델)
 export const DEFAULT_MODELS = ['@cf/google/gemma-4-26b-a4b-it', '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/meta/llama-3.1-8b-instruct-fp8-fast'];
-const MAX_MESSAGES = 12, MAX_CONTENT = 2000, MAX_TOTAL = 9000, MAX_TOKENS = 600;
+const MAX_MESSAGES = 12, MAX_CONTENT = 2000, MAX_TOTAL = 9000, MAX_TOKENS = 900;
+const THINK_CAP = 1400;      // 보이는 답 없이 "생각"만 이만큼(글자) 이어지면 끊고 생각 없이 다시 답하게 한다
 
 const json = (status, error, extra = {}) => new Response(JSON.stringify({ error: { message: error } }), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra } });
 
@@ -37,11 +38,11 @@ export function cleanMessages(raw) {
 
 // <think>…</think> 같은 "생각" 구간은 사용자에게 보이지 않게 제거 (조각 경계에 걸쳐도 동작)
 export function makeThinkFilter() {
-  let inThink = false, buf = '';
-  return (chunk, flush = false) => {
+  let inThink = false, buf = '', dropped = 0;
+  const f = (chunk, flush = false) => {
     buf += chunk; let out = '';
     for (;;) {
-      if (inThink) { const i = buf.indexOf('</think>'); if (i < 0) { buf = buf.slice(-8); return out; } buf = buf.slice(i + 8); inThink = false; }
+      if (inThink) { const i = buf.indexOf('</think>'); if (i < 0) { dropped += Math.max(0, buf.length - 8); buf = buf.slice(-8); return out; } dropped += i; buf = buf.slice(i + 8); inThink = false; }
       else {
         const i = buf.indexOf('<think>'); if (i >= 0) { out += buf.slice(0, i); buf = buf.slice(i + 7); inThink = true; continue; }
         const keep = flush ? 0 : (() => { for (let k = Math.min(6, buf.length); k > 0; k--) if ('<think>'.startsWith(buf.slice(-k))) return k; return 0; })();
@@ -49,6 +50,8 @@ export function makeThinkFilter() {
       }
     }
   };
+  Object.defineProperty(f, 'dropped', { get: () => dropped });          // 지금까지 버린 "생각" 글자 수
+  return f;
 }
 
 const textOf = (d) => {                         // 모델마다 다른 응답 모양을 한 가지로
@@ -60,19 +63,36 @@ const textOf = (d) => {                         // 모델마다 다른 응답 �
   return '';
 };
 
+const reasoningOf = (d) => { const c = d && d.choices && d.choices[0]; const m = c && (c.delta || c.message); return (m && (m.reasoning_content || m.reasoning)) || ''; };   // 별도 필드로 오는 생각 과정
+
+// 생각 모델은 생각을 끄거나 줄이는 설정을 같이 보낸다 (지원하지 않는 설정이면 아래에서 설정 없이 다시 시도)
+function prepare(model, messages, strict) {
+  const msgs = messages.map((m) => ({ ...m })), extra = {};
+  if (/qwen3/i.test(model)) { extra.chat_template_kwargs = { enable_thinking: false }; for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') { msgs[i].content += ' /no_think'; break; } }
+  if (strict) msgs.unshift({ role: 'system', content: '생각 과정이나 설명은 쓰지 말고, 바로 한국어로 짧게 답만 하세요.' });
+  return { msgs, extra };
+}
+
 const isQuota = (e) => /neuron|daily|allocation|quota|4006|exceeded/i.test(String((e && e.message) || e));
 
-export async function runModel(env, messages, { stream, maxTokens }) {
+export async function runModel(env, messages, { stream, maxTokens, strict = false }) {
   const models = String(env.AI_MODEL || '').split(',').map((s) => s.trim()).filter(Boolean); const list = models.length ? models : DEFAULT_MODELS;
   let lastErr;
   for (const model of list) {
-    try { return { model, out: await env.AI.run(model, { messages, max_tokens: maxTokens, stream, temperature: 0.7 }) }; }
-    catch (e) { lastErr = e; if (isQuota(e)) throw e; }
+    const { msgs, extra } = prepare(model, messages, strict), base = { messages: msgs, max_tokens: maxTokens, stream, temperature: 0.7 };
+    try { return { model, out: await env.AI.run(model, { ...base, ...extra }) }; }
+    catch (e) {
+      lastErr = e; if (isQuota(e)) throw e;
+      if (Object.keys(extra).length) { try { return { model, out: await env.AI.run(model, base) }; } catch (e2) { lastErr = e2; if (isQuota(e2)) throw e2; } }   // 생각 끄기 설정을 못 받는 모델이면 설정 없이
+    }
   }
   throw lastErr || new Error('사용할 수 있는 모델이 없어요.');
 }
 
-export async function handleChat(request, env) {
+const FALLBACK_TEXT = '죄송해요, 답을 만들지 못했어요. 한 번만 더 물어봐 주실래요?';
+const sseChunk = (t) => 'data: ' + JSON.stringify({ choices: [{ delta: { content: t } }] }) + '\n\n';
+
+export async function handleChat(request, env, ctx) {
   if (!env || !env.AI) return json(503, 'AI 연결(Workers AI 바인딩 "AI")이 설정되지 않았어요. 사이트 관리자에게 알려 주세요.');
   if (!originOk(request, env)) return json(403, '허용되지 않은 출처예요.');
   const wait = rateOk(request.headers.get('cf-connecting-ip') || 'local', Number(env.RATE_PER_MIN) || 100);
@@ -87,26 +107,40 @@ export async function handleChat(request, env) {
     if (isQuota(e)) return json(429, '오늘의 무료 AI 사용량을 모두 썼어요. 내일 오전 9시(한국 시간)에 다시 채워져요.');
     return json(502, 'AI 서버에서 오류가 났어요: ' + String((e && e.message) || e).slice(0, 160));
   }
-  const { out } = run, filter = makeThinkFilter();
+  const { out } = run;
+
+  // 생각만 하다 끝난 경우: 생각 없이 한 번 더(비스트림) 답하게 한다
+  const retryStrict = async () => { try { const r2 = await runModel(env, messages, { stream: false, maxTokens: 400, strict: true }); return makeThinkFilter()(textOf(r2.out), true).trim(); } catch { return ''; } };
 
   if (!stream) {
-    const text = filter(textOf(out), true).trim();
-    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: text } }] }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+    let text = makeThinkFilter()(textOf(out), true).trim();
+    if (!text) text = (await retryStrict()) || FALLBACK_TEXT;
+    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: text } }] }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-aurora-model': run.model } });
   }
-  // 스트리밍: 어떤 모양의 SSE가 와도 OpenAI 호환 delta로 바꿔 내보낸다
-  const enc = new TextEncoder(), dec = new TextDecoder(); let buf = '', sent = false;
-  const emit = (c, text) => { if (text) { sent = true; c.enqueue(enc.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: text } }] }) + '\n\n')); } };
-  const body2 = (out && out.getReader) ? out : new ReadableStream({ start(c) { c.enqueue(enc.encode('data: ' + JSON.stringify({ response: textOf(out) }) + '\n\n')); c.close(); } });
-  const ts = new TransformStream({
-    transform(chunk, c) {
-      buf += typeof chunk === 'string' ? chunk : dec.decode(chunk, { stream: true }); let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue;
-        const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
-        let j; try { j = JSON.parse(d); } catch { continue; } emit(c, filter(textOf(j)));
+  // 스트리밍: 어떤 모양의 SSE가 와도 OpenAI 호환 delta로 바꿔 내보낸다. 보이는 글 없이 생각만 길어지면 끊고 다시 시도한다
+  const enc = new TextEncoder(), dec = new TextDecoder(), ts = new TransformStream(), writer = ts.writable.getWriter();
+  const upstream = (out && out.getReader) ? out : new ReadableStream({ start(c2) { c2.enqueue(enc.encode('data: ' + JSON.stringify({ response: textOf(out) }) + '\n\n')); c2.close(); } });
+  const pump = (async () => {
+    const filter = makeThinkFilter(); let sent = false, thought = 0, buf = '';
+    const emit = async (t) => { if (t) { sent = true; await writer.write(enc.encode(sseChunk(t))); } };
+    const reader = upstream.getReader();
+    try {
+      outer: for (;;) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += typeof value === 'string' ? value : dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue;
+          const d = line.slice(5).trim(); if (!d || d === '[DONE]') continue;
+          let j; try { j = JSON.parse(d); } catch { continue; }
+          thought += reasoningOf(j).length; await emit(filter(textOf(j)));
+          if (!sent && thought + filter.dropped > THINK_CAP) { try { await reader.cancel(); } catch {} break outer; }      // 생각만 너무 길다 → 끊는다
+        }
       }
-    },
-    flush(c) { emit(c, filter('', true)); if (!sent) emit(c, '…'); c.enqueue(enc.encode('data: [DONE]\n\n')); },
-  });
-  return new Response(body2.pipeThrough(ts), { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } });
+      await emit(filter('', true));
+    } catch (e) { /* 업스트림 오류: 아래에서 대체 응답 */ }
+    if (!sent) await emit((await retryStrict()) || FALLBACK_TEXT);
+    await writer.write(enc.encode('data: [DONE]\n\n')); await writer.close();
+  })();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(pump.catch(() => {}));
+  return new Response(ts.readable, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no', 'x-aurora-model': run.model } });
 }
