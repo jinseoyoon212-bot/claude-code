@@ -98,7 +98,10 @@ class Game {
 
     // ---- assets ----
     this.progress(0.02, 'Loading sky');
-    const hdr = await new RGBELoader().loadAsync('assets/hdri/sky.hdr');
+    const rgbe = new RGBELoader().setDataType(THREE.HalfFloatType).parse(await loadPacked('assets/hdri/sky.json'));
+    const hdr = new THREE.DataTexture(rgbe.data, rgbe.width, rgbe.height, THREE.RGBAFormat, rgbe.type);
+    Object.assign(hdr, { colorSpace: THREE.LinearSRGBColorSpace, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, flipY: true });
+    hdr.needsUpdate = true;
     hdr.mapping = THREE.EquirectangularReflectionMapping;
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromEquirectangular(hdr).texture;
@@ -118,10 +121,12 @@ class Game {
     this.progress(0.2, 'Loading models');
     const draco = new DRACOLoader(); draco.setDecoderPath('vendor/jsm/libs/draco/gltf/'); draco.setDecoderConfig({ type: 'js' });
     const gl = new GLTFLoader(); gl.setDRACOLoader(draco);
+    // decode embedded textures through <img> elements (works under strict content policies)
+    gl.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'wb_img_textures' }; });
     const modelNames = ['Barrel_01', 'ammo_box', 'bolt_action_rifle_7_62', 'boulder_01', 'covered_car', 'dead_tree_trunk', 'fern_02', 'medical_box', 'metal_jerrycan_green', 'namaqualand_boulder_02', 'old_military_crate', 'old_tyre', 'rock_moss_set_01', 'service_pistol', 'shrub_01', 'stick_grenade', 'street_lamp_01', 'tree_stump_01', 'wooden_crate_01', 'wooden_military_crate'];
     const models = {}; let done = 0;
     await Promise.all(modelNames.map(async n => {
-      const g = await gl.loadAsync(`assets/models/${n}.glb`);
+      const g = await gl.parseAsync(await loadPacked(`assets/models/${n}.json`), '');
       models[n] = g.scene; models[n].scene = g.scene;
       this.progress(0.2 + 0.35 * (++done / modelNames.length), 'Loading models ' + done + '/' + modelNames.length);
     }));
@@ -1444,6 +1449,14 @@ class Game {
 
 // ---------------- helpers ----------------
 function nearestDoor(b, p) { return b.doors.reduce((best, d) => (!best || d.out.distanceToSquared(p) < best.out.distanceToSquared(p) ? d : best), null); }
+async function loadPacked(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} (${r.status})`);
+  const s = (await r.json()).b64;
+  const bin = atob(s); const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
 function tick() { return new Promise(r => setTimeout(r, 0)); }
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
 function raySphere(o, d, c, r) {
