@@ -40,6 +40,7 @@ cd mobile && npm install && npm run apk:debug     # mobile/android/app/build/out
 `.github/workflows/warbattle.yml`이 push 때마다 exe와 apk를 빌드해 Actions 아티팩트로 올립니다.
 
 ## 에셋 출처
-- 3D 소품(바위, 상자, 드럼통, 타이어, 차량, 고사리, 관목, 볼트액션 소총, 권총, 수류탄 등), PBR 텍스처, HDRI 하늘: [Poly Haven](https://polyhaven.com) — CC0
-- 엔진: [three.js](https://threejs.org) — MIT
-- 맵, 캐릭터, 돌격소총/SMG 모델, 수송기, UI, 사운드는 이 프로젝트에서 직접 만든 것입니다.
+- **캐릭터**: three.js 예제 저장소의 `Soldier.glb`(Mixamo 캐릭터, Idle/Walk/Run/TPose 애니메이션 포함). Mixamo 이용 약관에 따라 게임 안에 포함해 쓰는 용도입니다. 조준 자세와 앉기는 IK로 코드에서 만듭니다.
+- **나무, 풀, 관목, 바위, 가구, 소품, 볼트액션 소총, 권총, 수류탄, PBR 텍스처, HDRI 하늘**: [Poly Haven](https://polyhaven.com), CC0. 원본 나무는 잎만 수백만 삼각형이라, 빌드할 때 잎 카드를 골라 남기고 줄기를 단순화해 그루당 약 3만 삼각형으로 줄였습니다. 먼 나무는 같은 모델을 렌더링한 임포스터로 그립니다.
+- **엔진**: [three.js](https://threejs.org), MIT
+- **직접 만든 것**: 맵 생성, 건물, KR-9 소총과 VX-45 SMG 모델, 수송기, 낙하산, UI, 사운드. 실사 무료 모델을 구할 수 없어서 이 항목들은 코드로 만들었습니다.

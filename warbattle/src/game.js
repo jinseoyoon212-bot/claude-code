@@ -123,11 +123,12 @@ class Game {
     const gl = new GLTFLoader(); gl.setDRACOLoader(draco);
     // decode embedded textures through <img> elements (works under strict content policies)
     gl.register(parser => { parser.textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'wb_img_textures' }; });
-    const modelNames = ['Barrel_01', 'ammo_box', 'bolt_action_rifle_7_62', 'boulder_01', 'covered_car', 'dead_tree_trunk', 'fern_02', 'medical_box', 'metal_jerrycan_green', 'namaqualand_boulder_02', 'old_military_crate', 'old_tyre', 'rock_moss_set_01', 'service_pistol', 'shrub_01', 'stick_grenade', 'street_lamp_01', 'tree_stump_01', 'wooden_crate_01', 'wooden_military_crate'];
+    const modelNames = ['soldier', 'fir_tree_01', 'island_tree_02', 'grass_medium_01', 'grass_medium_02', 'shrub_02', 'shrub_03', 'shrub_04', 'WoodenTable_03', 'wooden_stool_01', 'sofa_02', 'drawer_cabinet', 'steel_frame_shelves_01', 'wooden_bookshelf_worn', 'metal_office_desk', 'plastic_monobloc_chair_01', 'wooden_picnic_table', 'metal_trash_can', 'utility_box_01', 'fire_hydrant', 'old_bed_frame', 'wooden_barrels_01', 'Barrel_01', 'ammo_box', 'bolt_action_rifle_7_62', 'boulder_01', 'covered_car', 'dead_tree_trunk', 'fern_02', 'medical_box', 'metal_jerrycan_green', 'namaqualand_boulder_02', 'old_military_crate', 'old_tyre', 'rock_moss_set_01', 'service_pistol', 'shrub_01', 'stick_grenade', 'street_lamp_01', 'tree_stump_01', 'wooden_crate_01', 'wooden_military_crate'];
     const models = {}; let done = 0;
     await Promise.all(modelNames.map(async n => {
       const g = await gl.parseAsync(await loadPacked(`assets/models/${n}.json`), '');
       models[n] = g.scene; models[n].scene = g.scene;
+      if (n === 'soldier') Soldier.init(g);
       this.progress(0.2 + 0.35 * (++done / modelNames.length), 'Loading models ' + done + '/' + modelNames.length);
     }));
     this.models = models;
@@ -149,7 +150,7 @@ class Game {
     // ---- world ----
     this.progress(0.6, 'Building Kestrel Island');
     await tick();
-    const world = new World(scene, { tex, models }, q, 7319);
+    const world = new World(scene, { tex, models, renderer }, q, 7319);
     world.build((p) => this.progress(0.6 + p * 0.35, 'Building Kestrel Island'));
     this.world = world;
     // balance sky fill against direct sun so shadows read clearly
@@ -193,7 +194,7 @@ class Game {
   newMatch() {
     const scene = this.scene, world = this.world;
     // clear old
-    for (const a of this.actors || []) { scene.remove(a.soldier.root); if (a.chute) scene.remove(a.chute); }
+    for (const a of this.actors || []) { scene.remove(a.soldier.root, a.soldier.gunSocket); if (a.chute) scene.remove(a.chute); }
     for (const l of this.loot || []) scene.remove(l.mesh);
     for (const b of this.bullets || []) if (b.tracer) b.tracer.visible = false;
     for (const g of this.grenadesLive || []) scene.remove(g.mesh);
@@ -242,7 +243,7 @@ class Game {
 
   makeActor(id, name, isPlayer) {
     const soldier = new Soldier(id + 1, isPlayer);
-    this.scene.add(soldier.root);
+    this.scene.add(soldier.root, soldier.gunSocket);
     const a = {
       id, name, isPlayer, soldier,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, pitch: 0,
@@ -536,7 +537,7 @@ class Game {
     if (dist < 120) {
       this.flashLight.position.copy(mz); this.flashLight.intensity = 30;
       for (let i = 0; i < 2; i++) this.particle(this.fxN, mz, new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.5, (Math.random() - 0.5) * 0.4), [0.7, 0.7, 0.7, 0.18], 0.12, 0.9, 0.6, -0.2, 1);
-      if (!a.isPlayer || this.viewMode === 'tpp' && !a.ads) { this.flashSprite.position.copy(mz); this.flashSprite.visible = true; this.flashT = 0.04; this.flashSprite.material.rotation = Math.random() * 6; if (!this.flashSprite.parent) this.scene.add(this.flashSprite); }
+      if (!(a.isPlayer && a.ads && WEAPONS[w.kind].scope)) { this.flashSprite.position.copy(mz); this.flashSprite.visible = true; this.flashT = 0.04; this.flashSprite.material.rotation = Math.random() * 6; if (!this.flashSprite.parent) this.scene.add(this.flashSprite); }
     }
     if (a.isPlayer) {
       this.recoilKick = (this.recoilKick || 0) + W.recoil;
@@ -549,9 +550,8 @@ class Game {
   }
 
   muzzleWorld(a) {
-    if (a.isPlayer && this.vm && this.vm.visible) { const m = this.vm.userData.muzzle; return m ? this.vmGun.localToWorld(m.clone()) : this.camera.position.clone(); }
     const g = a.soldier.gunSocket.children[0];
-    if (g?.userData.muzzle) { a.soldier.root.updateMatrixWorld(true); return g.localToWorld(g.userData.muzzle.clone()); }
+    if (g?.userData.muzzle) { a.soldier.gunSocket.updateMatrixWorld(true); return g.localToWorld(g.userData.muzzle.clone()); }
     return a.pos.clone().add(new THREE.Vector3(0, 1.4, 0));
   }
 
@@ -1206,25 +1206,36 @@ class Game {
   }
 
   // ---------------- camera + view model ----------------
-  buildViewModel() {
-    if (this.vm) this.camera.remove(this.vm);
-    this.vm = null; this.vmGun = null;
-    const p = this.player; const w = p?.weapons[p.cur];
-    if (!w) return;
-    const vm = new THREE.Group();
-    const gun = makeWeapon(w.kind, this.models);
-    gun.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
-    vm.add(gun);
-    // forearms/gloves
-    const sleeve = new THREE.MeshStandardMaterial({ map: p.soldier.root.children[0].children[0]?.children?.[0]?.material?.map || null, color: 0x8a8a70, roughness: 0.9 });
-    const glove = new THREE.MeshStandardMaterial({ color: 0x2a2722, roughness: 0.8 });
-    const arm = (x, y, z, rx, ry) => { const g = new THREE.Group(); const s = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.28, 4, 10), sleeve); s.rotation.x = Math.PI / 2; s.position.z = 0.17; g.add(s); const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.1), glove); g.add(h); g.position.set(x, y, z); g.rotation.set(rx, ry, 0); return g; };
-    vm.add(arm(0.0, -0.06, 0.05, 0.25, -0.2));
-    vm.add(arm(-0.02, -0.02, w.kind === 'pistol' ? 0.02 : -0.32, 0.3, 0.45));
-    vm.userData.muzzle = gun.userData.muzzle; vm.userData.sightY = gun.userData.sightY;
-    this.vm = vm; this.vmGun = gun;
-    this.camera.add(vm);
-    this.vmPos = new THREE.Vector3(0.2, -0.21, -0.52);
+  buildViewModel() {}   // first person shows the character's own body and arms
+
+  // Place the held weapon: in first person it hangs off the camera (hip or sights);
+  // otherwise it sits at the chest, pointing along the aim direction.
+  placeGun(a, dt) {
+    const gs = a.soldier.gunSocket, w = a.weapons[a.cur];
+    gs.visible = !!w && a.state === 'ground' && a.alive && a.healT <= 0;
+    if (!gs.visible) return;
+    if (a.isPlayer && this.viewMode === 'fpp' || a.isPlayer && a.ads) {
+      const cam = this.camera;
+      const W = WEAPONS[w.kind];
+      const sp = Math.hypot(a.vel.x, a.vel.z);
+      const off = a.ads ? new THREE.Vector3(0, -(gs.children[0]?.userData.sightY || 0.1), -0.38) : new THREE.Vector3(0.16, -0.2, -0.4);
+      if (a.reloadT > 0) off.y -= 0.1;
+      if (!a.ads && this.keys.ShiftLeft && sp > 5) { off.x -= 0.05; off.y -= 0.06; }
+      off.z += (this.recoilKick || 0) * 2.2;
+      off.y += Math.sin((this.bob || 0) * 2) * 0.008 * Math.min(1, sp / 5);
+      this.gunOff = this.gunOff ? this.gunOff.lerp(off, 1 - Math.exp(-dt * 18)) : off.clone();
+      gs.position.copy(this.gunOff).applyQuaternion(cam.quaternion).add(cam.position);
+      gs.quaternion.copy(cam.quaternion);
+      gs.rotateX((this.recoilKick || 0) * 3 + (a.reloadT > 0 ? -0.35 : 0));
+      if (W.scope && a.ads) gs.visible = false;
+    } else {
+      const yaw = a.yaw, p = a.pitch;
+      const dir = new THREE.Vector3(-Math.sin(yaw) * Math.cos(p), Math.sin(p), -Math.cos(yaw) * Math.cos(p));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      gs.position.copy(a.pos).add(new THREE.Vector3(0, a.height - 0.42, 0)).addScaledVector(right, 0.13).addScaledVector(dir, 0.32);
+      gs.quaternion.setFromEuler(new THREE.Euler(p, yaw, 0, 'YXZ'));
+    }
+    gs.updateMatrixWorld(true);
   }
 
   updateCamera(dt) {
@@ -1235,13 +1246,13 @@ class Game {
       const pp = this.planePos();
       const off = new THREE.Vector3(Math.sin(this.camYaw) * Math.cos(this.camPitch), -Math.sin(this.camPitch) + 0.15, Math.cos(this.camYaw) * Math.cos(this.camPitch)).multiplyScalar(48);
       cam.position.copy(pp).add(off); cam.lookAt(pp);
-      if (this.vm) this.vm.visible = false;
+      p.soldier.hideHead(false);
     } else if (!p.alive) {
       const tgt = p.pos.clone().add(new THREE.Vector3(0, 0.6, 0));
       this.deathCam = (this.deathCam || 0) + dt * 0.2;
       cam.position.copy(tgt).add(new THREE.Vector3(Math.sin(this.deathCam) * 6, 3.5, Math.cos(this.deathCam) * 6));
       cam.lookAt(tgt);
-      if (this.vm) this.vm.visible = false;
+      p.soldier.hideHead(false);
     } else {
       const fpp = this.viewMode === 'fpp' || p.ads;
       const eye = p.pos.clone(); eye.y += (p.state === 'ground' ? p.height : 1.7) - 0.1;
@@ -1268,7 +1279,9 @@ class Game {
       const w = p.weapons[p.cur];
       if (p.ads && w) fov = z0 / WEAPONS[w.kind].zoom;
       // view model
-      p.soldier.root.visible = !(fpp && p.state === 'ground');
+      const scoped = p.ads && w && WEAPONS[w.kind].scope;
+      p.soldier.root.visible = !scoped;
+      p.soldier.hideHead(fpp && p.state === 'ground');
       if (this.vm) {
         this.vm.visible = fpp && p.state === 'ground' && p.healT <= 0 && !(p.ads && WEAPONS[w.kind].scope);
         const sp = Math.hypot(p.vel.x, p.vel.z);
@@ -1418,18 +1431,24 @@ class Game {
         this.updateBullets(dt);
         this.updateGrenades(dt);
       }
+      this.updateCamera(dt);
       for (const a of this.actors) {
-        if (a.state === 'plane') continue;
+        if (a.state === 'plane') { a.soldier.gunSocket.visible = false; continue; }
         const r = a.soldier.root;
-        r.position.copy(a.pos); r.rotation.y = a.yaw + Math.PI;   // rig is modelled facing +Z
+        r.position.copy(a.pos); r.rotation.y = a.yaw;   // the character model faces -Z, like the camera
+        const fppBody = a.isPlayer && this.viewMode === 'fpp' && a.state === 'ground' && a.alive;
+        if (fppBody) r.position.add(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw)).multiplyScalar(0.22));   // keep the torso behind the eye
         const far = a.pos.distanceTo(this.camera.position);
         if (!a.isPlayer) r.visible = far < 700;
-        if (r.visible) a.soldier.animate(dt, { armed: !!a.weapons[a.cur], speed: Math.hypot(a.vel.x, a.vel.z), crouch: a.crouch, pitch: a.pitch, dead: !a.alive, airborne: a.state === 'air', parachute: a.state === 'chute' });
+        this.placeGun(a, dt);
+        if (!r.visible) a.soldier.gunSocket.visible = false;
+        // distant soldiers animate at a lower rate
+        a.animAcc = (a.animAcc || 0) + dt;
+        if (r.visible && (far < 120 || a.animAcc > 0.1)) { a.soldier.animate(a.animAcc, { armed: !!a.weapons[a.cur] && a.soldier.gunSocket.visible, speed: Math.hypot(a.vel.x, a.vel.z), crouch: a.crouch, pitch: fppBody ? 0 : a.pitch, dead: !a.alive, airborne: a.state === 'air', parachute: a.state === 'chute' }); a.animAcc = 0; }
       }
-      this.updateCamera(dt);
       const p = this.player;
       const lp = p.state === 'plane' ? this.planePos() : p.pos;
-      this.world.update(dt, lp);
+      this.world.update(dt, lp, this.camera.position);
       this.updateFX(dt);
       // sun follows the camera; snap to shadow texels to prevent shimmer
       const tex = (this.shadowExt * 2) / this.shadowSize;
