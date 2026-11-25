@@ -1,0 +1,27 @@
+{
+  "name": "warbattle",
+  "productName": "Warbattle",
+  "version": "1.0.0",
+  "description": "Warbattle - a battle royale on Kestrel Island",
+  "main": "main.js",
+  "author": "Warbattle",
+  "license": "MIT",
+  "scripts": {
+    "prepare-web": "node ../scripts/build-web.mjs && node -e \"require('fs').cpSync('../dist/web','web',{recursive:true})\"",
+    "start": "npm run prepare-web && electron .",
+    "dist:win": "npm run prepare-web && electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "app.warbattle.desktop",
+    "productName": "Warbattle",
+    "files": ["main.js", "web/**/*"],
+    "directories": { "output": "../dist/desktop" },
+    "win": { "signAndEditExecutable": false, "artifactName": "Warbattle-${version}-${arch}-${target}.${ext}" },
+    "portable": { "artifactName": "Warbattle-${version}-portable.exe" },
+    "nsis": { "artifactName": "Warbattle-${version}-setup.exe", "oneClick": false, "allowToChangeInstallationDirectory": true }
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "24.13.3"
+  }
+}

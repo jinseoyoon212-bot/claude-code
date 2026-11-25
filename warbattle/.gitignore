@@ -1,0 +1,8 @@
+dist/
+desktop/node_modules/
+desktop/web/
+mobile/node_modules/
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/

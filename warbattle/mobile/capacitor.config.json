@@ -1,0 +1,6 @@
+{
+  "appId": "app.warbattle.mobile",
+  "appName": "Warbattle",
+  "webDir": "../dist/web",
+  "android": { "backgroundColor": "#0e100d" }
+}
