@@ -374,8 +374,14 @@ func _build_hud(root: Control) -> void:
 	actbar = ProgressBar.new()
 	actbar.set_anchors_preset(Control.PRESET_CENTER)
 	actbar.position = Vector2(-110, 128)
+	actbar.custom_minimum_size = Vector2(220, 5)
 	actbar.size = Vector2(220, 5)
 	actbar.show_percentage = false
+	var abg := StyleBoxFlat.new()
+	abg.bg_color = Color(1, 1, 1, 0.12)
+	abg.content_margin_top = 0
+	abg.content_margin_bottom = 0
+	actbar.add_theme_stylebox_override("background", abg)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color(0.5, 0.81, 0.48)
 	actbar.add_theme_stylebox_override("fill", fill)

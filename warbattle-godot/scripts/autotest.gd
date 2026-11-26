@@ -17,9 +17,25 @@ func run() -> void:
 	for a in g.actors:
 		if a.ai:
 			a.ai.jump_at = 1e9
+	# open field next to a town: low forest density and no tree within 15 m
 	var t: Dictionary = g.world.towns[2]
 	var x: float = t.x + t.R + 15.0
 	var z: float = t.z
+	for k in 72:
+		var ang := k / 72.0 * TAU
+		var cx: float = t.x + cos(ang) * (t.R + 18.0)
+		var cz: float = t.z + sin(ang) * (t.R + 18.0)
+		if g.world.forest_mask(cx, cz) > 0.15 or g.world.get_height(cx, cz) < 3.0:
+			continue
+		var clear := true
+		for tr in g.world.trees:
+			if Vector2(tr.pos.x - cx, tr.pos.z - cz).length() < 15.0:
+				clear = false
+				break
+		if clear:
+			x = cx
+			z = cz
+			break
 	p.global_position = Vector3(x, g.world.get_height(x, z) + 0.2, z)
 	g.cam_yaw = atan2(-(t.x - x), -(t.z - z)) + 0.35
 	g.cam_pitch = 0.02
