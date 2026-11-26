@@ -223,7 +223,7 @@ vec4 splatW(){ vec4 w = vSplat; w.w *= 1.0; return w / max(dot(w, vec4(1.0)), 1e
         .replace('#include <map_fragment>', `
 vec2 tUv = vWPos.xz / 6.0;
 vec4 w = splatW();
-vec3 c0 = tri(tD0, tUv*0.5).rgb * vec3(0.78,1.0,0.66), c1 = tri(tD1, tUv).rgb, c2 = tri(tD2, tUv*0.7).rgb, c3 = tri(tD3, tUv).rgb;
+vec3 c0 = tri(tD0, tUv*0.5).rgb * vec3(0.86,0.9,0.66), c1 = tri(tD1, tUv).rgb, c2 = tri(tD2, tUv*0.7).rgb, c3 = tri(tD3, tUv).rgb;
 c2 = mix(c2, vec3(dot(c2, vec3(0.33))) * vec3(1.05,1.02,0.98), 0.65);
 vec3 tcol = c0*w.x + c1*w.y + c2*w.z + c3*w.w;
 tcol *= 0.82 + vTint*0.28;
@@ -926,16 +926,18 @@ diffuseColor.rgb *= tcol;`)
     const mt = new THREE.DataTexture(mdata, S, S, THREE.RGBAFormat);
     mt.magFilter = mt.minFilter = THREE.LinearFilter; mt.needsUpdate = true;
 
-    const count = { low: 0, medium: 70000, high: 130000, ultra: 200000 }[this.q] ?? 70000;
+    const count = { low: 30000, medium: 110000, high: 220000, ultra: 340000 }[this.q] ?? 110000;
     if (!count) return;
-    const R = { medium: 32, high: 42, ultra: 52 }[this.q] || 36;
+    const R = { low: 22, medium: 30, high: 40, ultra: 50 }[this.q] || 30;
     const segs = 4; // vertices: 2 per row + tip
     const vpb = segs * 2 + 1;
     const pos = new Float32Array(count * vpb * 3), off = new Float32Array(count * vpb * 2), rnd = new Float32Array(count * vpb * 3);
     const idx = [];
     const rand = mulberry32(42);
     for (let b = 0; b < count; b++) {
-      const ox = (rand() * 2 - 1) * R, oz = (rand() * 2 - 1) * R;
+      // blades grow in tufts: most share a tuft centre with a few neighbours
+      if (b % 6 === 0 || !this._tuft) this._tuft = [(rand() * 2 - 1) * R, (rand() * 2 - 1) * R];
+      const ox = Math.max(-R, Math.min(R, this._tuft[0] + (rand() - 0.5) * 0.45)), oz = Math.max(-R, Math.min(R, this._tuft[1] + (rand() - 0.5) * 0.45));
       const r1 = rand(), r2 = rand(), r3 = rand();
       for (let v = 0; v < vpb; v++) {
         const k = b * vpb + v;
@@ -976,10 +978,10 @@ void main(){
   float dist = length(wp - uPlayer.xz);
   float fade = 1.0 - smoothstep(uR*0.6, uR, dist);
   float dens = step(aRnd.z, m.r*1.15);
-  float bh = (0.22 + aRnd.y*0.42 + m.g*0.2) * fade * dens;
+  float bh = (0.32 + aRnd.y*aRnd.y*0.75 + m.g*0.15) * fade * dens;
   float ang = aRnd.x*6.2831;
   vec3 p = position;
-  float bw = 0.07 + aRnd.z*0.05;
+  float bw = 0.045 + aRnd.z*0.035;
   vec3 local = vec3(cos(ang)*p.x*bw, p.y*bh, sin(ang)*p.x*bw);
   float wind = sin(uTime*1.6 + wp.x*0.17 + wp.y*0.11)*0.5 + sin(uTime*3.1 + wp.x*0.5)*0.15;
   vec2 bend = vec2(0.6,0.35)*(wind*0.28 + 0.12) + vec2(cos(ang*1.7), sin(ang*1.3))*0.12;
@@ -990,8 +992,10 @@ void main(){
   vec3 world = vec3(wp.x, h, wp.y) + local;
   vY = p.y;
   vN = normalize(vec3(-sin(ang), 0.6, cos(ang)));
-  vec3 baseC = mix(vec3(0.10,0.14,0.04), vec3(0.17,0.19,0.07), aRnd.y);
-  vec3 tipC = mix(vec3(0.36,0.42,0.16), vec3(0.52,0.5,0.26), aRnd.x*aRnd.x);
+  vec3 baseC = mix(vec3(0.09,0.12,0.04), vec3(0.16,0.17,0.07), aRnd.y);
+  vec3 green = mix(vec3(0.30,0.38,0.13), vec3(0.42,0.46,0.18), aRnd.x);
+  vec3 straw = mix(vec3(0.56,0.50,0.27), vec3(0.70,0.62,0.36), aRnd.x);
+  vec3 tipC = mix(green, straw, smoothstep(0.35, 0.75, aRnd.z + aRnd.y*0.3));
   vCol = mix(baseC, tipC, p.y) * mix(1.0, 0.7, m.g);
   vec4 mv = viewMatrix * vec4(world,1.0);
   vFog = -mv.z;
@@ -1002,7 +1006,7 @@ uniform vec3 uSun, uSunCol, uAmb, fogColor; uniform float fogDensity;
 varying float vY; varying vec3 vCol; varying float vFog; varying vec3 vN;
 void main(){
   float diff = clamp(abs(dot(normalize(vN), normalize(uSun))), 0.0, 1.0);
-  float ao = mix(0.35, 1.0, vY);
+  float ao = mix(0.22, 1.05, vY*vY);
   vec3 c = vCol * (uAmb*1.1 + uSunCol*diff*0.95) * ao;
   float f = 1.0 - exp(-fogDensity*fogDensity*vFog*vFog);
   c = mix(c, fogColor, f);

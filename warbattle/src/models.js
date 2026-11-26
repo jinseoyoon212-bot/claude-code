@@ -303,6 +303,13 @@ export function makeWeapon(kind, models) {
     g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.12);
     g.userData.sightY = 0.06;
     g.userData.grip = new THREE.Vector3(0, -0.05, 0.04); g.userData.fore = new THREE.Vector3(-0.02, -0.06, 0.03);
+  } else if (kind === 'smoke') {
+    const can = cyl(0.032, 0.032, 0.13, new THREE.MeshStandardMaterial({ color: 0x4d5a45, roughness: 0.55, metalness: 0.4 }), 16); g.add(can);
+    const band = cyl(0.033, 0.033, 0.02, new THREE.MeshStandardMaterial({ color: 0xd9d6cc, roughness: 0.6 }), 16); band.position.y = 0.03; g.add(band);
+    const top = cyl(0.02, 0.026, 0.02, M.gunmetal, 12); top.position.y = 0.075; g.add(top);
+    g.add(box(0.012, 0.09, 0.008, M.gunmetal, 0.034, 0.03, 0));
+    g.userData.muzzle = new THREE.Vector3(0, 0, -0.1); g.userData.sightY = 0.05;
+    g.userData.grip = new THREE.Vector3(0, 0, 0.03); g.userData.fore = new THREE.Vector3(-0.08, -0.04, 0.03);
   } else if (kind === 'grenade') {
     const m = models.stick_grenade ? normalizeModel(models.stick_grenade.scene, 0.35) : cyl(0.03, 0.03, 0.3, M.tan);
     m.rotation.x = -0.6; g.add(m);

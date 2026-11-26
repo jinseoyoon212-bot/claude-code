@@ -8,6 +8,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { Effects } from './fx.js';
 import { World, MAP_SIZE, HALF } from './world.js';
 import { Soldier, makeWeapon, makePlane, makeParachute, makeArmorPickup } from './models.js';
 import { Audio3D } from './audio.js';
@@ -165,16 +168,29 @@ class Game {
 
     // ---- post ----
     if (q !== 'low') {
-      const comp = new EffectComposer(renderer);
+      const pr = renderer.getPixelRatio(), w = Math.floor(innerWidth * pr), h = Math.floor(innerHeight * pr);
+      const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(w, h) });
+      const comp = new EffectComposer(renderer, rt);
+      comp.renderTarget2.depthTexture = comp.renderTarget1.depthTexture;   // both buffers share the scene depth
       comp.addPass(new RenderPass(scene, this.camera));
+      // ambient occlusion from the main depth buffer, so grass and leaves occlude correctly
+      const ao = new GTAOPass(scene, this.camera, w, h, { depthTexture: comp.renderTarget1.depthTexture },
+        { radius: 1.1, distanceExponent: 1.2, thickness: 2.5, scale: 1.25, samples: q === 'medium' ? 8 : 16, distanceFallOff: 1, screenSpaceRadius: false });
+      ao.blendIntensity = 1.0;
+      comp.addPass(ao);
+      this.ao = ao;
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.5, 0.9);
       comp.addPass(this.bloom);
+      this.grade = new ShaderPass(GRADE_SHADER);
+      comp.addPass(this.grade);
       comp.addPass(new OutputPass());
       if (q === 'high' || q === 'ultra') comp.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));
       this.composer = comp;
     }
 
     this.setupFX();
+    this.fx = new Effects(scene, this.world);
+    this.fx.setFog(scene.fog.color, scene.fog.density);
     this.setupInput();
     this.setupZoneMesh();
     this.plane = makePlane(); scene.add(this.plane);
@@ -268,7 +284,7 @@ class Game {
     if (r < 0.7) return { kind: this.rand() < 0.7 ? 'bandage' : 'medkit' };
     if (r < 0.8) return { kind: 'vest', lvl: tier >= 2 && this.rand() < 0.5 ? 2 : 1 };
     if (r < 0.9) return { kind: 'helmet', lvl: tier >= 2 && this.rand() < 0.5 ? 2 : 1 };
-    return { kind: 'grenade' };
+    return this.rand() < 0.5 ? { kind: 'grenade' } : { kind: 'smoke' };
   }
 
   lootMesh(item) {
@@ -277,7 +293,7 @@ class Game {
     if (item.kind === 'weapon') { m = makeWeapon(item.sub, M); m.rotation.set(0, this.rand() * 6.28, Math.PI / 2); m.position.y = 0.04; const g = new THREE.Group(); g.add(m); m = g; }
     else if (item.kind === 'ammo') { m = M.ammo_box.clone(); m.scale.setScalar(0.9); }
     else if (item.kind === 'medkit') { m = M.medical_box.clone(); m.scale.setScalar(0.8); }
-    else if (item.kind === 'grenade') { m = makeWeapon('grenade', M); m.rotation.z = Math.PI / 2; m.position.y = 0.04; const g = new THREE.Group(); g.add(m); m = g; }
+    else if (item.kind === 'grenade' || item.kind === 'smoke') { m = makeWeapon(item.kind === 'smoke' ? 'smoke' : 'grenade', M); m.rotation.z = Math.PI / 2; m.position.y = 0.04; const g = new THREE.Group(); g.add(m); m = g; }
     else m = makeArmorPickup(item.kind, item.lvl || 1);
     m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     return m;
@@ -305,6 +321,7 @@ class Game {
       case 'vest': return `Plate carrier L${it.lvl}`;
       case 'helmet': return `Combat helmet L${it.lvl}`;
       case 'grenade': return 'Stick grenade';
+      case 'smoke': return 'Smoke canister';
     }
   }
 
@@ -324,6 +341,7 @@ class Game {
       case 'bandage': a.bandages += 3; break;
       case 'medkit': a.medkits += 1; break;
       case 'grenade': a.grenades += 1; break;
+      case 'smoke': a.smokes = (a.smokes || 0) + 1; break;
       case 'vest': if (it.lvl < a.armor && a.armorHp > 0) return false; if (a.armor) this.spawnLoot({ kind: 'vest', lvl: a.armor }, a.pos.clone().add(new THREE.Vector3(-0.5, 0, 0.4))); a.armor = it.lvl; a.armorHp = it.lvl === 2 ? 220 : 160; break;
       case 'helmet': if (it.lvl < a.helmet && a.helmetHp > 0) return false; if (a.helmet) this.spawnLoot({ kind: 'helmet', lvl: a.helmet }, a.pos.clone().add(new THREE.Vector3(-0.5, 0, -0.4))); a.helmet = it.lvl; a.helmetHp = it.lvl === 2 ? 150 : 90; break;
     }
@@ -476,6 +494,7 @@ class Game {
       const v = n.clone().multiplyScalar(4 + r() * 6).add(new THREE.Vector3((r() - 0.5) * 6, (r() - 0.2) * 5, (r() - 0.5) * 6));
       this.particle(this.fxA, p, v, [1, 0.75, 0.35, 1], 0.03, 0.15 + r() * 0.25, 0, 9.8, 0);
     }
+    if (p.distanceTo(this.camera.position) < 120) this.fx.dust(p, n, hit.mat);
     if (hit.type !== 'terrain') {
       const d = new THREE.Mesh(this.decalGeo, this.decalMat);
       d.position.copy(p).addScaledVector(n, 0.012);
@@ -495,6 +514,7 @@ class Game {
 
   explosion(p, owner) {
     const r = Math.random;
+    this.fx.explosion(p);
     for (let i = 0; i < 40; i++) this.particle(this.fxA, p, new THREE.Vector3((r() - 0.5) * 18, r() * 14, (r() - 0.5) * 18), [1, 0.6, 0.25, 1], 0.4 + r() * 0.6, 0.25 + r() * 0.3, 2, 6, 3);
     for (let i = 0; i < 40; i++) this.particle(this.fxN, p.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3((r() - 0.5) * 7, 1 + r() * 6, (r() - 0.5) * 7), [0.22, 0.2, 0.18, 0.75], 1 + r() * 1.5, 2.5 + r() * 2.5, 2.2, -0.4, 1.4);
     for (let i = 0; i < 20; i++) this.particle(this.fxN, p, new THREE.Vector3((r() - 0.5) * 14, 4 + r() * 10, (r() - 0.5) * 14), [0.3, 0.25, 0.2, 1], 0.07, 1.4, 0, 12, 0.5);
@@ -533,6 +553,12 @@ class Game {
     // muzzle effects
     const mz = this.muzzleWorld(a);
     const dist = mz.distanceTo(this.camera.position);
+    if (dist < 45 && w.kind !== 'marksman') {
+      const gq = a.soldier.gunSocket.getWorldQuaternion(new THREE.Quaternion());
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(gq), rt = new THREE.Vector3(1, 0, 0).applyQuaternion(gq), up = new THREE.Vector3(0, 1, 0).applyQuaternion(gq);
+      this.fx.casing(mz.clone().addScaledVector(fwd, -0.55).addScaledVector(rt, 0.04).addScaledVector(up, 0.03), rt, up);
+    }
+    if (dist < 90) this.fx.muzzleSmoke(mz, dir.clone().normalize());
     this.audio.shot(mz, w.kind, dist, a.isPlayer);
     if (dist < 120) {
       this.flashLight.position.copy(mz); this.flashLight.intensity = 30;
@@ -590,13 +616,13 @@ class Game {
     a.healKind = null;
   }
 
-  throwGrenade(a, dir) {
-    if (a.grenades <= 0 || a.state !== 'ground') return;
-    a.grenades--;
-    const mesh = makeWeapon('grenade', this.models); this.scene.add(mesh);
+  throwGrenade(a, dir, smoke = false) {
+    if (a.state !== 'ground') return;
+    if (smoke) { if (!a.smokes) return; a.smokes--; } else { if (a.grenades <= 0) return; a.grenades--; }
+    const mesh = makeWeapon(smoke ? 'smoke' : 'grenade', this.models); this.scene.add(mesh);
     const p = a.pos.clone().add(new THREE.Vector3(0, a.height - 0.2, 0)).addScaledVector(dir, 0.6);
     const v = dir.clone().multiplyScalar(17).add(new THREE.Vector3(0, 4, 0)).add(a.vel);
-    this.grenadesLive.push({ mesh, p, v, t: 4.2, owner: a, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0) });
+    this.grenadesLive.push({ mesh, p, v, t: smoke ? 1.8 : 4.2, smoke, owner: a, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0) });
   }
 
   updateGrenades(dt) {
@@ -614,7 +640,7 @@ class Game {
       } else g.p.copy(np);
       g.mesh.position.copy(g.p);
       g.mesh.rotation.x += g.spin.x * dt * Math.min(1, g.v.length() / 4); g.mesh.rotation.y += g.spin.y * dt * Math.min(1, g.v.length() / 4);
-      if (g.t <= 0) { this.scene.remove(g.mesh); this.grenadesLive.splice(i, 1); this.explosion(g.p, g.owner); }
+      if (g.t <= 0) { this.scene.remove(g.mesh); this.grenadesLive.splice(i, 1); if (g.smoke) { this.fx.smokeGrenade(g.p); this.audio.click(500, 0.4, 0.3); } else this.explosion(g.p, g.owner); }
     }
   }
 
@@ -703,6 +729,7 @@ class Game {
       if (t.ai && !t.ai.enemy) { t.ai.enemy = src; t.ai.react = 0.3; }
     }
     if (src === this.player) { this.hitMarker(part === 'head', t.hp <= 0); }
+    if (t.ai && t.smokes && t.hp < 45 && t.hp > 0 && src) { const d = src.pos.clone().sub(t.pos).setY(0).normalize(); this.throwGrenade(t, d.setY(0.15).normalize(), true); }
     if (t === this.player) {
       this.damageFlash = Math.min(1, (this.damageFlash || 0) + d / 40);
       if (src && src !== t) this.lastHitDir = src.pos.clone();
@@ -726,6 +753,7 @@ class Game {
     if (t.armor) drops.push({ kind: 'vest', lvl: t.armor });
     if (t.helmet) drops.push({ kind: 'helmet', lvl: t.helmet });
     if (t.grenades) drops.push({ kind: 'grenade' });
+    if (t.smokes) drops.push({ kind: 'smoke' });
     drops.forEach((it, i) => { const ang = i / drops.length * Math.PI * 2; this.spawnLoot(it, t.pos.clone().add(new THREE.Vector3(Math.cos(ang) * 0.9, 0.3, Math.sin(ang) * 0.9))); });
     if (t === this.player) setTimeout(() => this.endMatch(false), 1800);
     else if (alive === 1 && this.player.alive) setTimeout(() => this.endMatch(true), 1500);
@@ -813,6 +841,7 @@ class Game {
       case 'Digit2': this.equip(p, 1); break;
       case 'Digit3': this.equip(p, 2); break;
       case 'KeyG': this.throwGrenade(p, this.aimDir()); break;
+      case 'KeyT': this.throwGrenade(p, this.aimDir(), true); break;
       case 'KeyH': this.startHeal(p); break;
       case 'KeyM': this.toggleMap(); break;
       case 'Escape': this.mouse.fire = false; break;
@@ -863,6 +892,7 @@ class Game {
     btn('tUse', () => this.interact());
     btn('tHeal', () => this.startHeal(this.player));
     btn('tNade', () => this.throwGrenade(this.player, this.aimDir()));
+    btn('tSmoke', () => this.throwGrenade(this.player, this.aimDir(), true));
     btn('tView', () => { this.viewMode = this.viewMode === 'fpp' ? 'tpp' : 'fpp'; this.buildViewModel(); });
     btn('tMap', () => this.toggleMap());
     btn('tSwap', () => { const p = this.player; const slots = [0, 1, 2].filter(s => p.weapons[s]); if (slots.length) this.equip(p, slots[(slots.indexOf(p.cur) + 1) % slots.length]); });
@@ -1149,7 +1179,7 @@ class Game {
       const to = tp.clone().sub(eye).normalize();
       const facing = -Math.sin(a.yaw) * to.x - Math.cos(a.yaw) * to.z;
       if (facing < -0.2 && c.d > 18 && c.o !== ai.enemy) continue;
-      const hit = W.raycast(eye, tp);
+      const hit = W.raycast(eye, tp) || (this.fx.blocksView(eye, tp) ? {} : null);
       if (!hit) {
         if (ai.enemy !== c.o) { ai.enemy = c.o; ai.react = 0.35 + (1 - ai.skill) * 0.7 + c.d / 400; ai.engaged = 0; }
         ai.sees = true; ai.lastSeen = c.o.pos.clone();
@@ -1271,7 +1301,7 @@ class Game {
         const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.quaternion);
         const piv = p.pos.clone(); piv.y += (p.state === 'ground' ? p.height : 1.7) + 0.05;
         const air = p.state !== 'ground';
-        const want = piv.clone().addScaledVector(right, air ? 0 : 0.55).addScaledVector(back, air ? (p.state === 'chute' ? 9 : 6) : 2.6).add(new THREE.Vector3(0, air ? 1 : 0.15, 0));
+        const want = piv.clone().addScaledVector(right, air ? 0 : 0.62).addScaledVector(back, air ? (p.state === 'chute' ? 9 : 6) : 2.1).add(new THREE.Vector3(0, air ? 1 : -0.05, 0));
         const hit = this.world.raycast(piv, want);
         if (hit) want.copy(piv).lerp(hit.point, Math.max(0, (hit.dist - 0.3) / piv.distanceTo(want)));
         cam.position.copy(want);
@@ -1351,7 +1381,7 @@ class Game {
     else $('ammo').hidden = true;
     $('vestIco').className = 'gear l' + p.armor; $('vestIco').style.setProperty('--d', p.armor ? clamp(p.armorHp / (p.armor === 2 ? 220 : 160), 0, 1) : 0);
     $('helmIco').className = 'gear l' + p.helmet; $('helmIco').style.setProperty('--d', p.helmet ? clamp(p.helmetHp / (p.helmet === 2 ? 150 : 90), 0, 1) : 0);
-    $('meds').textContent = `${p.bandages} bandage${p.bandages === 1 ? '' : 's'} · ${p.medkits} medkit${p.medkits === 1 ? '' : 's'} · ${p.grenades} grenade${p.grenades === 1 ? '' : 's'}`;
+    $('meds').textContent = `${p.bandages} bandage${p.bandages === 1 ? '' : 's'} · ${p.medkits} medkit${p.medkits === 1 ? '' : 's'} · ${p.grenades} grenade${p.grenades === 1 ? '' : 's'} · ${p.smokes || 0} smoke`;
     const z = this.zone;
     const tt = Math.max(0, Math.ceil(z.t));
     $('zoneinfo').innerHTML = z.stage === 'final' ? 'Final zone' : `<b>${z.stage === 'wait' ? 'Zone closes in' : 'Closing'}</b> ${Math.floor(tt / 60)}:${(tt % 60).toString().padStart(2, '0')}`;
@@ -1450,6 +1480,8 @@ class Game {
       const lp = p.state === 'plane' ? this.planePos() : p.pos;
       this.world.update(dt, lp, this.camera.position);
       this.updateFX(dt);
+      this.fx.update(dt, this.camera, this.renderer);
+      if (this.grade) this.grade.uniforms.uTime.value += dt;
       // sun follows the camera; snap to shadow texels to prevent shimmer
       const tex = (this.shadowExt * 2) / this.shadowSize;
       const c = this.camera.position;
@@ -1467,6 +1499,24 @@ class Game {
 }
 
 // ---------------- helpers ----------------
+// Filmic grade in linear light: gentle contrast, warm highlights, cool shadows, vignette, fine grain.
+const GRADE_SHADER = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; varying vec2 vUv;
+    void main(){
+      vec4 src = texture2D(tDiffuse, vUv); vec3 c = max(src.rgb, 0.0);
+      vec3 l = log2(c + 1e-4); l = (l - log2(0.18)) * 1.06 + log2(0.18); c = exp2(l);
+      float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(lum), c, 0.9);
+      c *= mix(vec3(0.94, 0.99, 1.05), vec3(1.05, 1.0, 0.92), smoothstep(0.05, 0.6, lum));
+      vec2 d = vUv - 0.5; c *= 1.0 - dot(d, d) * 0.6;
+      float n = fract(sin(dot(vUv * 1000.0 + uTime * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
+      c *= 1.0 + (n - 0.5) * 0.035;
+      gl_FragColor = vec4(c, src.a);
+    }`,
+};
+
 function nearestDoor(b, p) { return b.doors.reduce((best, d) => (!best || d.out.distanceToSquared(p) < best.out.distanceToSquared(p) ? d : best), null); }
 async function loadPacked(url) {
   const r = await fetch(url);
