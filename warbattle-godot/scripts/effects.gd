@@ -149,9 +149,9 @@ func burst(pos: Vector3, o: Dictionary) -> void:
 	p.scale_amount_min = o.get("size", 1.0) * 0.7
 	p.scale_amount_max = o.get("size", 1.0)
 	var curve := Curve.new()
+	curve.max_value = maxf(1.0, o.get("grow", 3.0))   # set before adding points, or they get clamped to 1
 	curve.add_point(Vector2(0, 0.35))
 	curve.add_point(Vector2(1, o.get("grow", 3.0)))
-	curve.max_value = maxf(1.0, o.get("grow", 3.0))
 	p.scale_amount_curve = curve
 	p.angle_min = 0.0
 	p.angle_max = 360.0
@@ -239,9 +239,9 @@ func smoke_grenade(pos: Vector3) -> void:
 	p.scale_amount_min = 3.0
 	p.scale_amount_max = 5.0
 	var curve := Curve.new()
+	curve.max_value = 2.0
 	curve.add_point(Vector2(0, 0.4))
 	curve.add_point(Vector2(1, 1.6))
-	curve.max_value = 2.0
 	p.scale_amount_curve = curve
 	p.angle_max = 360.0
 	p.angular_velocity_min = -8.0

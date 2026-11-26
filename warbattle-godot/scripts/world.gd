@@ -375,7 +375,7 @@ func _box(xf: Transform3D, mat: String, size: Vector3, collide := "stone", tile 
 		var p := [c - hu.abs() * u.sign().abs() * 0 - _absdot(u, h) * u - _absdot(v, h) * v, c + _absdot(u, h) * u - _absdot(v, h) * v, c + _absdot(u, h) * u + _absdot(v, h) * v, c - _absdot(u, h) * u + _absdot(v, h) * v]
 		var uvs := [Vector2(0, f[4]), Vector2(f[3], f[4]), Vector2(f[3], 0), Vector2(0, 0)]
 		var wn := (basis * n).normalized()
-		for t in [[0, 2, 1], [0, 3, 2]]:
+		for t in [[0, 1, 2], [0, 2, 3]]:   # clockwise = front face in Godot
 			for q in t:
 				var wp: Vector3 = xf * (p[q] as Vector3)
 				bk.v.append(wp)
