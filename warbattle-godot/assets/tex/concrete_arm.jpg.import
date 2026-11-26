@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/concrete_arm.jpg-b48408e2c2cc21e53532b34bd225
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.8
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

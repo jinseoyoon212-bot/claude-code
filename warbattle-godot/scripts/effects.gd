@@ -65,6 +65,7 @@ func _particle_mat(additive: bool) -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.billboard_keep_scale = true   # otherwise particle scale is discarded
 	m.particles_anim_h_frames = 2
 	m.particles_anim_v_frames = 2
 	m.particles_anim_loop = false
@@ -209,7 +210,7 @@ func impact(pos: Vector3, normal: Vector3, mat: String, decal: bool) -> void:
 
 
 func blood(pos: Vector3, dir: Vector3) -> void:
-	burst(pos, {"n": 8, "life": 0.7, "v0": 3.0, "dir": dir, "spread": 35.0, "size": 0.12, "grow": 2.5, "rise": -6.0, "drag": 1.0, "c0": Color(0.38, 0.03, 0.02, 0.9), "c1": Color(0.3, 0.02, 0.02, 0)})
+	burst(pos, {"n": 6, "life": 0.45, "v0": 2.5, "dir": dir, "spread": 30.0, "size": 0.07, "grow": 1.8, "rise": -6.0, "drag": 1.0, "c0": Color(0.38, 0.03, 0.02, 0.9), "c1": Color(0.3, 0.02, 0.02, 0)})
 
 
 func explosion(pos: Vector3) -> void:

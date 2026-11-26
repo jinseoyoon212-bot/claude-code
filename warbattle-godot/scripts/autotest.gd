@@ -40,6 +40,7 @@ func run() -> void:
 	g.cam_yaw = atan2(-(t.x - x), -(t.z - z)) + 0.35
 	g.cam_pitch = 0.02
 	g.view_mode = "tpp"
+	p.hp = 1e9   # keep the camera subject alive while scenes are staged
 	g.pickup(p, {"kind": "weapon", "sub": "carbine", "mag": 30, "node": Node3D.new()})
 	p.ammo["5.56"] = 120
 	var fwd := Vector3(-sin(g.cam_yaw), 0, -cos(g.cam_yaw))
@@ -90,6 +91,7 @@ func run() -> void:
 			g.view_mode = "fpp"
 			break
 	await _wait(1.5)
+	p.hp = 1e9
 	await _shot("g_inside")
 	# aerial over the island from the transport
 	p.global_position = Vector3(0, 300, 0)

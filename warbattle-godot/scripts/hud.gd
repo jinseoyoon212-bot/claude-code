@@ -38,7 +38,8 @@ var ammo_res: Label
 var prompt: Label
 var toast: Label
 var toast_t := 0.0
-var actbar: ProgressBar
+var actbar: ColorRect
+var actfill: ColorRect
 var act_l: Label
 var cross: Control
 var hitmark: Control
@@ -122,6 +123,8 @@ func _build_menu(root: Control) -> void:
 	m.add_child(row)
 	var brand := VBoxContainer.new()
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	brand.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	brand.add_theme_constant_override("separation", 10)
 	brand.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_child(brand)
 	var title := HBoxContainer.new()
@@ -139,6 +142,7 @@ func _build_menu(root: Control) -> void:
 	sb.set_content_margin_all(22)
 	card.add_theme_stylebox_override("panel", sb)
 	card.custom_minimum_size.x = 420
+	card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(card)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
@@ -216,6 +220,8 @@ func _slider(label: String, key: String, lo: float, hi: float, step: float) -> C
 func _load_settings() -> void:
 	if OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios"):
 		settings.quality = "low"
+	elif OS.has_feature("web"):
+		settings.quality = "medium"
 	var cf := ConfigFile.new()
 	if cf.load("user://settings.cfg") == OK:
 		for k in settings.keys():
@@ -371,21 +377,17 @@ func _build_hud(root: Control) -> void:
 	prompt.size = Vector2(500, 30)
 	prompt.add_theme_stylebox_override("normal", _panel())
 	hud.add_child(prompt)
-	actbar = ProgressBar.new()
+	actbar = ColorRect.new()
+	actbar.color = Color(1, 1, 1, 0.12)
+	actbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	actbar.set_anchors_preset(Control.PRESET_CENTER)
 	actbar.position = Vector2(-110, 128)
-	actbar.custom_minimum_size = Vector2(220, 5)
-	actbar.size = Vector2(220, 5)
-	actbar.show_percentage = false
-	var abg := StyleBoxFlat.new()
-	abg.bg_color = Color(1, 1, 1, 0.12)
-	abg.content_margin_top = 0
-	abg.content_margin_bottom = 0
-	actbar.add_theme_stylebox_override("background", abg)
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(0.5, 0.81, 0.48)
-	actbar.add_theme_stylebox_override("fill", fill)
+	actbar.size = Vector2(220, 4)
 	hud.add_child(actbar)
+	actfill = ColorRect.new()
+	actfill.color = Color(0.5, 0.81, 0.48)
+	actfill.size = Vector2(0, 4)
+	actbar.add_child(actfill)
 	act_l = _lbl("", f_semi, 14)
 	act_l.set_anchors_preset(Control.PRESET_CENTER)
 	act_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -551,7 +553,7 @@ func update_hud(delta: float, p: Actor) -> void:
 		act_l.visible = true
 		var tot: float = p.heal_max if p.heal_t > 0 else Weapons.DATA[w.kind].reload
 		var rem: float = p.heal_t if p.heal_t > 0 else p.reload_t
-		actbar.value = 100.0 * (1.0 - rem / tot)
+		actfill.size = Vector2(220.0 * (1.0 - rem / tot), 4)
 		act_l.text = ("Using medkit" if p.heal_kind == "medkit" else "Applying bandage") + " %.1fs" % rem if p.heal_t > 0 else "Reloading %.1fs" % rem
 	else:
 		actbar.visible = false
