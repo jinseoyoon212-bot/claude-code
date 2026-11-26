@@ -75,7 +75,8 @@ func _particle_mat(additive: bool) -> StandardMaterial3D:
 		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	else:
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+		# unshaded: lit smoke turns black when seen against the sun
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		m.proximity_fade_enabled = true
 		m.proximity_fade_distance = 1.2
 	return m
@@ -215,7 +216,7 @@ func blood(pos: Vector3, dir: Vector3) -> void:
 
 func explosion(pos: Vector3) -> void:
 	burst(pos + Vector3.UP * 0.5, {"add": true, "n": 26, "life": 0.9, "v0": 9.0, "dir": Vector3.UP, "spread": 80.0, "size": 2.6, "grow": 3.0, "rise": 3.0, "drag": 3.2, "radius": 0.8, "c0": Color(1.6, 1.05, 0.45, 1), "c1": Color(0.9, 0.22, 0.05, 0)})
-	burst(pos + Vector3.UP * 1.2, {"n": 34, "life": 8.0, "burst": 0.9, "v0": 5.0, "dir": Vector3.UP, "spread": 50.0, "size": 3.5, "grow": 4.0, "rise": 1.8, "drag": 0.9, "radius": 1.2, "c0": Color(0.16, 0.14, 0.13, 0.95), "c1": Color(0.32, 0.3, 0.28, 0)})
+	burst(pos + Vector3.UP * 1.2, {"n": 34, "life": 8.0, "burst": 0.9, "v0": 5.0, "dir": Vector3.UP, "spread": 50.0, "size": 3.5, "grow": 4.0, "rise": 1.8, "drag": 0.9, "radius": 1.2, "c0": Color(0.24, 0.22, 0.2, 0.9), "c1": Color(0.45, 0.43, 0.4, 0)})
 	burst(pos + Vector3.UP * 0.3, {"n": 20, "life": 3.5, "v0": 9.0, "dir": Vector3.UP, "spread": 88.0, "size": 1.6, "grow": 3.0, "rise": 0.3, "drag": 1.8, "c0": Color(0.55, 0.47, 0.36, 0.7), "c1": Color(0.6, 0.55, 0.47, 0)})
 	burst(pos, {"add": true, "n": 24, "life": 1.4, "v0": 14.0, "dir": Vector3.UP, "spread": 70.0, "size": 0.06, "grow": 1.0, "rise": -12.0, "drag": 0.3, "c0": Color(1.5, 0.9, 0.4, 1), "c1": Color(0.6, 0.2, 0.05, 0)})
 	expl_light.global_position = pos + Vector3.UP * 1.5
