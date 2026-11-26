@@ -4,7 +4,7 @@ extends Node3D
 
 const MAP_SIZE := 1600.0
 const HALF := 800.0
-const N := 256
+const N := 512
 const CELL := MAP_SIZE / N
 const TOWN_NAMES := ["Harrowgate", "Millbrook", "Stonereach", "Pike Landing", "Eastmoor", "Copper Quarry", "Fenwick", "Ridgeback Base", "Larkspur", "Old Saltworks"]
 
@@ -122,6 +122,7 @@ func build(p_quality: String, p_models: Dictionary, progress: Callable) -> void:
 	_place_towns_and_roads(); progress.call(0.1)
 	_build_heights(); progress.call(0.2)
 	_build_terrain(); progress.call(0.3)
+	_build_roads()
 	_build_water()
 	_build_buildings(); progress.call(0.45)
 	_build_trees(); progress.call(0.6)
@@ -277,6 +278,7 @@ func _build_terrain() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/terrain.gdshader")
 	var layers := ["grass", "forest", "rock", "dirt"]
+	mat.set_shader_parameter("sand", load("res://assets/tex/sand_diff.jpg"))
 	for i in 4:
 		mat.set_shader_parameter("albedo%d" % i, load("res://assets/tex/%s_diff.jpg" % layers[i]))
 		mat.set_shader_parameter("normal%d" % i, load("res://assets/tex/%s_nor.jpg" % layers[i]))
@@ -325,15 +327,77 @@ func _build_water() -> void:
 		nt.width = 512
 		nt.height = 512
 		mat.set_shader_parameter("normal%d" % i, nt)
+	# terrain heights so the sea knows its depth (shallow colour, shore foam)
+	var S := N + 1
+	var img := Image.create(S, S, false, Image.FORMAT_RF)
+	for j in S:
+		for i in S:
+			img.set_pixel(i, j, Color(heights[j * S + i], 0, 0))
+	mat.set_shader_parameter("heightmap", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("map_size", MAP_SIZE)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 
 
+# Roads: asphalt lane over a wider gravel shoulder, draped on the terrain.
+func _build_roads() -> void:
+	for layer in [["gravel", 8.0, 0.06], ["road", 5.0, 0.1]]:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var width: float = layer[1]
+		var lift: float = layer[2]
+		for r in roads:
+			var a: Vector2 = r[0]
+			var b: Vector2 = r[1]
+			var dir := (b - a).normalized()
+			a -= dir * 1.5
+			b += dir * 1.5
+			var nrm := Vector2(-dir.y, dir.x) * width / 2.0
+			var steps := maxi(1, int(a.distance_to(b) / 2.0))
+			var vacc := 0.0
+			for s in steps:
+				var p0 := a.lerp(b, float(s) / steps)
+				var p1 := a.lerp(b, float(s + 1) / steps)
+				var seg := p0.distance_to(p1)
+				var q := []
+				for pt in [p0 + nrm, p0 - nrm, p1 - nrm, p1 + nrm]:
+					q.append(Vector3(pt.x, get_height(pt.x, pt.y) + lift, pt.y))
+				var uv := [Vector2(0, vacc), Vector2(width / 4.0, vacc), Vector2(width / 4.0, vacc + seg / 4.0), Vector2(0, vacc + seg / 4.0)]
+				for k in [0, 1, 2, 0, 2, 3]:   # clockwise seen from above
+					st.set_uv(uv[k])
+					st.set_normal(Vector3.UP)
+					st.add_vertex(q[k])
+				vacc += seg / 4.0
+		st.generate_normals()
+		st.generate_tangents()
+		var mesh := st.commit()
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = load("res://assets/tex/%s_diff.jpg" % layer[0])
+		m.normal_enabled = true
+		m.normal_texture = load("res://assets/tex/%s_nor.jpg" % layer[0])
+		m.roughness = 0.92 if layer[0] == "gravel" else 0.8
+		m.albedo_color = Color(0.85, 0.82, 0.76) if layer[0] == "gravel" else Color(0.8, 0.8, 0.8)
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		mesh.surface_set_material(0, m)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+
+
 # ------------------------------------------------------------------ buildings
 func _mat(name: String) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	var tex: String = {"brick": "brick", "plaster": "plaster", "paint": "plaster", "blue": "plaster", "concrete": "concrete", "wood": "wood", "darkwood": "wood", "roof": "roof"}[name]
+	if name == "glass":
+		m.albedo_color = Color(0.16, 0.2, 0.22, 0.42)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.metallic = 0.2
+		m.roughness = 0.04
+		m.specular = 0.9
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		return m
+	var tex: String = {"brick": "brick", "plaster": "plaster", "paint": "plaster", "blue": "plaster", "concrete": "concrete", "wood": "wood", "darkwood": "wood", "roof": "roof", "rooftile": "rooftile", "planks": "planks", "frame": "planks"}[name]
 	m.albedo_texture = load("res://assets/tex/%s_diff.jpg" % tex)
 	m.normal_enabled = true
 	m.normal_texture = load("res://assets/tex/%s_nor.jpg" % tex)
@@ -341,6 +405,8 @@ func _mat(name: String) -> StandardMaterial3D:
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	match name:
 		"roof": m.metallic = 0.55; m.roughness = 0.55
+		"rooftile": m.roughness = 0.75
+		"frame": m.albedo_color = Color(0.86, 0.84, 0.78)
 		"paint": m.albedo_color = Color(0.79, 0.73, 0.63)
 		"blue": m.albedo_color = Color(0.62, 0.7, 0.72)
 		"darkwood": m.albedo_color = Color(0.45, 0.37, 0.3)
@@ -414,6 +480,7 @@ func wall_x(B: Dictionary, mat: String, x0: float, x1: float, z: float, y0: floa
 			bbox(B, mat, o.c, y0 + o.y0 / 2.0, z, o.w, o.y0, th)
 		if o.y1 < h:
 			bbox(B, mat, o.c, y0 + (o.y1 + h) / 2.0, z, o.w, h - o.y1, th)
+		_dress(B, "x", o, z, y0, th)
 		cur = o.c + o.w / 2.0
 	if x1 > cur:
 		bbox(B, mat, (cur + x1) / 2.0, y0 + h / 2.0, z, x1 - cur, h, th)
@@ -430,23 +497,59 @@ func wall_z(B: Dictionary, mat: String, z0: float, z1: float, x: float, y0: floa
 			bbox(B, mat, x, y0 + o.y0 / 2.0, o.c, th, o.y0, o.w)
 		if o.y1 < h:
 			bbox(B, mat, x, y0 + (o.y1 + h) / 2.0, o.c, th, h - o.y1, o.w)
+		_dress(B, "z", o, x, y0, th)
 		cur = o.c + o.w / 2.0
 	if z1 > cur:
 		bbox(B, mat, x, y0 + h / 2.0, (cur + z1) / 2.0, th, h, z1 - cur)
+
+
+# Window frames, sills, glass and mullions; door frames and half-open door leaves.
+# axis "x": wall runs along local X at local z = d. axis "z": wall runs along Z at local x = d.
+func _dress(B: Dictionary, axis: String, o: Dictionary, d: float, y0: float, th: float) -> void:
+	var w: float = o.w
+	var a0: float = y0 + o.y0
+	var a1: float = y0 + o.y1
+	var hh := a1 - a0
+	var cy := (a0 + a1) / 2.0
+	var depth := th + 0.06
+	# local position helper: along = coordinate along the wall, across = offset through it
+	var P := func(along: float, y: float, across: float) -> Vector3: return Vector3(along, y, d + across) if axis == "x" else Vector3(d + across, y, along)
+	var S := func(along: float, y: float, across: float) -> Vector3: return Vector3(along, y, across) if axis == "x" else Vector3(across, y, along)
+	var fb := func(pos: Vector3, size: Vector3, mat: String) -> void: _box(_bxf(B, pos), mat, size, "", 1.2)
+	if w >= 3.0:
+		fb.call(P.call(o.c, a1 + 0.05, 0), S.call(w + 0.2, 0.1, depth), "concrete")
+		return
+	fb.call(P.call(o.c, a1 + 0.04, 0), S.call(w + 0.14, 0.08, depth), "frame")
+	fb.call(P.call(o.c - w / 2.0 + 0.035, cy, 0), S.call(0.07, hh, depth), "frame")
+	fb.call(P.call(o.c + w / 2.0 - 0.035, cy, 0), S.call(0.07, hh, depth), "frame")
+	if o.y0 > 0.01:
+		fb.call(P.call(o.c, a0 - 0.035, 0.05), S.call(w + 0.22, 0.07, th + 0.16), "frame")
+		fb.call(P.call(o.c, cy, 0), S.call(0.05, hh, 0.06), "frame")
+		fb.call(P.call(o.c, cy + hh * 0.08, 0), S.call(w, 0.05, 0.06), "frame")
+		fb.call(P.call(o.c, cy, 0), S.call(w - 0.1, hh - 0.06, 0.02), "glass")
+	else:
+		# door leaf hinged on one side, swung open about 70 degrees into the room
+		var hinge: Vector3 = P.call(o.c - w / 2.0 + 0.06, a0 + (hh - 0.03) / 2.0, -th / 2.0 - 0.03)
+		var ang := -1.2 if axis == "x" else 1.2
+		var bas := Basis(Vector3.UP, ang)
+		var off: Vector3 = bas * (S.call((w - 0.1) / 2.0, 0.0, 0.0) as Vector3)
+		_box(_bxf(B, hinge + off, bas), "planks", S.call(w - 0.1, hh - 0.04, 0.045), "", 1.5)
 
 
 func _op(c: float, w: float, y0: float, y1: float) -> Dictionary:
 	return {"c": c, "w": w, "y0": y0, "y1": y1}
 
 
-func gable(B: Dictionary, W: float, D: float, y: float) -> void:
+func gable(B: Dictionary, W: float, D: float, y: float, mat := "roof") -> void:
 	var pitch := 0.5
 	var half := D / 2.0 + 0.35
 	var rise := half * tan(pitch)
 	var length := half / cos(pitch)
 	for s in [-1.0, 1.0]:
 		var xf := _bxf(B, Vector3(0, y + rise / 2.0, s * half / 2.0), Basis(Vector3.RIGHT, s * pitch))
-		_box(xf, "roof", Vector3(W + 0.7, 0.12, length), "metal", 2.0)
+		_box(xf, mat, Vector3(W + 0.7, 0.12, length), "metal", 2.0)
+	# ridge cap
+	_box(_bxf(B, Vector3(0, y + rise + 0.02, 0)), mat, Vector3(W + 0.75, 0.1, 0.32), "", 2.0)
 	# gable end walls as thin stacked boxes (stepped triangle)
 	var steps := 6
 	for side in [-1.0, 1.0]:
@@ -608,7 +711,10 @@ func _make_building(B: Dictionary) -> void:
 					furn(B, "old_bed_frame", -W / 2 + 1.6 + i * 2.6, 0, -D / 2 + 1.1)
 				furn(B, "metal_office_desk", W / 2 - 1.2, 0, 0, -PI / 2)
 			else:
-				gable(B, W, D, H + 0.16)
+				gable(B, W, D, H + 0.16, "rooftile")
+				var top: float = B.roof_top - B.y
+				bbox(B, "brick", W / 4.0, (H + top + 0.7) / 2.0, -D / 5.0, 0.7, top - H + 0.7, 0.7, "")
+				bbox(B, "concrete", W / 4.0, top + 0.4, -D / 5.0, 0.8, 0.08, 0.8, "")
 				furn(B, "old_bed_frame", -W / 2 + 1.1, 0, -D / 2 + 1.2, PI / 2)
 				furn(B, "drawer_cabinet", -W / 2 + 0.4, 0, D / 2 - 1.2, PI / 2)
 				furn(B, "WoodenTable_03", W / 6, 0, -D / 6)
@@ -641,7 +747,7 @@ func _make_building(B: Dictionary) -> void:
 			bbox(B, "concrete", (-W / 2 + hx) / 2.0, H + 0.1, 0, hx + W / 2, 0.2, D)
 			bbox(B, "concrete", (hx + W / 2) / 2.0, H + 0.1, -D / 2 + 0.5, W / 2 - hx, 0.2, 1.0)
 			bbox(B, "plaster", 0, 2 * H + 0.3, 0, W, 0.16, D)
-			gable(B, W, D, 2 * H + 0.38)
+			gable(B, W, D, 2 * H + 0.38, "rooftile")
 			furn(B, "sofa_02", -W / 2 + 0.6, 0, 0, PI / 2)
 			furn(B, "WoodenTable_03", -1, 0, -D / 4 + 0.6)
 			furn(B, "old_bed_frame", -W / 2 + 1.2, H + 0.2, -D / 2 + 1.2, PI / 2)
@@ -805,7 +911,7 @@ func _build_trees() -> void:
 		v.kind = "fir"; variants.append(v)
 	for v in broad:
 		v.kind = "broad"; variants.append(v)
-	var target: int = {"low": 2200, "medium": 4000, "high": 6000, "ultra": 8500}[quality]
+	var target: int = {"low": 2400, "medium": 4800, "high": 8000, "ultra": 12000}[quality]
 	var CH := 8
 	var chunk := MAP_SIZE / CH
 	var lists := {}
@@ -844,7 +950,7 @@ func _build_trees() -> void:
 			lists[key] = []
 		lists[key].append(tr)
 		n += 1
-	var vis_end: float = {"low": 380.0, "medium": 550.0, "high": 800.0, "ultra": 1200.0}[quality]
+	var vis_end: float = {"low": 400.0, "medium": 650.0, "high": 1000.0, "ultra": 1500.0}[quality]
 	for key in lists.keys():
 		var vi := int(key.split("_")[0])
 		var mm := MultiMesh.new()
@@ -885,7 +991,7 @@ func _build_trees() -> void:
 
 func _build_grass() -> void:
 	# GPU grass: a clump mesh instanced in chunks across grassland, faded by distance
-	var count: int = {"low": 9000, "medium": 22000, "high": 42000, "ultra": 65000}[quality]
+	var count: int = {"low": 9000, "medium": 26000, "high": 55000, "ultra": 90000}[quality]
 	var clump := _grass_clump_mesh()
 	grass_mat = ShaderMaterial.new()
 	grass_mat.shader = load("res://scripts/grass.gdshader")
@@ -919,7 +1025,7 @@ func _build_grass() -> void:
 			var pz := z + rng.randf_range(-0.8, 0.8)
 			chunks[key].append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(1, rng.randf_range(0.6, 1.35), 1)), Vector3(px, get_height(px, pz) - 0.03, pz)))
 		placed += 1
-	var vis: float = {"low": 35.0, "medium": 55.0, "high": 75.0, "ultra": 95.0}[quality]
+	var vis: float = {"low": 35.0, "medium": 60.0, "high": 85.0, "ultra": 110.0}[quality]
 	for key in chunks.keys():
 		var list: Array = chunks[key]
 		var mm := MultiMesh.new()
@@ -930,7 +1036,7 @@ func _build_grass() -> void:
 			mm.set_instance_transform(i, list[i])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality == "ultra" else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.visibility_range_end = vis
 		mmi.visibility_range_end_margin = 10.0
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

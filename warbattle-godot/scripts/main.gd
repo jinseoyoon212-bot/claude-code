@@ -19,6 +19,8 @@ var hud: Hud
 var camera := Camera3D.new()
 var sun := DirectionalLight3D.new()
 var env := Environment.new()
+var cam_attr := CameraAttributesPractical.new()
+var use_dof := false
 var plane: Node3D
 var zone_mesh := MeshInstance3D.new()
 var actors: Array = []
@@ -183,9 +185,17 @@ func _setup_environment() -> void:
 		env.volumetric_fog_albedo = Color(0.88, 0.9, 0.95)
 		env.volumetric_fog_length = 160.0
 		env.volumetric_fog_anisotropy = 0.6
-		env.ssr_enabled = q == "ultra" and not is_mobile
+		env.ssr_enabled = (q == "high" or q == "ultra") and not is_mobile
+		env.ssr_max_steps = 48
+		RenderingServer.directional_shadow_atlas_set_size(8192 if q == "ultra" else 4096, true)
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if q == "ultra" else RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM)
 	var we := WorldEnvironment.new()
 	we.environment = env
+	use_dof = is_rd and not is_mobile and q != "low"
+	cam_attr.dof_blur_far_distance = 45.0
+	cam_attr.dof_blur_far_transition = 60.0
+	cam_attr.dof_blur_amount = 0.06
+	we.camera_attributes = cam_attr
 	add_child(we)
 	# sun from the brightest pixel of the sky image
 	var dir := Vector3(0.556, 0.741, 0.377)
@@ -1198,3 +1208,6 @@ func _update_camera(delta: float) -> void:
 		camera.global_position += Vector3(randf() - 0.5, randf() - 0.5, 0) * shake * 0.2
 		shake -= delta * 1.5
 	camera.fov = lerpf(camera.fov, fov, 1.0 - exp(-delta * 14.0))
+	if use_dof:
+		var w2 = p.weapon()
+		cam_attr.dof_blur_far_enabled = p.alive and p.ads and w2 != null and not Weapons.DATA[w2.kind].scope
