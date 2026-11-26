@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://bsqdi11xhcpqj"
+path="res://.godot/imported/covered_car_covered_car_metal-covered_car_rough.jpg-a821df4b9fb9d05c3096cacc463f0910.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "79bb2340f8008abab45bf504db356cc9"
+}
+
+[deps]
+
+source_file="res://assets/models/covered_car_covered_car_metal-covered_car_rough.jpg"
+dest_files=["res://.godot/imported/covered_car_covered_car_metal-covered_car_rough.jpg-a821df4b9fb9d05c3096cacc463f0910.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

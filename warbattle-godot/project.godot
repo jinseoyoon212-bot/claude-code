@@ -1,0 +1,45 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Warbattle"
+config/description="Battle royale on Kestrel Island"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+boot_splash/bg_color=Color(0.054, 0.063, 0.051, 1)
+boot_splash/show_image=false
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+window/vsync/vsync_mode=1
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=false
+pointing/emulate_mouse_from_touch=true
+
+[physics]
+
+common/physics_ticks_per_second=60
+3d/default_gravity=18.0
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+renderer/rendering_method.web="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=0
+anti_aliasing/quality/use_taa=true
+lights_and_shadows/directional_shadow/size=8192
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+environment/defaults/default_clear_color=Color(0.054, 0.063, 0.051, 1)
+global_illumination/sdfgi/probe_ray_count=2
+anti_aliasing/screen_space_roughness_limiter/enabled=true
+textures/default_filters/anisotropic_filtering_level=4
