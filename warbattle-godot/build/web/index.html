@@ -4,7 +4,7 @@
 <script>
 // Reassemble files that were split for static hosting limits.
 (function () {
-  var parts = {"index.pck": {"n": 3, "size": 67323024, "type": "application/octet-stream"}, "index.wasm": {"n": 2, "size": 35376909, "type": "application/wasm"}};
+  var parts = {"index.pck": {"n": 3, "size": 70085024, "type": "application/octet-stream"}, "index.wasm": {"n": 2, "size": 35376909, "type": "application/wasm"}};
   var orig = window.fetch.bind(window);
   window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || String(input);
@@ -122,7 +122,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":67323024,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":70085024,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 

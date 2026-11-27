@@ -115,3 +115,73 @@ func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(dir + "/" + name + ".png")
 	print("saved ", name, "  fps=", Engine.get_frames_per_second())
+
+
+## --sim: play a whole match at 4x speed with an invulnerable player and report progress.
+func sim() -> void:
+	var g := game
+	while g.state != "playing":
+		await get_tree().process_frame
+	Engine.time_scale = 4.0
+	Engine.max_physics_steps_per_frame = 64
+	get_viewport().disable_3d = true   # logic only; drawing the island is what makes software rendering slow
+	var last := -30.0
+	while true:
+		await get_tree().process_frame
+		if g.player:
+			g.player.hp = 1e9
+			if g.player.state == "plane" and g.plane_t > 8.0:
+				g.jump_actor(g.player)
+		if g.time - last >= 30.0:
+			last = g.time
+			var states := {}
+			var armed := 0
+			var alive := 0
+			var kills := 0
+			for a in g.actors:
+				states[a.state] = states.get(a.state, 0) + 1
+				if a.alive:
+					alive += 1
+					if a.weapon() != null:
+						armed += 1
+				kills += a.kills
+			print("SIM t=%d alive=%d armed=%d kills=%d loot=%d bullets=%d zone=%d:%s:%d states=%s fps=%d" % [g.time, alive, armed, kills, g.loot.size(), g.bullets.size(), g.zone.phase, g.zone.stage, g.zone.r, str(states), Engine.get_frames_per_second()])
+			if alive <= 1 or g.time > 900.0:
+				print("SIM done")
+				get_tree().quit()
+				return
+
+
+## --armcheck=DIR: first-person view plus an outside view of the same pose, to debug the arms.
+func armcheck() -> void:
+	var g := game
+	while g.state != "playing":
+		await get_tree().process_frame
+	var p: Actor = g.player
+	g.jump_actor(p)
+	p.state = "ground"
+	p.hp = 1e9
+	for a in g.actors:
+		if a.ai:
+			a.ai.jump_at = 1e9
+	var t: Dictionary = g.world.towns[0]
+	p.global_position = Vector3(t.x, g.world.get_height(t.x, t.z) + 0.3, t.z)
+	g.pickup(p, {"kind": "weapon", "sub": "carbine", "mag": 30, "node": Node3D.new()})
+	g.view_mode = "fpp"
+	g.cam_yaw = 0.0
+	g.cam_pitch = -0.1
+	await _wait(2.0)
+	await _shot("a_fpp")
+	# freeze the game camera logic and look at the player from the side
+	g.set_process(false)
+	var cam: Camera3D = g.camera
+	cam.global_position = p.global_position + Vector3(2.2, 1.5, -0.6)
+	cam.look_at(p.global_position + Vector3(0, 1.35, -0.3), Vector3.UP)
+	await _wait(0.5)
+	await _shot("a_side")
+	var sk: Skeleton3D = p.skel
+	for n in ["mixamorig_RightHand", "mixamorig_LeftHand", "mixamorig_RightArm", "mixamorig_Head"]:
+		var i := sk.find_bone(n)
+		print(n, " world=", sk.global_transform * sk.get_bone_global_pose(i).origin)
+	print("cam=", g.camera.global_position, " gun=", p.gun_socket.global_position, " tgt_r=", p.tgt_r.global_position, " ik=", p.aim.ik, " body=", p.body.global_position)
+	get_tree().quit()

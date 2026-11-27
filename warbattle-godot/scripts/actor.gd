@@ -47,8 +47,6 @@ var body: Node3D
 var skel: Skeleton3D
 var anim_tree: AnimationTree
 var aim
-var ik_r: SkeletonIK3D
-var ik_l: SkeletonIK3D
 var tgt_r := Marker3D.new()
 var tgt_l := Marker3D.new()
 var gun_socket := Node3D.new()
@@ -116,25 +114,8 @@ func setup(p_game: Node, p_id: int, p_name: String, player: bool, models: Dictio
 	game.world_root.add_child(gun_socket)
 	gun_socket.add_child(tgt_r)
 	gun_socket.add_child(tgt_l)
-	ik_r = _make_ik("Right", Vector3(45, -30, 95))
-	ik_l = _make_ik("Left", Vector3(-45, -30, 95))
 	visible = false
 	gun_socket.visible = false
-
-
-func _make_ik(side: String, magnet: Vector3) -> SkeletonIK3D:
-	var ik := SkeletonIK3D.new()
-	ik.root_bone = "mixamorig_%sArm" % side
-	ik.tip_bone = "mixamorig_%sHand" % side
-	ik.use_magnet = true
-	ik.magnet = magnet
-	ik.override_tip_basis = false
-	ik.max_iterations = 8
-	skel.add_child(ik)
-	ik.target_node = ik.get_path_to(tgt_r if side == "Right" else tgt_l)
-	ik.influence = 0.0
-	ik.start()
-	return ik
 
 
 func cleanup() -> void:
@@ -182,7 +163,7 @@ func place_gun(delta: float, cam: Camera3D, fpp: bool, recoil: float, bob: float
 	if not gun_socket.visible:
 		return
 	if fpp:
-		var off := Vector3(0, -(gun.get_meta("sight_y") as float), -0.38) if ads else Vector3(0.16, -0.2, -0.4)
+		var off := Vector3(0, -(gun.get_meta("sight_y") as float), -0.36) if ads else Vector3(0.15, -0.19, -0.34)
 		if reload_t > 0.0:
 			off.y -= 0.1
 		off.z += recoil * 2.2
@@ -207,15 +188,14 @@ func animate(delta: float, fpp_body: bool) -> void:
 		aim.dead = dead_t
 		aim.pitch = 0.0
 		anim_tree.set("parameters/loco/blend_position", 0.0)
-		ik_r.influence = 0.0
-		ik_l.influence = 0.0
+		aim.ik = 0.0
 		if dead_t >= 1.0:
 			anim_tree.active = false
 		return
 	body.rotation.x = 0.0
 	body.position = Vector3.ZERO
 	if fpp_body:
-		body.position = Vector3(0, 0, 0.22)   # keep the torso behind the eye
+		body.position = Vector3(0, 0, 0.1)   # keep the torso just behind the eye
 	var freefall := state == "air"
 	anim_tree.set("parameters/mix/blend_amount", 1.0 if freefall else 0.0)
 	anim_tree.set("parameters/loco/blend_position", 0.0 if state != "ground" else (sp * (1.4 if crouch else 1.0)))
@@ -232,14 +212,15 @@ func animate(delta: float, fpp_body: bool) -> void:
 		var right := Vector3(cos(yaw), 0, -sin(yaw))
 		tgt_r.global_position = up + right * 0.22
 		tgt_l.global_position = up - right * 0.22
-		ik_r.influence = 1.0
-		ik_l.influence = 1.0
+		aim.ik = 1.0
 	else:
 		if gun:
 			tgt_r.position = gun.get_meta("grip")
 			tgt_l.position = gun.get_meta("fore")
-		ik_r.influence = lerpf(ik_r.influence, 1.0 if armed else 0.0, 1.0 - exp(-delta * 12.0))
-		ik_l.influence = ik_r.influence
+		aim.ik = lerpf(aim.ik, 1.0 if armed else 0.0, 1.0 - exp(-delta * 12.0))
+	var to_skel := skel.global_transform.affine_inverse()
+	aim.r_target = to_skel * tgt_r.global_position
+	aim.l_target = to_skel * tgt_l.global_position
 
 
 # inp: {fx, fz, sprint, jump}

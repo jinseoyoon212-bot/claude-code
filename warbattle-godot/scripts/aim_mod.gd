@@ -7,10 +7,14 @@ var crouch := 0.0
 var hide_head := false
 var dead := 0.0
 var b := {}
+# hand targets in skeleton space, and how strongly to pull the hands onto them
+var ik := 0.0
+var r_target := Vector3.ZERO
+var l_target := Vector3.ZERO
 
 
 func setup(sk: Skeleton3D) -> void:
-	for n in ["Hips", "Spine", "Spine1", "Spine2", "Neck", "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot", "LeftArm", "RightArm", "LeftForeArm", "RightForeArm"]:
+	for n in ["Hips", "Spine", "Spine1", "Spine2", "Neck", "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot", "LeftArm", "RightArm", "LeftForeArm", "RightForeArm", "LeftHand", "RightHand"]:
 		b[n] = sk.find_bone("mixamorig_" + n)
 
 
@@ -35,8 +39,31 @@ func _process_modification() -> void:
 		_rot(sk, "RightArm", 0.6 * dead)
 		_rot(sk, "LeftForeArm", -0.4 * dead)
 		_rot(sk, "RightForeArm", -0.4 * dead)
+	if ik > 0.01 and dead <= 0.0:
+		_ccd(sk, [b.RightForeArm, b.RightArm], b.RightHand, r_target)
+		_ccd(sk, [b.LeftForeArm, b.LeftArm], b.LeftHand, l_target)
 	if hide_head:
 		sk.set_bone_pose_scale(b.Neck, Vector3.ONE * 0.001)
+
+
+# Cyclic coordinate descent in skeleton space: rotate each joint so the hand points at the target.
+func _ccd(sk: Skeleton3D, chain: Array, eff: int, target: Vector3) -> void:
+	for it in 10:
+		for j in chain:
+			var jg := sk.get_bone_global_pose(j)
+			var ep := sk.get_bone_global_pose(eff).origin
+			var a := ep - jg.origin
+			var t := target - jg.origin
+			if a.length_squared() < 1e-6 or t.length_squared() < 1e-6:
+				continue
+			var q := Quaternion(a.normalized(), t.normalized())
+			if ik < 0.999:
+				q = Quaternion.IDENTITY.slerp(q, ik)
+			var pg := sk.get_bone_global_pose(sk.get_bone_parent(j))
+			var new_global := Basis(q) * jg.basis.orthonormalized()
+			sk.set_bone_pose_rotation(j, (pg.basis.orthonormalized().inverse() * new_global).get_rotation_quaternion())
+		if sk.get_bone_global_pose(eff).origin.distance_squared_to(target) < 0.25:
+			break
 
 
 func _rot(sk: Skeleton3D, n: String, a: float) -> void:

@@ -18,7 +18,7 @@ dest_files=["res://.godot/imported/shrub_03_shrub_03_diff.png-a39b27984e3f522301
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.8
 compress/hdr_compression=1

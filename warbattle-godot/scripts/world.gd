@@ -394,7 +394,7 @@ func _mat(name: String) -> StandardMaterial3D:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.metallic = 0.2
 		m.roughness = 0.04
-		m.specular = 0.9
+		m.metallic_specular = 0.9
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		return m
 	var tex: String = {"brick": "brick", "plaster": "plaster", "paint": "plaster", "blue": "plaster", "concrete": "concrete", "wood": "wood", "darkwood": "wood", "roof": "roof", "rooftile": "rooftile", "planks": "planks", "frame": "planks"}[name]
@@ -886,6 +886,15 @@ func variants_of(scene: PackedScene, scale := 1.0) -> Array:
 				bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 				bm.alpha_scissor_threshold = 0.35
 				bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				# foliage: no sky reflection (it turns leaf tips white on the WebGL renderer)
+				bm.metallic = 0.0
+				bm.metallic_texture = null
+				bm.roughness = 1.0
+				bm.roughness_texture = null
+				bm.metallic_specular = 0.15
+				bm.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+				bm.backlight_enabled = true
+				bm.backlight = Color(0.22, 0.26, 0.12)
 				mat = bm
 			st_mesh.surface_set_material(st_mesh.get_surface_count() - 1, mat)
 		out.append({"mesh": st_mesh, "height": height, "radius": radius})

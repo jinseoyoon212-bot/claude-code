@@ -76,6 +76,17 @@ func _ready() -> void:
 		s.quality = q
 		_on_deploy.call_deferred(s)
 	for x in args:
+		if x.begins_with("--armcheck="):
+			var t3 = load("res://scripts/autotest.gd").new()
+			t3.game = self
+			t3.dir = x.split("=")[1]
+			add_child(t3)
+			t3.armcheck.call_deferred()
+		if x == "--sim":
+			var t2 = load("res://scripts/autotest.gd").new()
+			t2.game = self
+			add_child(t2)
+			t2.sim.call_deferred()
 		if x.begins_with("--shots="):
 			var t = load("res://scripts/autotest.gd").new()
 			t.game = self
@@ -150,7 +161,8 @@ func _setup_environment() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_energy = 0.7
+	# without SDFGI/SSIL (web, mobile) the sky light is all that brightens shaded walls
+	env.ambient_light_energy = 0.7 if (is_rd and not is_mobile) else 1.15
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0
@@ -352,7 +364,7 @@ func new_match() -> void:
 	hud.hud.visible = true
 	hud.touch.visible = is_mobile or DisplayServer.is_touchscreen_available()
 	state = "playing"
-	hud.show_toast("Board the transport. Press F to jump.")
+	hud.show_toast("Click the screen to take control · F to jump" if (OS.has_feature("web") and not hud.touch.visible) else "Board the transport. Press F to jump.")
 	if not hud.touch.visible:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
